@@ -1,467 +1,251 @@
-
 import React, { useState, useEffect, useCallback } from "react";
-import { Bet } from "@/api/entities";
-import { Participant } from "@/api/entities";
-import { StakeRefund } from "@/api/entities";
-import { UserProfile } from "@/api/entities";
-import { Button } from "@/components/ui/button";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Plus, TrendingUp, Wallet, User as UserIcon, Shield, Trophy, FileCheck, Grid, List } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertCircle, Wallet } from "lucide-react";
+import { ethers } from "ethers";
 
-import BetCard from "../components/betting/BetCard";
-import BetRow from "../components/betting/BetRow"; // Added BetRow import
-import StatsOverview from "../components/dashboard/StatsOverview";
 import CategoryFilter from "../components/betting/CategoryFilter";
-import MyBetsTab from "../components/dashboard/MyBetsTab";
-import WalletTab from "../components/dashboard/WalletTab";
-import TrustScoreTab from "../components/dashboard/TrustScoreTab";
-import HistoryTab from "../components/dashboard/HistoryTab";
-import WalletConnectionModal from "../components/wallet/WalletConnectionModal";
-import { TrustScoreManager } from "../components/trust/TrustScoreManager";
+import BetCard from "../components/betting/BetCard";
+import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress, formatAddress } from "../components/blockchain/contracts";
 
 export default function Dashboard() {
   const [bets, setBets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [filteredBets, setFilteredBets] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [activeTab, setActiveTab] = useState("markets");
-  const [viewMode, setViewMode] = useState("grid"); // Added viewMode state
-  
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState("");
-  const [showWalletModal, setShowWalletModal] = useState(false);
-  const [userTrustScore, setUserTrustScore] = useState(null);
-  const [userProfile, setUserProfile] = useState(null); // Added userProfile state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [walletAddress, setWalletAddress] = useState(null);
+  const [connecting, setConnecting] = useState(false);
 
-  // Helper function to safely check if a bet exists
-  const betExists = async (betId) => {
+  const handleConnectWallet = async () => {
+    setConnecting(true);
+    setError(null);
     try {
-      const bet = await Bet.get(betId);
-      return bet !== null;
-    } catch (error) {
-      const errorMessage = error.message || '';
-      const isNotFoundError = 
-        errorMessage.includes('not found') ||
-        errorMessage.includes('404') ||
-        errorMessage.includes('Request failed with status code 404') ||
-        error.status === 404 ||
-        error.code === 404;
-      
-      if (isNotFoundError) {
-        return false; // Bet doesn't exist
+      const address = await connectWallet();
+      if (address) {
+        setWalletAddress(address);
+        // loadBets will be called by the useEffect hook watching walletAddress
       } else {
-        console.error(`Error checking bet existence for ${betId}:`, error);
-        return false; // Assume it doesn't exist to be safe
+        setError("Failed to connect wallet. Please try again.");
       }
+    } catch (err) {
+      setError("Error connecting to wallet: " + err.message);
     }
+    setConnecting(false);
   };
 
-  // Helper function to cancel bet and refund participants
-  const cancelBetAndRefund = useCallback(async (bet) => {
-    try {
-      // First verify the bet still exists
-      const exists = await betExists(bet.id);
-      if (!exists) {
-        console.warn(`Skipping refund processing for non-existent bet ${bet.id}`);
-        return;
-      }
-
-      let participants = [];
-      try {
-        participants = await Participant.filter({ bet_id: bet.id });
-      } catch (participantError) {
-        console.error(`Error loading participants for bet ${bet.id} during refund:`, participantError);
-        participants = []; // Continue with empty participants if fetch fails
-      }
-
-      for (const participant of participants) {
-        try {
-          const participantProfile = await UserProfile.filter({ wallet_address: participant.participant_address });
-          if (participantProfile.length > 0) {
-            await UserProfile.update(participantProfile[0].id, {
-              internal_balance_usd: (participantProfile[0].internal_balance_usd || 0) + participant.stake_amount_usd
-            });
-          } else {
-            console.warn(`UserProfile not found for participant address: ${participant.participant_address} linked to bet ID: ${bet.id}. Skipping refund for this participant.`);
-          }
-          
-          await StakeRefund.create({
-            participant_address: participant.participant_address,
-            bet_id: bet.id,
-            bet_title: bet.title,
-            refund_amount_usd: participant.stake_amount_usd,
-          });
-        } catch (refundError) {
-          console.error(`Failed to refund participant ${participant.participant_address} for bet ${bet.id}:`, refundError);
-        }
-      }
-    } catch (error) {
-      console.error(`Error processing refunds for bet ${bet.id}:`, error);
-    }
-  }, []);
-
   const loadBets = useCallback(async () => {
+    if (!walletAddress) {
+        setLoading(false);
+        return;
+    }
     setLoading(true);
+    setError(null);
+    
     try {
-      let data = [];
-      try {
-        data = await Bet.list("-created_date");
-      } catch (error) {
-        console.error("Error loading bets:", error);
+      const factory = getBetFactoryContract();
+      const betAddresses = await factory.getAllBets();
+
+      if (betAddresses.length === 0) {
         setBets([]);
         setLoading(false);
         return;
       }
-      
-      // Filter out any null or invalid bets first
-      const validBets = data.filter(bet => bet && bet.id && bet.betting_deadline);
-      
-      // Process expired bets with comprehensive error handling
-      const processedBets = [];
-      
-      for (const bet of validBets) {
+
+      const betPromises = betAddresses.map(async (address) => {
         try {
-          // Double-check that this bet still exists before processing
-          const exists = await betExists(bet.id);
-          if (!exists) {
-            console.warn(`Skipping processing of deleted bet ${bet.id}`);
-            continue; // Skip this bet entirely
-          }
-
-          let currentBet = { ...bet };
-          let needsUpdate = false;
-          let updatePayload = {};
-
-          // Case 1: Betting deadline has passed for an 'open_for_bets' bet
-          if (currentBet.status === 'open_for_bets' && new Date() > new Date(currentBet.betting_deadline)) {
-            const minimumSideStake = currentBet.minimum_side_stake || 0.05;
-            const yesMetMinimum = (currentBet.total_yes_stake || 0) >= minimumSideStake;
-            const noMetMinimum = (currentBet.total_no_stake || 0) >= minimumSideStake;
+            const betContract = getBetContract(address);
+            const details = await betContract.getBetDetails();
             
-            if (yesMetMinimum && noMetMinimum) {
-              // Both sides met minimum - close betting and wait for proof
-              currentBet.status = 'betting_closed';
-              updatePayload.status = 'betting_closed';
-              // Set proof deadline if not already set (for old bets)
-              if (!currentBet.proof_deadline) {
-                const bettingDeadline = new Date(currentBet.betting_deadline);
-                currentBet.proof_deadline = new Date(bettingDeadline.getTime() + 24 * 60 * 60 * 1000).toISOString();
-                updatePayload.proof_deadline = currentBet.proof_deadline;
-              }
-              needsUpdate = true;
-            } else {
-              // Minimum not met - cancel and refund
-              await cancelBetAndRefund(currentBet);
-              currentBet.status = 'cancelled';
-              currentBet.cancellation_processed = true;
-              updatePayload.status = 'cancelled';
-              updatePayload.cancellation_processed = true;
-              needsUpdate = true;
-            }
-          }
-
-          // Case 2: Proof deadline has passed for a 'betting_closed' bet
-          if (currentBet.status === 'betting_closed' && currentBet.proof_deadline && new Date() > new Date(currentBet.proof_deadline)) {
-            // Creator failed to submit proof in time - cancel and refund
-            await cancelBetAndRefund(currentBet);
-            currentBet.status = 'cancelled';
-            currentBet.cancellation_processed = true;
-            updatePayload.status = 'cancelled';
-            updatePayload.cancellation_processed = true;
-            needsUpdate = true;
-          }
-
-          if (needsUpdate) {
-            try {
-              // Check once more that the bet exists before updating
-              const stillExists = await betExists(bet.id);
-              if (!stillExists) {
-                console.warn(`Bet ${bet.id} was deleted during processing, skipping update.`);
-                continue; // Skip this bet entirely
-              }
-              
-              await Bet.update(bet.id, updatePayload);
-            } catch (updateError) {
-              console.error(`Failed to auto-update bet status for ${bet.id}:`, updateError);
-              const errorMessage = updateError.message || '';
-              const isNotFoundError = 
-                errorMessage.includes('not found') ||
-                errorMessage.includes('404') ||
-                errorMessage.includes('Request failed with status code 404') ||
-                updateError.status === 404 ||
-                updateError.code === 404;
-              
-              if (isNotFoundError) {
-                console.warn(`Bet ${bet.id} was deleted during update, skipping.`);
-                continue; // Skip this bet entirely
-              }
-              // If update fails for other reasons, revert currentBet to original bet to prevent incorrect local state
-              currentBet = { ...bet }; 
-            }
-          }
-
-          processedBets.push(currentBet);
-        } catch (error) {
-          console.error(`Error processing bet ${bet?.id || 'unknown'}:`, error);
-          const errorMessage = error.message || '';
-          const isNotFoundError = 
-            errorMessage.includes('not found') ||
-            errorMessage.includes('404') ||
-            errorMessage.includes('Request failed with status code 404') ||
-            error.status === 404 ||
-            error.code === 404;
-          
-          if (isNotFoundError) {
-            console.warn(`Skipping bet ${bet?.id} as it appears to have been deleted.`);
-            continue; // Skip this bet
-          }
-          // For other errors, still include the original bet to avoid losing data
-          if (bet && bet.id) {
-            processedBets.push(bet);
-          }
+            // Convert contract data to a more JS-friendly format
+            return {
+                address: address,
+                title: details.title,
+                description: details.description,
+                creator: details.creator,
+                creationTimestamp: Number(details.creationTimestamp),
+                category: Number(details.category),
+                status: Number(details.status),
+                totalYesStake: ethers.formatUnits(details.totalYesStake, 6), // Assuming USDC has 6 decimals
+                totalNoStake: ethers.formatUnits(details.totalNoStake, 6),
+            };
+        } catch (e) {
+            console.error(`Failed to fetch details for bet at ${address}:`, e);
+            return null; // Return null for failed fetches
         }
-      }
-      
-      setBets(processedBets);
-    } catch (error) {
-      console.error("Error loading bets:", error);
-      setBets([]);
+      });
+
+      const allBets = (await Promise.all(betPromises)).filter(b => b !== null); // Filter out failed ones
+      setBets(allBets.reverse()); // Show newest first
+    } catch (err) {
+      console.error("Error loading bets from blockchain:", err);
+      setError("Could not load markets. Ensure your wallet is on the correct network and contract addresses are set.");
     }
+    
     setLoading(false);
-  }, [cancelBetAndRefund]);
-
-  useEffect(() => {
-    // Check for a connected wallet in localStorage on initial load
-    const storedWalletAddress = localStorage.getItem("walletAddress");
-    if (storedWalletAddress) {
-      setWalletAddress(storedWalletAddress);
-      setWalletConnected(true);
-    }
-    loadBets();
-  }, [loadBets]);
-
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (walletAddress) {
-        try {
-          // Fetch User Profile for Alias
-          const profileData = await UserProfile.filter({ wallet_address: walletAddress });
-          if (profileData.length > 0) {
-            setUserProfile(profileData[0]);
-          } else {
-            setUserProfile(null);
-          }
-
-          // Fetch Trust Score
-          const score = await TrustScoreManager.getTrustScore(walletAddress);
-          setUserTrustScore(score);
-        } catch (error) {
-          console.error("Failed to load user data on dashboard", error);
-          setUserTrustScore(null);
-          setUserProfile(null);
-        }
-      } else {
-        setUserTrustScore(null);
-        setUserProfile(null);
-      }
-    };
-    loadUserData();
   }, [walletAddress]);
 
-  const handleWalletConnect = async (address) => {
-    localStorage.setItem("walletAddress", address); // Save to localStorage
-    setWalletAddress(address);
-    setWalletConnected(true);
-    setShowWalletModal(false);
-  };
+  // Check for an already connected wallet on mount
+  useEffect(() => {
+    const checkForConnectedWallet = async () => {
+        const address = await getConnectedAddress();
+        if (address) {
+            setWalletAddress(address);
+        } else {
+            setLoading(false); // Not connected, so stop loading
+        }
+    };
+    checkForConnectedWallet();
+  }, []);
   
-  const handleWalletDisconnect = () => {
-    localStorage.removeItem("walletAddress"); // Remove from localStorage
-    setWalletAddress("");
-    setWalletConnected(false);
-    setUserTrustScore(null); // Clear trust score on disconnect
-    setUserProfile(null); // Clear profile on disconnect
-  };
+  // Load bets when wallet address is available
+  useEffect(() => {
+      if(walletAddress) {
+          loadBets();
+      }
+  }, [walletAddress, loadBets]);
 
-  const filteredBets = bets.filter(bet => {
-    const categoryMatch = selectedCategory === "all" || bet.category === selectedCategory;
-    return categoryMatch;
-  });
-  
-  // Only show truly open bets (not expired) in the open section
-  const openBets = filteredBets.filter(b => 
-    b.status === 'open_for_bets' && new Date() < new Date(b.betting_deadline)
-  );
-  // New section for bets awaiting proof (betting closed, or proof submitted)
-  const awaitingProofBets = filteredBets.filter(b => b.status === 'betting_closed' || b.status === 'proof_submitted');
-  const votingBets = filteredBets.filter(b => b.status === 'voting');
+  useEffect(() => {
+    if (selectedCategory === "all") {
+      setFilteredBets(bets);
+    } else {
+      const categoryMap = { 
+        "sports": 1, // Corresponds to enum in Bet.sol
+        "politics": 0, 
+        "entertainment": 2, 
+        "tech": 2, // Map tech to entertainment for now
+        "crypto": 3, 
+        "other": 4
+      };
+      const categoryIndex = categoryMap[selectedCategory];
+      if (categoryIndex !== undefined) {
+        setFilteredBets(bets.filter(bet => bet.category === categoryIndex));
+      } else {
+        setFilteredBets(bets);
+      }
+    }
+  }, [selectedCategory, bets]);
 
   return (
-    <>
-      <div className="bg-gray-900 p-6 min-h-[calc(10vh-80px)]">
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">Prediction Markets</h1>
-              <p className="text-gray-400">Bet on outcomes with proof-backed verification</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {walletConnected && (
-                <Link to={createPageUrl("CreateBet")}>
-                  <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white font-semibold whitespace-nowrap">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Create Bet
-                  </Button>
-                </Link>
-              )}
-              {!walletConnected ? (
-                <Button onClick={() => setShowWalletModal(true)} className="bg-gray-700 hover:bg-gray-600 whitespace-nowrap">
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Connect Wallet
+    <div className="container mx-auto p-4 md:p-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            Live Prediction Markets
+          </h1>
+          <p className="text-gray-400 mt-1">
+            Decentralized betting powered by blockchain technology
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-3 mt-4 md:mt-0">
+          {walletAddress ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 rounded-lg border border-gray-700">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span className="text-gray-300 text-sm">{formatAddress(walletAddress)}</span>
+              </div>
+              <Link to={createPageUrl("CreateBet")}>
+                <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
+                  Create Market
                 </Button>
-              ) : (
-                <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-700">
-                  <div className="w-8 h-8 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <Wallet className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-white text-sm truncate" title={userProfile?.alias || walletAddress}>
-                      {userProfile?.alias ? userProfile.alias : "Connected"}
-                    </p>
-                    <p className="text-xs text-gray-400 truncate">{walletAddress}</p>
-                  </div>
-                   <Button onClick={handleWalletDisconnect} variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
-                    Disconnect
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <StatsOverview bets={bets} />
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-2 md:grid-cols-5">
-              <TabsTrigger value="markets" className="data-[state=active]:bg-cyan-600"><TrendingUp className="w-4 h-4 mr-2" />Markets</TabsTrigger>
-              <TabsTrigger value="history" className="data-[state=active]:bg-cyan-600"><Trophy className="w-4 h-4 mr-2" />History</TabsTrigger>
-              {walletConnected && (
+              </Link>
+            </>
+          ) : (
+            <Button 
+              onClick={handleConnectWallet} 
+              disabled={connecting}
+              className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700"
+            >
+              {connecting ? (
                 <>
-                  <TabsTrigger value="my-bets" className="data-[state=active]:bg-cyan-600"><UserIcon className="w-4 h-4 mr-2" />My Bets</TabsTrigger>
-                  <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600"><Wallet className="w-4 h-4 mr-2" />Wallet</TabsTrigger>
-                  <TabsTrigger value="trust-score" className="data-[state=active]:bg-cyan-600"><Shield className="w-4 h-4 mr-2" />Trust Score</TabsTrigger>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Connect Wallet
                 </>
               )}
-            </TabsList>
-            
-            <TabsContent value="markets" className="mt-6 space-y-6">
-              <div className="flex justify-between items-center flex-wrap gap-4">
-                <CategoryFilter 
-                  selectedCategory={selectedCategory}
-                  onCategoryChange={setSelectedCategory}
-                />
-                
-                <div className="flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg p-1">
-                  <Button 
-                    onClick={() => setViewMode('grid')}
-                    variant="ghost" 
-                    size="sm"
-                    className={`px-3 transition-colors ${viewMode === 'grid' ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                  >
-                    <Grid className="w-4 h-4" />
-                  </Button>
-                  <Button 
-                    onClick={() => setViewMode('list')}
-                    variant="ghost" 
-                    size="sm"
-                    className={`px-3 transition-colors ${viewMode === 'list' ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                  >
-                    <List className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="space-y-8">
-                <MarketSection title="Open for Betting" bets={openBets} loading={loading} walletConnected={walletConnected} onRequestWalletConnect={() => setShowWalletModal(true)} userTrustScore={userTrustScore} viewMode={viewMode} />
-                <MarketSection title="Awaiting Proof" icon={FileCheck} bets={awaitingProofBets} loading={loading} walletConnected={walletConnected} onRequestWalletConnect={() => setShowWalletModal(true)} userTrustScore={userTrustScore} viewMode={viewMode} />
-                <MarketSection title="Voting Phase" bets={votingBets} loading={loading} walletConnected={walletConnected} onRequestWalletConnect={() => setShowWalletModal(true)} userTrustScore={userTrustScore} viewMode={viewMode} />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="history" className="mt-6">
-              <HistoryTab />
-            </TabsContent>
-            
-            {walletConnected && (
-              <>
-                <TabsContent value="my-bets" className="mt-6">
-                  <MyBetsTab walletAddress={walletAddress} />
-                </TabsContent>
-                <TabsContent value="wallet" className="mt-6">
-                  <WalletTab walletAddress={walletAddress} />
-                </TabsContent>
-                <TabsContent value="trust-score" className="mt-6">
-                  <TrustScoreTab walletAddress={walletAddress} />
-                </TabsContent>
-              </>
-            )}
-          </Tabs>
+            </Button>
+          )}
         </div>
+      </header>
+
+      <div className="mb-6">
+        <CategoryFilter
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+        />
       </div>
-      <WalletConnectionModal 
-        isOpen={showWalletModal}
-        onClose={() => setShowWalletModal(false)}
-        onConnect={handleWalletConnect}
-      />
-    </>
-  );
-}
 
-const MarketSection = ({ title, bets, loading, take, walletConnected, onRequestWalletConnect, icon: Icon, userTrustScore, viewMode }) => {
-  const displayBets = take ? bets.slice(0, take) : bets;
+      {loading && (
+        <div className="flex justify-center items-center py-16">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-cyan-500 mx-auto mb-4" />
+            <p className="text-gray-400">Loading markets from blockchain...</p>
+          </div>
+        </div>
+      )}
 
-  const containerClasses = viewMode === 'grid'
-    ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
-    : "flex flex-col gap-4";
+      {error && (
+        <div className="bg-red-900/20 border border-red-500/30 text-red-200 p-4 rounded-lg mb-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
+            <div>
+              <p className="font-semibold">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-        {Icon && <Icon className="w-6 h-6 text-cyan-400" />}
-        {title} ({bets.length})
-      </h2>
-      {loading ? (
-        <div className={containerClasses}>
-          {Array(3).fill(0).map((_, i) => (
-            viewMode === 'grid' ? (
-              <div key={i} className="bg-gray-800 rounded-xl p-6 animate-pulse">
-                <div className="h-4 bg-gray-700 rounded mb-4"></div>
-                <div className="h-3 bg-gray-700 rounded mb-3"></div>
-                <div className="h-3 bg-gray-700 rounded w-2/3"></div>
-              </div>
-            ) : (
-              <div key={i} className="bg-gray-800 rounded-xl p-4 animate-pulse flex items-center gap-4">
-                <div className="flex-1 h-8 bg-gray-700 rounded"></div>
-                <div className="w-24 h-8 bg-gray-700 rounded"></div>
-              </div>
-            )
-          ))}
-        </div>
-      ) : displayBets.length > 0 ? (
-        <div className={containerClasses}>
-          {displayBets.map((bet) => (
-            viewMode === 'grid' ? (
-              <BetCard key={bet.id} bet={bet} walletConnected={walletConnected} onRequestWalletConnect={onRequestWalletConnect} userTrustScore={userTrustScore} />
-            ) : (
-              <BetRow key={bet.id} bet={bet} walletConnected={walletConnected} onRequestWalletConnect={onRequestWalletConnect} userTrustScore={userTrustScore} />
-            )
-          ))}
-        </div>
-      ) : (
-        <div className="bg-gray-800/50 border border-dashed border-gray-700 rounded-xl p-8 text-center text-gray-500">
-          No bets in this section right now.
-        </div>
+      {!loading && !error && (
+        <>
+          {walletAddress && filteredBets.length > 0 && (
+            <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredBets.map((bet) => (
+                <BetCard key={bet.address} bet={bet} />
+              ))}
+            </div>
+          )}
+
+          {walletAddress && filteredBets.length === 0 && (
+            <div className="text-center py-16 bg-gray-800/50 rounded-lg">
+              <h3 className="text-xl font-semibold text-gray-300 mb-2">No Markets Found</h3>
+              <p className="text-gray-400 mb-6">
+                {selectedCategory === "all" 
+                  ? "No prediction markets are currently active." 
+                  : `No markets found in the ${selectedCategory} category.`}
+              </p>
+              <Link to={createPageUrl("CreateBet")}>
+                <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
+                  Create the First Market
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {!walletAddress && !loading && (
+            <div className="text-center py-16 bg-gray-800/50 rounded-lg">
+              <Wallet className="w-16 h-16 text-gray-600 mx-auto mb-6" />
+              <h3 className="text-2xl font-semibold text-gray-300 mb-4">Connect Your Wallet</h3>
+              <p className="text-gray-400 mb-8 max-w-md mx-auto">
+                Connect your Web3 wallet to view and participate in prediction markets. 
+              </p>
+              <Button 
+                onClick={handleConnectWallet}
+                className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 px-8 py-3"
+              >
+                <Wallet className="mr-2 h-5 w-5" />
+                Connect Wallet
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
-};
+}

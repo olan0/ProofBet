@@ -6,9 +6,8 @@ const categories = [
   { value: "all", label: "All Categories" },
   { value: "sports", label: "Sports" },
   { value: "politics", label: "Politics" },
-  { value: "entertainment", label: "Entertainment" },
+  { value: "tech", label: "Tech" },
   { value: "crypto", label: "Crypto" },
-  { value: "personal", label: "Personal" },
   { value: "other", label: "Other" }
 ];
 
@@ -20,9 +19,9 @@ export default function CategoryFilter({ selectedCategory, onCategoryChange }) {
         <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-white">
           <SelectValue placeholder="Filter by category" />
         </SelectTrigger>
-        <SelectContent className="bg-gray-800 border-gray-700">
+        <SelectContent className="bg-gray-800 border-gray-700 text-white">
           {categories.map(category => (
-            <SelectItem key={category.value} value={category.value} className="text-white hover:bg-gray-700">
+            <SelectItem key={category.value} value={category.value} className="focus:bg-gray-700">
               {category.label}
             </SelectItem>
           ))}
