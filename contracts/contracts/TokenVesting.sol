@@ -79,7 +79,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
         });
 
         _beneficiaries.push(beneficiary_);
-        emit VestingScheduleCreated(beneficiary_, totalAmount_, start_, cliff_, duration_);
+        emit VestingScheduleCreated(beneficiary_, uint256(totalAmount_), start_, cliff_, duration_);
     }
 
     /**
@@ -98,7 +98,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
         schedule.released += releasableAmount;
 
         token.safeTransfer(beneficiary_, releasableAmount);
-        emit Released(beneficiary_, releasableAmount);
+        emit Released(beneficiary_, uint256(releasableAmount));
     }
     
     /**

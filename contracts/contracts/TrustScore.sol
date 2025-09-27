@@ -27,7 +27,8 @@ contract TrustScore is Ownable {
     }
 
     constructor() Ownable(msg.sender) {
-        // Initial score for deployer can be set if needed
+        // The deployer is automatically authorized to perform initial setup
+        authorizedContracts[msg.sender] = true;
     }
 
     /**
@@ -46,14 +47,14 @@ contract TrustScore is Ownable {
     }
 
     /**
-     * @dev Called by an authorized contract (e.g., Bet) when a user places a bet.
+     * @dev Called by an authorized BetFactory contract when a user places a bet in any Bet.
      */
     function logBetParticipation(address _participant) external onlyAuthorized {
         _increaseScore(_participant, PARTICIPATE_POINTS);
     }
 
     /**
-     * @dev Called by an authorized contract (e.g., Bet) when a user votes.
+     * @dev Called by an authorized BetFactory contract when a user votes.
      */
     function logVote(address _voter) external onlyAuthorized {
         _increaseScore(_voter, VOTE_POINTS);

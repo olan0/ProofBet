@@ -9,8 +9,8 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
 
   // --- Network-Specific USDC Configuration ---
   // Use Ignition parameters to control USDC address
-  // For local deployment: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network localhost --parameters '{"useLocalUSDC": true}'
-  // For testnet: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia
+  // For local deployment: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network localhost --parameters '{"useLocalUSDC": true, "maxActiveBets": 5}'
+  // For testnet: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia --parameters '{"maxActiveBets": 5}'
   const useLocalUSDC = m.getParameter("useLocalUSDC", false);
   const SEPOLIA_USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7a9c";
 
@@ -32,11 +32,16 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
   // --- Deployment Parameters ---
   const BET_CREATION_FEE = m.getParameter(
     "creationFee",
-    "100000000000000000000" // 100 * 10^18 (100 PROOF tokens)
+    "100000000000000000000" // 100 PROOF
   );
   const VOTE_STAKE_AMOUNT = m.getParameter(
     "voteStake",
-    "10000000000000000000" // 10 * 10^18 (10 PROOF tokens)
+    "10000000000000000000" // 10 PROOF
+  );
+  // NEW: Parameter for max active bets
+  const MAX_ACTIVE_BETS = m.getParameter(
+    "maxActiveBets",
+    5 // Default to 5
   );
 
   // --- 1. Deploy Core Contracts (with dependencies handled by Ignition) ---
@@ -53,23 +58,23 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
     deployer, // Fee collector address
     BET_CREATION_FEE,
     VOTE_STAKE_AMOUNT,
+    MAX_ACTIVE_BETS, // NEW
   ]);
   
   // --- 3. Deploy TokenVesting ---
   const tokenVesting = m.contract("TokenVesting", [proofToken]);
 
   // --- 4. Post-Deployment Authorizations ---
-  // Authorize BetFactory to update trust scores. This call will execute after
-  // both 'trustScore' and 'betFactory' are deployed.
+  // The owner (deployer) authorizes BetFactory to update trust scores.
   m.call(trustScore, "authorizeContract", [betFactory, true]);
   
-  // Note: The BetFactory constructor already authorizes itself with the ProofToken
-  // contract, so no extra call is needed here.
+  // The owner (deployer) authorizes BetFactory to burn PROOF tokens.
+  // This was moved from the BetFactory constructor to here for correctness.
+  m.call(proofToken, "authorizeBurner", [betFactory, true]);
 
   // --- Return Deployed Contract Addresses ---
   // These can be accessed after deployment for verification.
   return { proofToken, trustScore, betFactory, tokenVesting, usdcAddress };
-  //return { proofToken, trustScore, betFactory, usdcAddress };
 });
 
 export default ProofBetModule;

@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,11 +45,11 @@ export default function BetCard({ bet }) {
         <CardTitle className="mt-2">{bet.title}</CardTitle>
       </CardHeader>
       <CardContent className="flex-grow">
-        <p className="text-gray-400 line-clamp-3">
+        <p className="text-gray-300 line-clamp-3">
           {bet.description}
         </p>
       </CardContent>
-      <CardFooter className="flex justify-between items-center text-sm text-gray-400">
+      <CardFooter className="flex justify-between items-center text-sm text-gray-300">
         <span>{timeAgo}</span>
         {/* IMPORTANT: The link now uses the bet's contract address as the identifier */}
         <Link to={createPageUrl(`BetDetails?address=${bet.address}`)}>

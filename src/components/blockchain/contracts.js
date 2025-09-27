@@ -57,6 +57,11 @@ const BET_FACTORY_ABI = [
           "internalType": "uint256",
           "name": "_initialVoteStakeAmountProof",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_maxActiveBets",
+          "type": "uint256"
         }
       ],
       "stateMutability": "nonpayable",
@@ -85,6 +90,11 @@ const BET_FACTORY_ABI = [
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
+    },
+    {
       "anonymous": false,
       "inputs": [
         {
@@ -107,6 +117,44 @@ const BET_FACTORY_ABI = [
         }
       ],
       "name": "BetCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "oldPercentage",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "newPercentage",
+          "type": "uint8"
+        }
+      ],
+      "name": "DefaultPlatformFeeChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "oldPercentage",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "newPercentage",
+          "type": "uint8"
+        }
+      ],
+      "name": "DefaultVoterRewardChanged",
       "type": "event"
     },
     {
@@ -146,6 +194,62 @@ const BET_FACTORY_ABI = [
         {
           "indexed": true,
           "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "usdcAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proofAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "InternalTransfer",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "oldLimit",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newLimit",
+          "type": "uint256"
+        }
+      ],
+      "name": "MaxActiveBetsChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "previousOwner",
           "type": "address"
         },
@@ -157,6 +261,82 @@ const BET_FACTORY_ABI = [
         }
       ],
       "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProofDeposited",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProofWithdrawn",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsdcDeposited",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsdcWithdrawn",
       "type": "event"
     },
     {
@@ -177,6 +357,25 @@ const BET_FACTORY_ABI = [
       ],
       "name": "VoteStakeAmountChanged",
       "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "activeBetsCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
       "inputs": [
@@ -288,6 +487,97 @@ const BET_FACTORY_ABI = [
     },
     {
       "inputs": [],
+      "name": "defaultPlatformFeePercentage",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "defaultVoterRewardPercentage",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "depositProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "depositUsdc",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
+        }
+      ],
+      "name": "factoryLogBetCompletion",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "participant",
+          "type": "address"
+        }
+      ],
+      "name": "factoryLogBetParticipation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "voter",
+          "type": "address"
+        }
+      ],
+      "name": "factoryLogVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "feeCollector",
       "outputs": [
         {
@@ -307,6 +597,100 @@ const BET_FACTORY_ABI = [
           "internalType": "address[]",
           "name": "",
           "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        }
+      ],
+      "name": "getInternalBalances",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "usdcBalance",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "proofBalance",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "internalProofBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "internalUsdcBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "isBetFromFactory",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxActiveBetsPerUser",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -361,6 +745,32 @@ const BET_FACTORY_ABI = [
     {
       "inputs": [
         {
+          "internalType": "uint8",
+          "name": "_percentage",
+          "type": "uint8"
+        }
+      ],
+      "name": "setDefaultPlatformFeePercentage",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint8",
+          "name": "_percentage",
+          "type": "uint8"
+        }
+      ],
+      "name": "setDefaultVoterRewardPercentage",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "address",
           "name": "_newCollector",
           "type": "address"
@@ -375,11 +785,80 @@ const BET_FACTORY_ABI = [
       "inputs": [
         {
           "internalType": "uint256",
+          "name": "_limit",
+          "type": "uint256"
+        }
+      ],
+      "name": "setMaxActiveBetsPerUser",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
           "name": "_amount",
           "type": "uint256"
         }
       ],
       "name": "setVoteStakeAmount",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_from",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_reason",
+          "type": "string"
+        }
+      ],
+      "name": "transferInternalProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_from",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_reason",
+          "type": "string"
+        }
+      ],
+      "name": "transferInternalUsdc",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -435,8 +914,34 @@ const BET_FACTORY_ABI = [
       ],
       "stateMutability": "view",
       "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "withdrawProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "withdrawUsdc",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     }
-  ]
+  ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
 const BET_ABI = [
@@ -503,6 +1008,11 @@ const BET_ABI = [
           "internalType": "struct Bet.BetDetails",
           "name": "_details",
           "type": "tuple"
+        },
+        {
+          "internalType": "address",
+          "name": "_betFactory",
+          "type": "address"
         },
         {
           "internalType": "address",
@@ -637,9 +1147,9 @@ const BET_ABI = [
         },
         {
           "indexed": false,
-          "internalType": "enum Bet.Side",
+          "internalType": "uint256",
           "name": "vote",
-          "type": "uint8"
+          "type": "uint256"
         },
         {
           "indexed": false,
@@ -650,6 +1160,19 @@ const BET_ABI = [
       ],
       "name": "VoteCast",
       "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "betFactory",
+      "outputs": [
+        {
+          "internalType": "contract BetFactory",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
       "inputs": [],
@@ -797,7 +1320,185 @@ const BET_ABI = [
     },
     {
       "inputs": [],
+      "name": "getBetDetails",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "creator",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "title",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "description",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bettingDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "proofDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "votingDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumBetAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumSideStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "minimumTrustScore",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "voterRewardPercentage",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "platformFeePercentage",
+              "type": "uint8"
+            }
+          ],
+          "internalType": "struct Bet.BetDetails",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getBetInfo",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
+        },
+        {
+          "internalType": "enum Bet.Status",
+          "name": "status",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalYes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalNo",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "creationTimestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "participantsCount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "votersCount",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getVoteStats",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalYesVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalNoVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalVoteStake",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "hasParticipated",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "noVotes",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "participantCount",
       "outputs": [
         {
           "internalType": "uint256",
@@ -910,6 +1611,19 @@ const BET_ABI = [
     {
       "inputs": [],
       "name": "totalVoteStakeProof",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalVotes",
       "outputs": [
         {
           "internalType": "uint256",
@@ -1392,19 +2106,14 @@ let signer;
 export async function connectWallet() {
   if (typeof window.ethereum === "undefined") {
     console.error("MetaMask is not installed.");
-    // In a real app, you'd show a modal guiding the user to install MetaMask.
+    alert("Please install MetaMask to use this application.");
     return null;
   }
   
   try {
-    // A Web3Provider wraps a standard Web3 provider, which is
-    // what MetaMask injects as window.ethereum.
     provider = new ethers.BrowserProvider(window.ethereum);
     // Request account access
     await provider.send("eth_requestAccounts", []);
-    // The MetaMask plugin also allows signing transactions to
-    // send ether and pay to change state within the blockchain.
-    // For this, you need the signer.
     signer = await provider.getSigner();
     return await signer.getAddress();
   } catch (error) {
@@ -1412,6 +2121,7 @@ export async function connectWallet() {
     return null;
   }
 }
+
 /**
  * Gets the currently connected wallet address without prompting a connection.
  * @returns {Promise<string|null>}
@@ -1432,21 +2142,47 @@ export async function getConnectedAddress() {
         return null;
     }
 }
+
 /**
- * Gets a read-only instance of a contract (if no signer is available).
+ * Disconnects the wallet by clearing the provider and signer
+ * @returns {Promise<void>}
+ */
+export async function disconnectWallet() {
+    try {
+        // Clear the provider and signer
+        provider = null;
+        signer = null;
+        
+        // Clear any stored wallet state
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('walletAddress'); // Example: clear a stored address
+            // You might want to add more state clearing depending on your app's needs
+        }
+        
+        console.log("Wallet disconnected successfully");
+        // Optionally, trigger a UI update or page reload to reflect disconnection
+        // window.location.reload(); 
+    } catch (error) {
+        console.error("Error disconnecting wallet:", error);
+    }
+}
+
+
+/**
+ * Gets an instance of a contract.
  * @param {string} address The contract address.
  * @param {Array} abi The contract ABI.
+ * @param {boolean} withSigner If true, returns a contract instance that can sign transactions.
  * @returns {ethers.Contract}
  */
 export function getContractInstance(address, abi, withSigner = false) {
     if (withSigner) {
         if (!signer) {
-            throw new Error("Wallet not connected. Cannot get a contract instance with a signer.");
+            throw new Error("Wallet not connected. Cannot create a contract instance with a signer.");
         }
         return new ethers.Contract(address, abi, signer);
     }
     
-    // Fallback to a read-only provider if wallet not connected or for view functions.
     const readProvider = provider || new ethers.BrowserProvider(window.ethereum);
     return new ethers.Contract(address, abi, readProvider);
 }
@@ -1469,13 +2205,15 @@ export function formatAddress(address) {
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
 }
 
-/**
- * Formats a BigInt from a contract into a readable string with decimals.
- * @param {BigInt} bigIntValue The value from the contract.
- * @param {number} decimals The number of decimals the token uses (e.g., 18 for PROOF).
- * @returns {string}
- */
-export function formatUnits(bigIntValue, decimals = 18) {
-    if (typeof bigIntValue === 'undefined') return '0.0';
-    return ethers.formatUnits(bigIntValue, decimals);
+// Listen for account changes and reload the page
+if(typeof window !== 'undefined' && window.ethereum) {
+    window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0) {
+            window.location.reload();
+        } else {
+            // Handle user locking their wallet or disconnecting all accounts
+            console.log("Wallet disconnected.");
+            window.location.reload();
+        }
+    });
 }

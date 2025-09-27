@@ -5,11 +5,11 @@ import { DollarSign, Users, Clock, CheckCircle, Info, Vote, XCircle } from "luci
 import { format, formatDistanceToNow } from "date-fns";
 
 export default function BetStats({ bet, votes = [] }) {
-  const totalVotes = votes.length;
-  const yesVotes = votes.filter(v => v.vote === 'yes').length;
-  const noVotes = votes.filter(v => v.vote === 'no').length;
   const totalStake = (bet.total_yes_stake_usd || 0) + (bet.total_no_stake_usd || 0);
   const minimumVotes = bet.minimum_votes || 3;
+
+  // Use the voter count from the blockchain instead of the votes array length
+  const blockchainVoterCount = bet.voters_count || 0;
 
   const DeadlineInfo = () => {
     switch (bet.status) {
@@ -100,36 +100,34 @@ export default function BetStats({ bet, votes = [] }) {
           <span className="font-semibold">{bet.participants_count || 0}</span>
         </div>
         
+        {/* NEW: Show voter count from blockchain */}
+        <div className="flex items-center justify-between text-gray-300">
+          <div className="flex items-center gap-2">
+            <Vote className="w-4 h-4 text-orange-400" />
+            <span>Voters</span>
+          </div>
+          <span className="font-semibold">{blockchainVoterCount}</span>
+        </div>
+        
         {bet.status === 'voting' && (
           <>
             <div className="flex items-center justify-between text-gray-300">
               <div className="flex items-center gap-2">
                 <Vote className="w-4 h-4 text-green-400" />
-                <span>Public Votes</span>
+                <span>Votes Needed</span>
               </div>
-              <span className={`font-semibold ${totalVotes >= minimumVotes ? 'text-green-400' : 'text-yellow-400'}`}>
-                {totalVotes} / {minimumVotes}
+              <span className={`font-semibold ${blockchainVoterCount >= minimumVotes ? 'text-green-400' : 'text-yellow-400'}`}>
+                {blockchainVoterCount} / {minimumVotes}
               </span>
             </div>
-            {totalVotes > 0 && (
-              <div className="flex items-center justify-between text-gray-300">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-yellow-400" />
-                  <span>Vote Breakdown</span>
-                </div>
-                <span className="font-semibold text-sm">
-                  YES: {yesVotes} | NO: {noVotes}
-                </span>
-              </div>
-            )}
           </>
         )}
         
         <DeadlineInfo />
         
-        {totalVotes < minimumVotes && bet.status === 'voting' && (
+        {blockchainVoterCount < minimumVotes && bet.status === 'voting' && (
           <div className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded p-2">
-            ⚠️ Need {minimumVotes - totalVotes} more votes to resolve this bet
+            ⚠️ Need {minimumVotes - blockchainVoterCount} more votes to resolve this bet
           </div>
         )}
         <div className="text-xs text-gray-400 bg-blue-500/10 border border-blue-500/20 rounded p-2">

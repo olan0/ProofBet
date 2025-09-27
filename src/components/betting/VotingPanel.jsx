@@ -6,23 +6,46 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { AlertCircle, TrendingUp, Shield, Vote, Wallet, CheckCircle } from "lucide-react";
+import { AlertCircle, TrendingUp, Shield, Vote, Wallet, CheckCircle, Plus } from "lucide-react";
 import { TrustScoreManager } from "../trust/TrustScoreManager";
 import TrustScoreDisplay from "../trust/TrustScoreDisplay";
 import { formatDistanceToNow } from 'date-fns';
+import { ethers } from "ethers"; // Import ethers
+import { getBetContract, getBetFactoryContract, getUsdcTokenContract, getProofTokenContract } from "../blockchain/contracts"; // Assuming these are utility functions
 
-export default function VotingPanel({ bet, participants, onPlaceBet, onVote, votes, appSettings, walletConnected, walletAddress, onRequestWalletConnect }) {
+export default function VotingPanel({
+  bet,
+  participants,
+  // onPlaceBet, // This prop will effectively become unused for actual bet placement within this component
+  // onVote, // This prop will also effectively become unused
+  votes,
+  appSettings, // This prop is used for vote_stake_amount_proof and voter_reward_percentage
+  walletConnected,
+  walletAddress,
+  onRequestWalletConnect,
+  // placingBet, // This prop will also effectively become unused for the button's local loading state
+  loadBetDetails // Added as a new prop to refresh bet details after a transaction
+}) {
   // Initialize betAmount with minimum_bet_amount, assumed to be in USDC now
   const [betAmount, setBetAmount] = useState(bet.minimum_bet_amount || 0.01);
   const [selectedSide, setSelectedSide] = useState('yes');
-  const [isPlacingBet, setIsPlacingBet] = useState(false);
+  // Re-introducing local state for placing bet, as the outline's handlePlaceBet implementation
+  // now directly handles blockchain interaction and does not call the onPlaceBet prop,
+  // which would otherwise be responsible for updating the parent's `placingBet` state.
+  const [isBettingInProgress, setIsBettingInProgress] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   const [userTrustScore, setUserTrustScore] = useState(null);
   const [loadingTrustScore, setLoadingTrustScore] = useState(false);
+  const [error, setError] = useState(null); // New state for displaying error messages
+
+  // NEW: Internal wallet balances
+  const [internalBalances, setInternalBalances] = useState({ usdc: 0, proof: 0 });
+  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [showDepositPrompt, setShowDepositPrompt] = useState(false);
 
   const loadUserTrustScore = useCallback(async () => {
     if (!walletAddress) return;
-    
+
     setLoadingTrustScore(true);
     try {
       const trustScore = await TrustScoreManager.getTrustScore(walletAddress);
@@ -34,41 +57,62 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
     setLoadingTrustScore(false);
   }, [walletAddress]);
 
+  // NEW: Load internal wallet balances
+  const loadInternalBalances = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLoadingBalances(true);
+    try {
+      const factory = getBetFactoryContract();
+      const [internalUsdc, internalProof] = await factory.getInternalBalances(walletAddress);
+      
+      setInternalBalances({
+        usdc: parseFloat(ethers.formatUnits(internalUsdc, 6)),
+        proof: parseFloat(ethers.formatEther(internalProof))
+      });
+    } catch (error) {
+      console.error("Error loading internal balances:", error);
+      setInternalBalances({ usdc: 0, proof: 0 });
+    }
+    setLoadingBalances(false);
+  }, [walletAddress]);
+
   useEffect(() => {
     if (walletConnected && walletAddress) {
       loadUserTrustScore();
+      loadInternalBalances();
     } else {
       setUserTrustScore(null);
+      setInternalBalances({ usdc: 0, proof: 0 });
     }
-  }, [walletConnected, walletAddress, loadUserTrustScore]);
-  
+  }, [walletConnected, walletAddress, loadUserTrustScore, loadInternalBalances]);
+
   // Use USD values for stakes for display and reward pool calculation
   const totalStakeUsd = (bet.total_yes_stake_usd || 0) + (bet.total_no_stake_usd || 0);
   const yesStakeUsd = bet.total_yes_stake_usd || 0;
   const noStakeUsd = bet.total_no_stake_usd || 0;
   const yesPercentage = totalStakeUsd > 0 ? (yesStakeUsd / totalStakeUsd) * 100 : 50;
-  
+
   // Check trust score eligibility
   const meetsMinimumTrustScore = !walletConnected || !bet.minimum_trust_score || (userTrustScore && userTrustScore.overall_score >= bet.minimum_trust_score);
-  
+
   // DEADLINE and STATUS checks
   const now = new Date();
   const bettingDeadline = new Date(bet.betting_deadline);
   const votingDeadline = bet.voting_deadline ? new Date(bet.voting_deadline) : null;
-  
+
   const bettingPeriodOver = now >= bettingDeadline;
   const votingPeriodOver = votingDeadline && now >= votingDeadline;
 
   // Determine which UI to show based on status
   const canAcceptBets = bet.status === 'open_for_bets' && !bettingPeriodOver;
   const canAcceptVotes = bet.status === 'voting' && !votingPeriodOver;
-  
-  // Check if both sides meet minimum requirements (assuming minimum_side_stake and minimum_total_stake are in USDC)
+
+  // Check if both sides meet minimum requirements (assuming minimum_side_stake in USDC)
   const yesMetMinimum = yesStakeUsd >= (bet.minimum_side_stake || 0);
   const noMetMinimum = noStakeUsd >= (bet.minimum_side_stake || 0);
-  const totalMetMinimum = totalStakeUsd >= (bet.minimum_total_stake || 0);
-  const bothSidesReady = yesMetMinimum && noMetMinimum && totalMetMinimum;
-  
+  const bothSidesReady = yesMetMinimum && noMetMinimum;
+
   const currentUserAddress = walletAddress;
   const isParticipant = participants.some(p => p.participant_address === currentUserAddress);
   const isCreator = bet.creator_address === currentUserAddress;
@@ -77,64 +121,192 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
   // NEW: Check if the current user has already voted
   const hasVoted = walletAddress && votes.some(v => v.voter_address === walletAddress);
 
+  // NEW: Check if user has sufficient internal balance
+  const hasSufficientUsdcForBet = internalBalances.usdc >= betAmount;
+  const voteStakeAmount = appSettings?.vote_stake_amount_proof || 10;
+  const hasSufficientProofForVote = internalBalances.proof >= voteStakeAmount;
+
   const handlePlaceBet = async () => {
+    setError(null); // Clear previous errors
+    setShowDepositPrompt(false); // Clear deposit prompt
     if (!walletConnected) {
       onRequestWalletConnect();
       return;
     }
 
-    if (!meetsMinimumTrustScore) {
-      alert(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}) for this bet.`);
+    // NEW: Check internal balance first
+    if (!hasSufficientUsdcForBet) {
+      setShowDepositPrompt(true);
+      setError(`Insufficient internal USDC balance. You have ${internalBalances.usdc.toFixed(2)} USDC but need ${betAmount} USDC. Please deposit more funds.`);
       return;
     }
-    
-    setIsPlacingBet(true);
-    try {
-      // onPlaceBet will receive betAmount which is now expected to be in USDC based on UI changes.
-      await onPlaceBet(selectedSide, betAmount);
-      if (walletAddress) {
-        // Trust score is now calculated with a cache to prevent rate limits
-        loadUserTrustScore();
-      }
-    } catch (error) {
-      console.error("Error placing bet:", error);
+
+    if (!meetsMinimumTrustScore) {
+      setError(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}) for this bet.`);
+      return;
     }
-    setIsPlacingBet(false);
+
+    setIsBettingInProgress(true); // Set local loading state
+    try {
+      const betContract = getBetContract(bet.address, true); // with signer
+      // const usdcContract = getUsdcTokenContract(true); // with signer -- NO LONGER NEEDED FOR DIRECT BET PLACEMENT
+
+      const sideEnum = selectedSide === 'yes' ? 1 : 2;
+      const amountInSmallestUnit = ethers.parseUnits(betAmount.toString(), 6);
+
+      console.log(`Attempting to place bet using internal balance:`, {
+        side: selectedSide,
+        sideEnum,
+        amount: betAmount,
+        amountInSmallestUnit: amountInSmallestUnit.toString(),
+        betAddress: bet.address
+      });
+
+      // 1. Check user's USDC balance (already done via hasSufficientUsdcForBet)
+      // 2. Check current allowance (no longer needed for internal balance transfer)
+
+      // 3. Place the bet using internal balance
+      console.log(`Placing bet of ${ethers.formatUnits(amountInSmallestUnit, 6)} USDC on side ${sideEnum}...`);
+      const placeBetTx = await betContract.placeBet(sideEnum, amountInSmallestUnit);
+      console.log(`Place bet transaction hash: ${placeBetTx.hash}`);
+      await placeBetTx.wait(); // Wait for the transaction to be mined
+      console.log("Bet placed successfully using internal balance!");
+
+      // Refresh data immediately after transaction is confirmed
+      if (loadBetDetails) {
+        await loadBetDetails(bet.address);
+      }
+      loadInternalBalances(); // Refresh internal balances
+      if (walletAddress) {
+        loadUserTrustScore(); // Refresh trust score after successful bet
+      }
+
+    } catch (err) {
+      console.error("Failed to place bet:", err);
+
+      let errorMessage = "An error occurred while placing the bet.";
+
+      // Check for common error patterns from ethers.js or contract reverts
+      if (err.message?.includes("User denied transaction signature")) {
+        errorMessage = "Transaction denied by user.";
+      } else if (err.message?.includes("insufficient funds")) {
+        errorMessage = "Insufficient funds for gas or USDC balance.";
+      } else if (err.message?.includes("Insufficient internal USDC balance")) { // Though caught earlier, good fallback
+        errorMessage = "Insufficient internal USDC balance. Please deposit more funds.";
+        setShowDepositPrompt(true);
+      } else if (err.message?.includes("Trust score too low")) {
+        errorMessage = "Your trust score is too low for this bet.";
+      } else if (err.message?.includes("Betting has closed")) {
+        errorMessage = "Betting period has ended for this market.";
+      } else if (err.message?.includes("Stake is too low")) {
+        errorMessage = `Minimum bet amount is ${bet.minimum_bet_amount} USDC.`;
+      } else if (err.reason) { // Ethers v6 often uses err.reason for revert messages
+        errorMessage = `Contract error: ${err.reason}`;
+      } else if (err.data && typeof err.data === 'string') {
+        // Fallback for generic revert data
+        errorMessage = `Transaction failed with data: ${err.data.substring(0, 100)}...`;
+      } else if (err.code === 4001) { // MetaMask user rejected error code
+        errorMessage = "Transaction rejected by user.";
+      } else if (err.code === "UNPREDICTABLE_GAS_LIMIT") {
+        errorMessage = "Could not estimate gas. Check transaction parameters or network status.";
+      }
+      setError(errorMessage);
+    } finally {
+      setIsBettingInProgress(false); // Always reset loading state
+    }
   };
 
-  const handleVoteClick = async (choice) => {
+  const handleVote = async (choice) => { // Renamed from handleVoteClick
+    setError(null); // Clear previous errors
+    setShowDepositPrompt(false); // Clear deposit prompt
+
     if (!walletConnected) {
       onRequestWalletConnect();
       return;
     }
 
     if (hasFinancialStake) {
-      alert("You cannot vote on this bet because you have money at stake or created it. Only neutral observers can vote.");
+      setError("You cannot vote on this bet because you have money at stake or created it. Only neutral observers can vote.");
+      return;
+    }
+
+    // NEW: Check internal PROOF balance
+    if (!hasSufficientProofForVote) {
+      setShowDepositPrompt(true);
+      setError(`Insufficient internal PROOF balance. You have ${internalBalances.proof.toFixed(2)} PROOF but need ${voteStakeAmount} PROOF to vote.`);
       return;
     }
 
     if (!meetsMinimumTrustScore) {
-      alert(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}) for this bet.`);
+      setError(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}) for this bet.`);
       return;
     }
 
     if (hasVoted) {
-      alert("You have already voted on this bet.");
+      setError("You have already voted on this bet.");
       return;
     }
-    
+
     setIsVoting(true);
     try {
-      await onVote(choice);
+      const betContract = getBetContract(bet.address, true); // with signer
+      const voteSideEnum = choice === 'yes' ? 1 : 2;
+
+      const voteTx = await betContract.vote(voteSideEnum);
+      await voteTx.wait(); // Wait for the transaction to be mined
+
+      console.log("Vote cast successfully using internal balance!");
+      
+      // Refresh data immediately after transaction is confirmed
+      if (loadBetDetails) {
+        await loadBetDetails(bet.address);
+      }
+      loadInternalBalances(); // Refresh balances after vote
       if (walletAddress) {
-        // Trust score is now calculated with a cache to prevent rate limits
         loadUserTrustScore();
       }
+      
     } catch (error) {
       console.error("Error voting:", error);
+      let errorMessage = "An error occurred while voting.";
+      if (error.message?.includes("User denied transaction signature")) {
+        errorMessage = "Transaction denied by user.";
+      } else if (error.message?.includes("Insufficient internal PROOF balance")) {
+        errorMessage = "Insufficient internal PROOF balance. Please deposit more funds.";
+        setShowDepositPrompt(true);
+      } else if (error.reason) { // Ethers v6 often uses err.reason for revert messages
+        errorMessage = `Contract error: ${error.reason}`;
+      } else if (error.code === 4001) { // MetaMask user rejected error code
+        errorMessage = "Transaction rejected by user.";
+      }
+      setError(errorMessage); // Generic error for voting
     }
     setIsVoting(false);
   };
+
+  // NEW: Component for deposit prompt
+  const DepositPrompt = ({ tokenType, needed, current }) => (
+    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertCircle className="w-5 h-5 text-yellow-400" />
+        <span className="font-semibold text-yellow-300">Insufficient {tokenType} Balance</span>
+      </div>
+      <p className="text-yellow-200 text-sm mb-4">
+        You need {needed} {tokenType} but only have {current} {tokenType} in your internal wallet.
+      </p>
+      <Button
+        onClick={() => {
+          // Navigate to wallet tab in Dashboard
+          window.location.href = window.location.origin + window.location.pathname.replace('/BetDetails', '/Dashboard') + '#wallet';
+        }}
+        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        Deposit {tokenType} Tokens
+      </Button>
+    </div>
+  );
+
 
   // Show expired/ended message if no actions are possible
   if (!canAcceptBets && !canAcceptVotes) {
@@ -197,10 +369,36 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
             Place Your Bet
           </CardTitle>
           <p className="text-gray-400 text-sm">
-            Both sides need minimum stakes to activate
+            Using your internal wallet balance for seamless betting
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Internal Balance Display */}
+          {walletConnected && !loadingBalances && (
+            <div className="p-3 bg-gray-700/50 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-300 text-sm">Your Internal USDC Balance:</span>
+                <span className={`font-mono text-sm font-medium ${hasSufficientUsdcForBet ? 'text-green-400' : 'text-yellow-400'}`}>
+                  ${internalBalances.usdc.toFixed(2)}
+                </span>
+              </div>
+              {!hasSufficientUsdcForBet && (
+                <p className="text-yellow-400 text-xs">
+                  Need ${betAmount.toFixed(2)} USDC for this bet
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Show deposit prompt if insufficient funds */}
+          {showDepositPrompt && !hasSufficientUsdcForBet && (
+            <DepositPrompt
+              tokenType="USDC"
+              needed={betAmount.toFixed(2)}
+              current={internalBalances.usdc.toFixed(2)}
+            />
+          )}
+
           {/* Trust Score Display */}
           {walletConnected && !loadingTrustScore && userTrustScore && (
             <div className="p-3 bg-gray-700/50 rounded-lg">
@@ -227,12 +425,12 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                 <span className="font-semibold text-red-300 text-sm">Trust Score Too Low</span>
               </div>
               <p className="text-red-200 text-sm">
-                You need a trust score of {bet.minimum_trust_score} to participate in this bet. 
+                You need a trust score of {bet.minimum_trust_score} to participate in this bet.
                 Your current score is {Math.round(userTrustScore?.overall_score || 0)}.
               </p>
             </div>
           )}
-          
+
           {/* Current Stakes Display */}
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -240,59 +438,46 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                 <div className="flex justify-between text-sm">
                   <span className="text-green-400">YES Side</span>
                   <span className={`font-medium ${yesMetMinimum ? 'text-green-400' : 'text-yellow-400'}`}>
-                    ${yesStakeUsd.toFixed(2)} / ${bet.minimum_side_stake?.toFixed(2)} USDC
+                    ${yesStakeUsd.toFixed(2)} / ${(bet.minimum_side_stake || 0).toFixed(2)} USDC
                   </span>
                 </div>
-                <Progress 
-                  value={(yesStakeUsd / (bet.minimum_side_stake || 1)) * 100} 
+                <Progress
+                  value={(yesStakeUsd / (bet.minimum_side_stake || 1)) * 100}
                   className="h-2 bg-gray-700"
                 />
                 {!yesMetMinimum && (
                   <p className="text-xs text-gray-400">
-                    Need ${(bet.minimum_side_stake - yesStakeUsd).toFixed(2)} more USDC
+                    Need ${((bet.minimum_side_stake || 0) - yesStakeUsd).toFixed(2)} more USDC
                   </p>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-red-400">NO Side</span>
                   <span className={`font-medium ${noMetMinimum ? 'text-green-400' : 'text-yellow-400'}`}>
-                    ${noStakeUsd.toFixed(2)} / ${bet.minimum_side_stake?.toFixed(2)} USDC
+                    ${noStakeUsd.toFixed(2)} / ${(bet.minimum_side_stake || 0).toFixed(2)} USDC
                   </span>
                 </div>
-                <Progress 
-                  value={(noStakeUsd / (bet.minimum_side_stake || 1)) * 100} 
+                <Progress
+                  value={(noStakeUsd / (bet.minimum_side_stake || 1)) * 100}
                   className="h-2 bg-gray-700"
                 />
                 {!noMetMinimum && (
                   <p className="text-xs text-gray-400">
-                    Need ${(bet.minimum_side_stake - noStakeUsd).toFixed(2)} more USDC
+                    Need ${((bet.minimum_side_stake || 0) - noStakeUsd).toFixed(2)} more USDC
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Overall Progress */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Total Stakes</span>
-                <span className={`font-medium ${bothSidesReady ? 'text-green-400' : 'text-yellow-400'}`}>
-                  ${totalStakeUsd.toFixed(2)} / ${bet.minimum_total_stake?.toFixed(2)} USDC
-                </span>
+            {!bothSidesReady && (
+              <div className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded p-2">
+                ⚠️ Both YES and NO sides must reach minimum stakes before bet can proceed
               </div>
-              <Progress 
-                value={(totalStakeUsd / (bet.minimum_total_stake || 1)) * 100} 
-                className="h-2 bg-gray-700"
-              />
-              {!bothSidesReady && (
-                <div className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded p-2">
-                  ⚠️ Both YES and NO sides must reach minimum stakes before bet can proceed
-                </div>
-              )}
-            </div>
+            )}
           </div>
-          
+
           {/* Position Selection */}
           <div className="space-y-2">
             <Label className="text-gray-300">Your Position</Label>
@@ -300,8 +485,8 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               <Button
                 variant={selectedSide === 'yes' ? 'default' : 'outline'}
                 onClick={() => setSelectedSide('yes')}
-                className={selectedSide === 'yes' 
-                  ? 'bg-green-600 hover:bg-green-700' 
+                className={selectedSide === 'yes'
+                  ? 'bg-green-600 hover:bg-green-700'
                   : 'border-green-500/50 text-green-400 hover:bg-green-500/10'}
               >
                 YES - Will happen
@@ -309,8 +494,8 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               <Button
                 variant={selectedSide === 'no' ? 'default' : 'outline'}
                 onClick={() => setSelectedSide('no')}
-                className={selectedSide === 'no' 
-                  ? 'bg-red-600 hover:bg-red-700' 
+                className={selectedSide === 'no'
+                  ? 'bg-red-600 hover:bg-red-700'
                   : 'border-red-500/50 text-red-400 hover:bg-red-500/10'}
               >
                 NO - Won't happen
@@ -329,7 +514,7 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               </p>
             </div>
           )}
-          
+
           {/* Bet Amount */}
           <div className="space-y-2">
             <Label htmlFor="betAmount" className="text-gray-300">Bet Amount (USDC)</Label>
@@ -346,10 +531,10 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               Minimum: ${(bet.minimum_bet_amount || 0.01).toFixed(2)} USDC
             </p>
           </div>
-          
-          <Button 
-            onClick={handlePlaceBet} 
-            disabled={isPlacingBet || (walletConnected && (betAmount < (bet.minimum_bet_amount || 0.01) || !meetsMinimumTrustScore))}
+
+          <Button
+            onClick={handlePlaceBet}
+            disabled={isBettingInProgress || (!walletConnected || (betAmount < (bet.minimum_bet_amount || 0.01) || !meetsMinimumTrustScore || !hasSufficientUsdcForBet))}
             className="w-full bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-700 hover:to-purple-800 text-white font-bold py-3"
           >
             {!walletConnected ? (
@@ -359,11 +544,23 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               </>
             ) : !meetsMinimumTrustScore && (bet.minimum_trust_score || 0) > 0 ? (
               `Trust Score Too Low (${Math.round(userTrustScore?.overall_score || 0)}/${bet.minimum_trust_score || 0})`
-            ) : isPlacingBet ? 'Placing Bet...' : `Bet $${(betAmount || 0).toFixed(2)} USDC on ${selectedSide.toUpperCase()}`}
+            ) : !hasSufficientUsdcForBet ? (
+              <>
+                <Plus className="w-5 h-5 mr-2" />
+                Deposit USDC to Bet
+              </>
+            ) : isBettingInProgress ? 'Placing Bet...' : `Bet $${(betAmount || 0).toFixed(2)} USDC on ${selectedSide.toUpperCase()}`}
           </Button>
-          
-          <div className="text-xs text-gray-400 bg-yellow-500/10 border border-yellow-500/20 rounded p-2">
-            ⚠️ Note: Once you bet, you cannot vote on the outcome. Only neutral observers can vote.
+
+          {error && ( // Display error message
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm">
+              <AlertCircle className="w-4 h-4 inline mr-2" />
+              {error}
+            </div>
+          )}
+
+          <div className="text-xs text-gray-400 bg-blue-500/10 border border-blue-500/20 rounded p-2">
+            💡 Using internal wallet - no token approvals needed for each bet!
           </div>
         </CardContent>
       </Card>
@@ -374,12 +571,12 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
     const totalVotes = votes?.length || 0;
     const minimumVotes = bet.minimum_votes || 3;
     const votesNeeded = Math.max(0, minimumVotes - totalVotes);
-    const timeUntilDeadline = votingDeadline && votingDeadline > now ? 
-      formatDistanceToNow(votingDeadline, { addSuffix: true }) : 
+    const timeUntilDeadline = votingDeadline && votingDeadline > now ?
+      formatDistanceToNow(votingDeadline, { addSuffix: true }) :
       "Deadline passed";
 
     // Calculate voting incentives with staking
-    const voteStakeAmount = appSettings.vote_stake_amount_proof || 10; // Use appSettings
+    // voteStakeAmount is defined earlier based on appSettings?.vote_stake_amount_proof || 10
     const voterRewardPct = appSettings?.voter_reward_percentage || 5;
     const voterRewardPool = totalStakeUsd * (voterRewardPct / 100); // Use totalStakeUsd for reward pool (in USDC)
     const estimatedVoterReward = minimumVotes > 0 ? voterRewardPool / minimumVotes : 0;
@@ -392,10 +589,36 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
             Stake to Vote & Earn
           </CardTitle>
           <p className="text-gray-400 text-sm">
-            Stake {voteStakeAmount} PROOF to vote • Honest voters get stake back + share of rewards
+            Using your internal wallet • Stake {voteStakeAmount} PROOF to vote
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Internal PROOF Balance Display */}
+          {walletConnected && !loadingBalances && (
+            <div className="p-3 bg-gray-700/50 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-300 text-sm">Your Internal PROOF Balance:</span>
+                <span className={`font-mono text-sm font-medium ${hasSufficientProofForVote ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {internalBalances.proof.toFixed(2)} PROOF
+                </span>
+              </div>
+              {!hasSufficientProofForVote && (
+                <p className="text-yellow-400 text-xs">
+                  Need {voteStakeAmount} PROOF to vote
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Show deposit prompt if insufficient PROOF */}
+          {showDepositPrompt && !hasSufficientProofForVote && (
+            <DepositPrompt
+              tokenType="PROOF"
+              needed={voteStakeAmount}
+              current={internalBalances.proof.toFixed(2)}
+            />
+          )}
+
           {/* Trust Score Display for Voting */}
           {walletConnected && !loadingTrustScore && userTrustScore && (
             <div className="p-3 bg-gray-700/50 rounded-lg">
@@ -440,7 +663,7 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
             </div>
           </div>
 
-          {/* Voting Progress with Deadline Warning */}
+          {/* Voting Progress */}
           {votesNeeded > 0 && (
             <div className={`p-3 rounded-lg ${votingPeriodOver ? 'bg-red-500/10 border-red-500/20' : 'bg-yellow-500/10 border-yellow-500/20'}`}>
               <div className="flex items-center gap-2 mb-1">
@@ -450,7 +673,7 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                 </span>
               </div>
               <p className={`text-sm ${votingPeriodOver ? 'text-red-200' : 'text-yellow-200'}`}>
-                {votingPeriodOver ? 
+                {votingPeriodOver ?
                   `Only ${totalVotes} of ${minimumVotes} required votes were cast. Stakes will be refunded.` :
                   `${votesNeeded} more vote${votesNeeded !== 1 ? 's' : ''} needed (${totalVotes}/${minimumVotes})`
                 }
@@ -467,6 +690,13 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               <p className="text-purple-200 text-sm">
                 Connect your wallet to stake and vote.
               </p>
+            </div>
+          )}
+          
+          {error && ( // Display error message
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm">
+              <AlertCircle className="w-4 h-4 inline mr-2" />
+              {error}
             </div>
           )}
 
@@ -489,8 +719,8 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                 <span className="font-semibold text-red-300">Cannot Vote</span>
               </div>
               <p className="text-red-200 text-sm">
-                {isCreator 
-                  ? "You created this bet and cannot vote on the outcome." 
+                {isCreator
+                  ? "You created this bet and cannot vote on the outcome."
                   : "You have money at stake and cannot vote on the outcome."}
               </p>
             </div>
@@ -534,17 +764,22 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                       <p className="text-white text-lg font-bold">{voteStakeAmount} PROOF Required</p>
                       <p className="text-gray-400 text-sm">Stake amount to cast your vote</p>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
-                      <Button 
-                        onClick={() => handleVoteClick('yes')} 
-                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore}
+                      <Button
+                        onClick={() => handleVote('yes')}
+                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore || !hasSufficientProofForVote}
                         className="bg-green-600 hover:bg-green-700 text-white font-bold py-6 text-lg flex flex-col gap-1"
                       >
                         {!walletConnected ? (
                           <>
                             <Wallet className="w-4 h-4" />
                             <span className="text-sm">Connect</span>
+                          </>
+                        ) : !hasSufficientProofForVote ? (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            <span className="text-sm">Deposit PROOF</span>
                           </>
                         ) : (
                           <>
@@ -553,15 +788,20 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
                           </>
                         )}
                       </Button>
-                      <Button 
-                        onClick={() => handleVoteClick('no')} 
-                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore}
+                      <Button
+                        onClick={() => handleVote('no')}
+                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore || !hasSufficientProofForVote}
                         className="bg-red-600 hover:bg-red-700 text-white font-bold py-6 text-lg flex flex-col gap-1"
                       >
                         {!walletConnected ? (
                           <>
                             <Wallet className="w-4 h-4" />
                             <span className="text-sm">Connect</span>
+                          </>
+                        ) : !hasSufficientProofForVote ? (
+                          <>
+                            <Plus className="w-4 h-4" />
+                            <span className="text-sm">Deposit PROOF</span>
                           </>
                         ) : (
                           <>
@@ -576,9 +816,9 @@ export default function VotingPanel({ bet, participants, onPlaceBet, onVote, vot
               )}
             </>
           )}
-          
+
           <div className="text-xs text-gray-400 text-center">
-            Winner determined by staked votes • Honest voters earn rewards • {timeUntilDeadline}
+            Using internal wallet • Winner determined by staked votes • {timeUntilDeadline}
           </div>
         </CardContent>
       </Card>
