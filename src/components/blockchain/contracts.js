@@ -20,6 +20,8 @@ const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint amount) returns (bool)",
   "function transferFrom(address from, address to, uint amount) returns (bool)",
+  "function mint(address to, uint256 amount)",
+  "function owner() view returns (address)",
   "event Transfer(address indexed from, address indexed to, uint256 value)",
   "event Approval(address indexed owner, address indexed spender, uint256 value)"
 ];

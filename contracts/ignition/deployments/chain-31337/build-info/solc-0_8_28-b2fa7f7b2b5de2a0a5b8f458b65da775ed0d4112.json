@@ -4,7 +4,7 @@
   "solcVersion": "0.8.28",
   "solcLongVersion": "0.8.28+commit.7893614a",
   "userSourceNameMap": {
-    "contracts/BetFactory.sol": "project/contracts/BetFactory.sol"
+    "contracts/Bet.sol": "project/contracts/Bet.sol"
   },
   "input": {
     "language": "Solidity",

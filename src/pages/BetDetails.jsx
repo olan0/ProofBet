@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
@@ -18,6 +17,7 @@ import BetCancellation from "../components/betting/BetCancellation";
 
 import { 
     getBetContract, 
+    getBetFactoryContract,
     getUsdcTokenContract, 
     getProofTokenContract,
     getConnectedAddress, 
@@ -42,17 +42,41 @@ export default function BetDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const [bet, setBet] = useState(null);
-  const [participants, setParticipants] = useState([]); // This will be trickier, on-chain doesn't list them easily
-  const [votes, setVotes] = useState([]); // Same for votes
+  const [participants, setParticipants] = useState([]);
+  const [votes, setVotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [walletAddress, setWalletAddress] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
+  const [appSettings, setAppSettings] = useState(null);
   
   const betRef = useRef(bet);
   betRef.current = bet;
   
   const betAddress = new URLSearchParams(location.search).get("address");
+
+  // NEW: Load app settings from BetFactory contract
+  const loadAppSettings = useCallback(async () => {
+    try {
+      const factory = getBetFactoryContract();
+      const [voteStakeAmount, voterRewardPercentage] = await Promise.all([
+        factory.voteStakeAmountProof(),
+        factory.defaultVoterRewardPercentage()
+      ]);
+
+      setAppSettings({
+        vote_stake_amount_proof: parseFloat(ethers.formatEther(voteStakeAmount)),
+        voter_reward_percentage: Number(voterRewardPercentage)
+      });
+    } catch (error) {
+      console.error("Error loading app settings:", error);
+      // Set fallback values
+      setAppSettings({
+        vote_stake_amount_proof: 10,
+        voter_reward_percentage: 5
+      });
+    }
+  }, []);
 
   const loadBetDetails = useCallback(async (address) => {
     if (!address) {
@@ -76,15 +100,53 @@ export default function BetDetails() {
         totalYesStake,
         totalNoStake,
         proofUrl,
-        winningSide
+        winningSide,
+        betPlacedEvents,
+        voteCastEvents,
       ] = await Promise.all([
         betContract.details(),
         betContract.currentStatus(),
         betContract.totalYesStake(),
         betContract.totalNoStake(),
         betContract.proofUrl(),
-        betContract.winningSide()
+        betContract.winningSide(),
+        betContract.queryFilter(betContract.filters.BetPlaced()),
+        betContract.queryFilter(betContract.filters.VoteCast()),
       ]);
+
+      // Process events to build participant and voter lists
+      const participantsAggregated = {};
+      betPlacedEvents.forEach(event => {
+        const { user, position, amountUsdc } = event.args;
+        const userAddress = user;
+        const stake = parseFloat(ethers.formatUnits(amountUsdc, 6));
+        const side = Number(position) === 1 ? 'yes' : 'no';
+
+        const key = `${userAddress}-${side}`;
+        if (!participantsAggregated[key]) {
+          participantsAggregated[key] = {
+            id: key,
+            participant_address: userAddress,
+            position: side,
+            stake_amount_usd: 0,
+          };
+        }
+        participantsAggregated[key].stake_amount_usd += stake;
+      });
+      const participantsList = Object.values(participantsAggregated);
+      setParticipants(participantsList);
+
+      const votersList = voteCastEvents.map((event, index) => {
+        const { voter, vote, amountProof } = event.args;
+        return {
+          id: event.transactionHash + index,
+          voter_address: voter,
+          vote: Number(vote) === 1 ? 'yes' : 'no',
+          stake_amount_proof: parseFloat(ethers.formatEther(amountProof)),
+          created_date: new Date().toISOString(), // Event timestamp is not easily available
+        };
+      });
+      setVotes(votersList);
       
       const connectedAddr = await getConnectedAddress();
       const contractStatusString = STATUS_MAP[Number(currentStatus)];
@@ -100,32 +162,19 @@ export default function BetDetails() {
         minimum_bet_amount_usd: ethers.formatUnits(details.minimumBetAmount, 6),
         minimum_bet_amount: parseFloat(ethers.formatUnits(details.minimumBetAmount, 6)),
         minimum_side_stake: parseFloat(ethers.formatUnits(details.minimumSideStake, 6)),
-        minimum_trust_score: details.minimumTrustScore,
+        minimum_trust_score: Number(details.minimumTrustScore),
         status: convertStatusToFrontend(contractStatusString),
         total_yes_stake_usd: parseFloat(ethers.formatUnits(totalYesStake, 6)),
         total_no_stake_usd: parseFloat(ethers.formatUnits(totalNoStake, 6)),
         proof_url: proofUrl,
         proof_submitted: !!proofUrl,
         winning_side: Number(winningSide) === 1 ? 'yes' : Number(winningSide) === 2 ? 'no' : null,
-        // Mock data for now, as these are not easily queryable from the contract
         category: 'other', 
         proof_type: 'video', 
-        // NEW: Get participant and voter counts from getBetInfo
-        participants_count: 0, // Will be updated below
-        voters_count: 0, // Will be updated below
+        participants_count: participantsList.length,
+        voters_count: votersList.length,
         updated_date: new Date().toISOString(),
       };
-
-      // NEW: Get the participant and voter counts from getBetInfo
-      try {
-        const betInfo = await betContract.getBetInfo();
-        // betInfo returns: [title, description, creator, status, totalYes, totalNo, creationTime, participantsCount, votersCount]
-        betData.participants_count = Number(betInfo[7]); // participantsCount
-        betData.voters_count = Number(betInfo[8]); // votersCount
-      } catch (infoError) {
-        console.warn("Could not fetch bet info counts:", infoError);
-        // Keep default values of 0
-      }
 
       setBet(betData);
       setWalletAddress(connectedAddr);
@@ -137,11 +186,12 @@ export default function BetDetails() {
     } finally {
       setLoading(false);
     }
-  }, [betAddress]);
+  }, []);
 
   useEffect(() => {
     loadBetDetails(betAddress);
-  }, [betAddress, loadBetDetails]);
+    loadAppSettings();
+  }, [betAddress, loadBetDetails, loadAppSettings]);
 
   const handleProofSubmit = async (proofUrl) => {
     try {
@@ -168,7 +218,7 @@ export default function BetDetails() {
       <div className="min-h-screen bg-gray-900 p-6 text-center flex flex-col items-center justify-center">
         <div className="max-w-md mx-auto space-y-4">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
-          <h2 className="2xl font-bold text-red-400 mb-4">Bet Not Found</h2>
+          <h2 className="text-2xl font-bold text-red-400 mb-4">Bet Not Found</h2>
           <p className="text-gray-300 mb-6">{error || "Could not find a bet at this address."}</p>
           <div className="flex gap-4 justify-center">
             <Button
@@ -205,9 +255,8 @@ export default function BetDetails() {
 
           <BetDetailHeader bet={bet} />
 
-          {/* These resolution/cancellation components might need adjustment if their logic was DB-dependent */}
           {bet.status === 'completed' && (
-            <BetResolution bet={bet} participants={participants} votes={votes} />
+            <BetResolution bet={bet} participants={participants} votes={votes} appSettings={appSettings}/>
           )}
 
           {bet.status === 'cancelled' && (
@@ -221,7 +270,6 @@ export default function BetDetails() {
                 isCreator={isCreator}
                 onProofSubmit={handleProofSubmit}
               />
-              {/* Note: Participants & Votes are not easily listed from the contract, so these will be empty for now */}
               <ParticipantsList participants={participants} bet={bet} />
               <VoteHistory votes={votes} />
             </div>
@@ -232,6 +280,7 @@ export default function BetDetails() {
                   bet={bet}
                   participants={participants}
                   votes={votes}
+                  appSettings={appSettings}
                   walletConnected={!!walletAddress}
                   walletAddress={walletAddress}
                   onRequestWalletConnect={connectWallet}

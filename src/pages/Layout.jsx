@@ -130,18 +130,31 @@ export default function Layout({ children }) {
                 Markets
               </Button>
             </Link>
+            
+            {/* Always show Create Market button when wallet is connected */}
+            {walletConnected && (
+              <Link to={createPageUrl("CreateBet")}>
+                <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
+                  Create Market
+                </Button>
+              </Link>
+            )}
+            
             <Link to={createPageUrl("Documentation")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
                 <BookOpen className="w-4 h-4 mr-2" />
                 Docs
               </Button>
             </Link>
+            
             <Link to={createPageUrl("SmartContracts")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
                 <Code className="w-4 h-4 mr-2" />
                 Contracts
               </Button>
             </Link>
+            
+            {/* Always show Admin for testing - all users can access faucet */}
             <Link to={createPageUrl("Admin")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
                 <Settings className="w-4 h-4 mr-2" />

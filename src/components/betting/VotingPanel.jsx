@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,28 +11,23 @@ import { AlertCircle, TrendingUp, Shield, Vote, Wallet, CheckCircle, Plus } from
 import { TrustScoreManager } from "../trust/TrustScoreManager";
 import TrustScoreDisplay from "../trust/TrustScoreDisplay";
 import { formatDistanceToNow } from 'date-fns';
-import { ethers } from "ethers"; // Import ethers
-import { getBetContract, getBetFactoryContract, getUsdcTokenContract, getProofTokenContract } from "../blockchain/contracts"; // Assuming these are utility functions
+import { ethers } from "ethers";
+import { getBetContract, getBetFactoryContract, getUsdcTokenContract, getProofTokenContract } from "../blockchain/contracts";
+import { createPageUrl } from "@/utils"; // Import createPageUrl
 
 export default function VotingPanel({
   bet,
   participants,
-  // onPlaceBet, // This prop will effectively become unused for actual bet placement within this component
-  // onVote, // This prop will also effectively become unused
   votes,
-  appSettings, // This prop is used for vote_stake_amount_proof and voter_reward_percentage
+  appSettings,
   walletConnected,
   walletAddress,
   onRequestWalletConnect,
-  // placingBet, // This prop will also effectively become unused for the button's local loading state
-  loadBetDetails // Added as a new prop to refresh bet details after a transaction
+  loadBetDetails
 }) {
-  // Initialize betAmount with minimum_bet_amount, assumed to be in USDC now
+  const navigate = useNavigate(); // Initialize useNavigate hook
   const [betAmount, setBetAmount] = useState(bet.minimum_bet_amount || 0.01);
   const [selectedSide, setSelectedSide] = useState('yes');
-  // Re-introducing local state for placing bet, as the outline's handlePlaceBet implementation
-  // now directly handles blockchain interaction and does not call the onPlaceBet prop,
-  // which would otherwise be responsible for updating the parent's `placingBet` state.
   const [isBettingInProgress, setIsBettingInProgress] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   const [userTrustScore, setUserTrustScore] = useState(null);
@@ -41,7 +37,7 @@ export default function VotingPanel({
   // NEW: Internal wallet balances
   const [internalBalances, setInternalBalances] = useState({ usdc: 0, proof: 0 });
   const [loadingBalances, setLoadingBalances] = useState(false);
-  const [showDepositPrompt, setShowDepositPrompt] = useState(false);
+  // Removed: showDepositPrompt, as button click will now directly navigate
 
   const loadUserTrustScore = useCallback(async () => {
     if (!walletAddress) return;
@@ -65,7 +61,7 @@ export default function VotingPanel({
     try {
       const factory = getBetFactoryContract();
       const [internalUsdc, internalProof] = await factory.getInternalBalances(walletAddress);
-      
+
       setInternalBalances({
         usdc: parseFloat(ethers.formatUnits(internalUsdc, 6)),
         proof: parseFloat(ethers.formatEther(internalProof))
@@ -128,18 +124,10 @@ export default function VotingPanel({
 
   const handlePlaceBet = async () => {
     setError(null); // Clear previous errors
-    setShowDepositPrompt(false); // Clear deposit prompt
-    if (!walletConnected) {
-      onRequestWalletConnect();
-      return;
-    }
+    // Removed: setShowDepositPrompt(false); - no longer needed as the button's onClick handles navigation
 
-    // NEW: Check internal balance first
-    if (!hasSufficientUsdcForBet) {
-      setShowDepositPrompt(true);
-      setError(`Insufficient internal USDC balance. You have ${internalBalances.usdc.toFixed(2)} USDC but need ${betAmount} USDC. Please deposit more funds.`);
-      return;
-    }
+    // The check for !walletConnected and !hasSufficientUsdcForBet is now handled by handleBetButtonClick
+    // This function assumes these conditions are met if it's called.
 
     if (!meetsMinimumTrustScore) {
       setError(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}) for this bet.`);
@@ -191,9 +179,6 @@ export default function VotingPanel({
         errorMessage = "Transaction denied by user.";
       } else if (err.message?.includes("insufficient funds")) {
         errorMessage = "Insufficient funds for gas or USDC balance.";
-      } else if (err.message?.includes("Insufficient internal USDC balance")) { // Though caught earlier, good fallback
-        errorMessage = "Insufficient internal USDC balance. Please deposit more funds.";
-        setShowDepositPrompt(true);
       } else if (err.message?.includes("Trust score too low")) {
         errorMessage = "Your trust score is too low for this bet.";
       } else if (err.message?.includes("Betting has closed")) {
@@ -218,22 +203,13 @@ export default function VotingPanel({
 
   const handleVote = async (choice) => { // Renamed from handleVoteClick
     setError(null); // Clear previous errors
-    setShowDepositPrompt(false); // Clear deposit prompt
+    // Removed: setShowDepositPrompt(false); - no longer needed
 
-    if (!walletConnected) {
-      onRequestWalletConnect();
-      return;
-    }
+    // The check for !walletConnected and !hasSufficientProofForVote is now handled by the button's onClick
+    // This function assumes these conditions are met if it's called.
 
     if (hasFinancialStake) {
       setError("You cannot vote on this bet because you have money at stake or created it. Only neutral observers can vote.");
-      return;
-    }
-
-    // NEW: Check internal PROOF balance
-    if (!hasSufficientProofForVote) {
-      setShowDepositPrompt(true);
-      setError(`Insufficient internal PROOF balance. You have ${internalBalances.proof.toFixed(2)} PROOF but need ${voteStakeAmount} PROOF to vote.`);
       return;
     }
 
@@ -256,7 +232,7 @@ export default function VotingPanel({
       await voteTx.wait(); // Wait for the transaction to be mined
 
       console.log("Vote cast successfully using internal balance!");
-      
+
       // Refresh data immediately after transaction is confirmed
       if (loadBetDetails) {
         await loadBetDetails(bet.address);
@@ -265,15 +241,12 @@ export default function VotingPanel({
       if (walletAddress) {
         loadUserTrustScore();
       }
-      
+
     } catch (error) {
       console.error("Error voting:", error);
       let errorMessage = "An error occurred while voting.";
       if (error.message?.includes("User denied transaction signature")) {
         errorMessage = "Transaction denied by user.";
-      } else if (error.message?.includes("Insufficient internal PROOF balance")) {
-        errorMessage = "Insufficient internal PROOF balance. Please deposit more funds.";
-        setShowDepositPrompt(true);
       } else if (error.reason) { // Ethers v6 often uses err.reason for revert messages
         errorMessage = `Contract error: ${error.reason}`;
       } else if (error.code === 4001) { // MetaMask user rejected error code
@@ -284,29 +257,7 @@ export default function VotingPanel({
     setIsVoting(false);
   };
 
-  // NEW: Component for deposit prompt
-  const DepositPrompt = ({ tokenType, needed, current }) => (
-    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-      <div className="flex items-center gap-2 mb-3">
-        <AlertCircle className="w-5 h-5 text-yellow-400" />
-        <span className="font-semibold text-yellow-300">Insufficient {tokenType} Balance</span>
-      </div>
-      <p className="text-yellow-200 text-sm mb-4">
-        You need {needed} {tokenType} but only have {current} {tokenType} in your internal wallet.
-      </p>
-      <Button
-        onClick={() => {
-          // Navigate to wallet tab in Dashboard
-          window.location.href = window.location.origin + window.location.pathname.replace('/BetDetails', '/Dashboard') + '#wallet';
-        }}
-        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        Deposit {tokenType} Tokens
-      </Button>
-    </div>
-  );
-
+  // Removed: DepositPrompt component, as its functionality is now inline with the buttons
 
   // Show expired/ended message if no actions are possible
   if (!canAcceptBets && !canAcceptVotes) {
@@ -361,6 +312,20 @@ export default function VotingPanel({
   }
 
   if (canAcceptBets) {
+    // New handler to encapsulate deposit logic or bet placement
+    const handleBetButtonClick = () => {
+      if (!walletConnected) {
+        onRequestWalletConnect();
+        return;
+      }
+      if (!hasSufficientUsdcForBet) {
+        navigate(createPageUrl("Dashboard") + "?tab=wallet");
+        return;
+      }
+      // If sufficient USDC, proceed to place bet
+      handlePlaceBet();
+    };
+
     return (
       <Card className="bg-gray-800 border-gray-700">
         <CardHeader>
@@ -390,14 +355,7 @@ export default function VotingPanel({
             </div>
           )}
 
-          {/* Show deposit prompt if insufficient funds */}
-          {showDepositPrompt && !hasSufficientUsdcForBet && (
-            <DepositPrompt
-              tokenType="USDC"
-              needed={betAmount.toFixed(2)}
-              current={internalBalances.usdc.toFixed(2)}
-            />
-          )}
+          {/* Removed: DepositPrompt component */}
 
           {/* Trust Score Display */}
           {walletConnected && !loadingTrustScore && userTrustScore && (
@@ -533,8 +491,8 @@ export default function VotingPanel({
           </div>
 
           <Button
-            onClick={handlePlaceBet}
-            disabled={isBettingInProgress || (!walletConnected || (betAmount < (bet.minimum_bet_amount || 0.01) || !meetsMinimumTrustScore || !hasSufficientUsdcForBet))}
+            onClick={handleBetButtonClick}
+            disabled={isBettingInProgress || (!walletConnected || (betAmount < (bet.minimum_bet_amount || 0.01)) || !meetsMinimumTrustScore)}
             className="w-full bg-gradient-to-r from-cyan-600 to-purple-700 hover:from-cyan-700 hover:to-purple-800 text-white font-bold py-3"
           >
             {!walletConnected ? (
@@ -610,14 +568,7 @@ export default function VotingPanel({
             </div>
           )}
 
-          {/* Show deposit prompt if insufficient PROOF */}
-          {showDepositPrompt && !hasSufficientProofForVote && (
-            <DepositPrompt
-              tokenType="PROOF"
-              needed={voteStakeAmount}
-              current={internalBalances.proof.toFixed(2)}
-            />
-          )}
+          {/* Removed: DepositPrompt component */}
 
           {/* Trust Score Display for Voting */}
           {walletConnected && !loadingTrustScore && userTrustScore && (
@@ -692,7 +643,7 @@ export default function VotingPanel({
               </p>
             </div>
           )}
-          
+
           {error && ( // Display error message
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-sm">
               <AlertCircle className="w-4 h-4 inline mr-2" />
@@ -700,7 +651,7 @@ export default function VotingPanel({
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex justify-between text-lg">
               <span className="font-bold text-green-400">YES</span>
               <span className="font-bold text-red-400">NO</span>
@@ -767,8 +718,16 @@ export default function VotingPanel({
 
                     <div className="grid grid-cols-2 gap-4">
                       <Button
-                        onClick={() => handleVote('yes')}
-                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore || !hasSufficientProofForVote}
+                        onClick={() => {
+                          if (!walletConnected) {
+                            onRequestWalletConnect();
+                          } else if (!hasSufficientProofForVote) {
+                            navigate(createPageUrl("Dashboard") + "?tab=wallet");
+                          } else {
+                            handleVote('yes');
+                          }
+                        }}
+                        disabled={isVoting || hasFinancialStake || !meetsMinimumTrustScore || hasVoted}
                         className="bg-green-600 hover:bg-green-700 text-white font-bold py-6 text-lg flex flex-col gap-1"
                       >
                         {!walletConnected ? (
@@ -789,8 +748,16 @@ export default function VotingPanel({
                         )}
                       </Button>
                       <Button
-                        onClick={() => handleVote('no')}
-                        disabled={isVoting || !walletConnected || !meetsMinimumTrustScore || !hasSufficientProofForVote}
+                        onClick={() => {
+                          if (!walletConnected) {
+                            onRequestWalletConnect();
+                          } else if (!hasSufficientProofForVote) {
+                            navigate(createPageUrl("Dashboard") + "?tab=wallet");
+                          } else {
+                            handleVote('no');
+                          }
+                        }}
+                        disabled={isVoting || hasFinancialStake || !meetsMinimumTrustScore || hasVoted}
                         className="bg-red-600 hover:bg-red-700 text-white font-bold py-6 text-lg flex flex-col gap-1"
                       >
                         {!walletConnected ? (

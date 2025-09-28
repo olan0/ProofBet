@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +29,21 @@ export default function BetCard({ bet }) {
         return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
     }
   };
+
+  const getCategoryColor = () => {
+    switch (categoryName) {
+      case "Politics":
+        return "bg-red-500/20 text-red-300 border-red-500/50";
+      case "Sports":
+        return "bg-orange-500/20 text-orange-300 border-orange-500/50";
+      case "Tech":
+        return "bg-blue-500/20 text-blue-300 border-blue-500/50";
+      case "Crypto":
+        return "bg-yellow-500/20 text-yellow-300 border-yellow-500/50";
+      default:
+        return "bg-gray-500/20 text-gray-300 border-gray-500/50";
+    }
+  };
   
   // The contract provides timestamps in seconds, so we multiply by 1000 for JavaScript's Date object
   const creationDate = new Date(Number(bet.creationTimestamp) * 1000);
@@ -40,7 +54,7 @@ export default function BetCard({ bet }) {
       <CardHeader>
         <div className="flex justify-between items-start">
             <Badge className={getStatusColor()}>{statusName}</Badge>
-            <Badge variant="outline" className="border-gray-600">{categoryName}</Badge>
+            <Badge className={getCategoryColor()}>{categoryName}</Badge>
         </div>
         <CardTitle className="mt-2">{bet.title}</CardTitle>
       </CardHeader>

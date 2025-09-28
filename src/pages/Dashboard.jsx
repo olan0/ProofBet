@@ -1,29 +1,34 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, AlertCircle, Wallet } from "lucide-react";
+import { Loader2, AlertCircle, Wallet, LayoutGrid, List } from "lucide-react";
 import { ethers } from "ethers";
 
-import CategoryFilter from "../components/betting/CategoryFilter";
 import BetCard from "../components/betting/BetCard";
+import BetRow from "../components/betting/BetRow"; // New component for list view
 import MyBetsTab from "../components/dashboard/MyBetsTab";
 import HistoryTab from "../components/dashboard/HistoryTab";
-import InternalWalletPanel from "../components/wallet/InternalWalletPanel"; // Import the new component
+import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
 import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress, formatAddress } from "../components/blockchain/contracts";
 
+// Main Component
 export default function Dashboard() {
   const [bets, setBets] = useState([]);
-  const [filteredBets, setFilteredBets] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [walletAddress, setWalletAddress] = useState(null);
   const [connecting, setConnecting] = useState(false);
-  const [activeTab, setActiveTab] = useState("all-markets");
-  const [justConnected, setJustConnected] = useState(false); // New state to track if wallet was just connected
+  const [activeTab, setActiveTab] = useState("open-for-betting");
+  const [justConnected, setJustConnected] = useState(false);
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+
+  // Memoized filtered bets
+  const openBets = useMemo(() => bets.filter(b => b.status === 0), [bets]);
+  const votingBets = useMemo(() => bets.filter(b => b.status === 1), [bets]);
+  const completedBets = useMemo(() => bets.filter(b => b.status === 2), [bets]);
 
   const handleConnectWallet = async () => {
     setConnecting(true);
@@ -46,9 +51,7 @@ export default function Dashboard() {
   const handleDisconnectWallet = () => {
     setWalletAddress(null);
     setBets([]); // Clear bets when disconnected
-    setFilteredBets([]); // Clear filtered bets too
-    setSelectedCategory("all"); // Reset category filter
-    setActiveTab("all-markets"); // Reset to all markets tab
+    setActiveTab("open-for-betting"); // Reset to open for betting tab
     setError(null); // Clear any errors
     setLoading(false); // Update loading state since there's no wallet
     setJustConnected(false); // Reset this flag as well
@@ -118,7 +121,7 @@ export default function Dashboard() {
     setLoading(false);
   }, [walletAddress]);
 
-  // Check for an already connected wallet on mount
+  // Check for an already connected wallet on mount and handle URL tab parameter
   useEffect(() => {
     const checkForConnectedWallet = async () => {
         const address = await getConnectedAddress();
@@ -129,6 +132,14 @@ export default function Dashboard() {
         }
     };
     checkForConnectedWallet();
+
+    // Check for a tab parameter in the URL to deep-link to a specific tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam && ["open-for-betting", "open-for-voting", "completed", "my-bets", "history", "wallet"].includes(tabParam)) {
+        setActiveTab(tabParam);
+    }
+
   }, []);
   
   // Load bets when wallet address is available, and potentially guide to wallet tab
@@ -141,27 +152,6 @@ export default function Dashboard() {
           }
       }
   }, [walletAddress, loadBets, justConnected]);
-
-  useEffect(() => {
-    if (selectedCategory === "all") {
-      setFilteredBets(bets);
-    } else {
-      const categoryMap = { 
-        "sports": 1, // Corresponds to enum in Bet.sol
-        "politics": 0, 
-        "entertainment": 2, 
-        "tech": 2, // Map tech to entertainment for now
-        "crypto": 3, 
-        "other": 4
-      };
-      const categoryIndex = categoryMap[selectedCategory];
-      if (categoryIndex !== undefined) {
-        setFilteredBets(bets.filter(bet => bet.category === categoryIndex));
-      } else {
-        setFilteredBets(bets);
-      }
-    }
-  }, [selectedCategory, bets]);
 
   return (
     <div className="container mx-auto p-4 md:p-6">
@@ -182,11 +172,7 @@ export default function Dashboard() {
                 <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                 <span className="text-gray-300 text-sm">{formatAddress(walletAddress)}</span>
               </div>
-              <Link to={createPageUrl("CreateBet")}>
-                <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
-                  Create Market
-                </Button>
-              </Link>
+              
               <Button 
                 onClick={handleDisconnectWallet} 
                 variant="outline" 
@@ -220,71 +206,52 @@ export default function Dashboard() {
       {walletAddress ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-gray-800 border border-gray-700">
-            <TabsTrigger value="all-markets" className="data-[state=active]:bg-cyan-600">
-              All Markets
-            </TabsTrigger>
-            <TabsTrigger value="my-bets" className="data-[state=active]:bg-cyan-600">
-              My Bets
-            </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-cyan-600">
-              History
-            </TabsTrigger>
-            <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">
-              Wallet
-            </TabsTrigger>
+            <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open for Betting</TabsTrigger>
+            <TabsTrigger value="open-for-voting" className="data-[state=active]:bg-cyan-600">Open for Voting</TabsTrigger>
+            <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-600">Completed</TabsTrigger>
+            <TabsTrigger value="my-bets" className="data-[state=active]:bg-cyan-600">My Bets</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-cyan-600">History</TabsTrigger>
+            <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">Wallet</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="all-markets" className="space-y-6">
-            <CategoryFilter
-              selectedCategory={selectedCategory}
-              onCategoryChange={setSelectedCategory}
-            />
+          <MarketplaceTabContent 
+            value="open-for-betting" 
+            bets={openBets} 
+            loading={loading} 
+            error={error} 
+            viewMode={viewMode} 
+            setViewMode={setViewMode} 
+            emptyState={{
+              title: "No Markets Open for Betting",
+              description: "There are currently no active markets accepting bets. Why not create one?",
+            }}
+          />
 
-            {loading && (
-              <div className="flex justify-center items-center py-16">
-                <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-cyan-500 mx-auto mb-4" />
-                  <p className="text-gray-300">Loading markets from blockchain...</p>
-                </div>
-              </div>
-            )}
+          <MarketplaceTabContent 
+            value="open-for-voting" 
+            bets={votingBets} 
+            loading={loading} 
+            error={error} 
+            viewMode={viewMode} 
+            setViewMode={setViewMode} 
+            emptyState={{
+              title: "No Markets Open for Voting",
+              description: "There are no markets currently in the public voting phase.",
+            }}
+          />
 
-            {error && (
-              <div className="bg-red-900/20 border border-red-500/30 text-red-200 p-4 rounded-lg mb-6">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">Error</p>
-                    <p className="text-sm">{error}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!loading && !error && filteredBets.length > 0 && (
-              <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredBets.map((bet) => (
-                  <BetCard key={bet.address} bet={bet} />
-                ))}
-              </div>
-            )}
-
-            {!loading && !error && filteredBets.length === 0 && (
-              <div className="text-center py-16 bg-gray-800/50 rounded-lg">
-                <h3 className="text-xl font-semibold text-gray-300 mb-2">No Markets Found</h3>
-                <p className="text-gray-300 mb-6">
-                  {selectedCategory === "all" 
-                    ? "No prediction markets are currently active." 
-                    : `No markets found in the ${selectedCategory} category.`}
-                </p>
-                <Link to={createPageUrl("CreateBet")}>
-                  <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
-                    Create the First Market
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </TabsContent>
+          <MarketplaceTabContent 
+            value="completed" 
+            bets={completedBets} 
+            loading={loading} 
+            error={error} 
+            viewMode={viewMode} 
+            setViewMode={setViewMode} 
+            emptyState={{
+              title: "No Completed Markets",
+              description: "Resolved markets will appear here once they are finalized.",
+            }}
+          />
 
           <TabsContent value="my-bets">
             <MyBetsTab walletAddress={walletAddress} />
@@ -319,3 +286,79 @@ export default function Dashboard() {
     </div>
   );
 }
+
+// Helper component for displaying market tabs
+const MarketplaceTabContent = ({ value, bets, loading, error, viewMode, setViewMode, emptyState }) => (
+  <TabsContent value={value} className="space-y-6">
+    <div className="flex justify-end">
+      <ViewSwitcher viewMode={viewMode} setViewMode={setViewMode} />
+    </div>
+
+    {loading && (
+      <div className="flex justify-center items-center py-16">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-500 mx-auto mb-4" />
+          <p className="text-gray-300">Loading markets from blockchain...</p>
+        </div>
+      </div>
+    )}
+
+    {error && (
+      <div className="bg-red-900/20 border border-red-500/30 text-red-200 p-4 rounded-lg">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
+          <div>
+            <p className="font-semibold">Error</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {!loading && !error && bets.length > 0 && (
+      viewMode === 'grid' ? (
+        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {bets.map((bet) => <BetCard key={bet.address} bet={bet} />)}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {bets.map((bet) => <BetRow key={bet.address} bet={bet} />)}
+        </div>
+      )
+    )}
+
+    {!loading && !error && bets.length === 0 && (
+      <div className="text-center py-16 bg-gray-800/50 rounded-lg">
+        <h3 className="text-xl font-semibold text-gray-300 mb-2">{emptyState.title}</h3>
+        <p className="text-gray-300 mb-6 max-w-md mx-auto">{emptyState.description}</p>
+        <Link to={createPageUrl("CreateBet")}>
+          <Button className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
+            Create a Market
+          </Button>
+        </Link>
+      </div>
+    )}
+  </TabsContent>
+);
+
+// Helper component for switching between grid and list view
+const ViewSwitcher = ({ viewMode, setViewMode }) => (
+  <div className="flex items-center gap-1 p-1 bg-gray-800 border border-gray-700 rounded-lg">
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setViewMode('grid')}
+      className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600 hover:bg-cyan-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+    >
+      <LayoutGrid className="w-4 h-4" />
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setViewMode('list')}
+      className={`px-3 ${viewMode === 'list' ? 'bg-cyan-600 hover:bg-cyan-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+    >
+      <List className="w-4 h-4" />
+    </Button>
+  </div>
+);
