@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -7,18 +8,23 @@ import { Badge } from '@/components/ui/badge';
 import { DollarSign, Users, Clock, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow } from "date-fns";
 
-const STATUS_MAP = ["Open", "Voting", "Resolved", "Cancelled"];
+// The STATUS_MAP constant is not used in the getStatusInfo logic,
+// and the new logic directly maps numbers to states.
+// Removing it to avoid potential confusion or mismatch with the new `getStatusInfo`.
+// const STATUS_MAP = ["Open", "Voting", "Resolved", "Cancelled"]; 
 const CATEGORY_MAP = ["Politics", "Sports", "Tech", "Crypto", "Other"];
 
 const getStatusInfo = (status) => {
   switch (status) {
     case 0: // Open
       return { text: "Open", className: "bg-green-500/20 text-green-300 border-green-500/30" };
-    case 1: // Voting
+    case 1: // Awaiting Proof
+      return { text: "Awaiting Proof", className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" };
+    case 2: // Voting
       return { text: "Voting", className: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-    case 2: // Resolved
+    case 3: // Resolved
       return { text: "Resolved", className: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
-    case 3: // Cancelled
+    case 4: // Cancelled
       return { text: "Cancelled", className: "bg-gray-500/20 text-gray-300 border-gray-500/30" };
     default:
       return { text: "Unknown", className: "bg-gray-500/20 text-gray-300 border-gray-500/30" };

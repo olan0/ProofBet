@@ -92,17 +92,10 @@ export default function VotingPanel({
   // Check trust score eligibility
   const meetsMinimumTrustScore = !walletConnected || !bet.minimum_trust_score || (userTrustScore && userTrustScore.overall_score >= bet.minimum_trust_score);
 
-  // DEADLINE and STATUS checks
-  const now = new Date();
-  const bettingDeadline = new Date(bet.betting_deadline);
-  const votingDeadline = bet.voting_deadline ? new Date(bet.voting_deadline) : null;
-
-  const bettingPeriodOver = now >= bettingDeadline;
-  const votingPeriodOver = votingDeadline && now >= votingDeadline;
-
-  // Determine which UI to show based on status
-  const canAcceptBets = bet.status === 'open_for_bets' && !bettingPeriodOver;
-  const canAcceptVotes = bet.status === 'voting' && !votingPeriodOver;
+  // --- LOGIC FIX: REMOVED PREDICTIVE STATE LOGIC ---
+  // The UI will now only show actions based on the confirmed 'bet.status' from the contract.
+  const canAcceptBets = bet.status === 'open_for_bets';
+  const canAcceptVotes = bet.status === 'voting';
 
   // Check if both sides meet minimum requirements (assuming minimum_side_stake in USDC)
   const yesMetMinimum = yesStakeUsd >= (bet.minimum_side_stake || 0);
@@ -265,18 +258,22 @@ export default function VotingPanel({
       if (bet.status === 'completed') return 'Betting Complete';
       if (bet.status === 'cancelled') return 'Bet Cancelled';
       if (bet.status === 'betting_closed') return 'Betting Closed - Awaiting Proof';
-      if (votingPeriodOver) return 'Voting Period Ended';
-      if (bettingPeriodOver && bet.status === 'open_for_bets') return 'Betting Period Ended';
-      return 'Bet No Longer Active';
+      // Fallback for states where actions are not available but aren't explicitly ended.
+      return 'Bet Not Active for Betting/Voting';
     };
 
     const getEndDescription = () => {
+      const now = new Date();
       if (bet.status === 'completed') return `Winner: ${bet.winning_side?.toUpperCase() || 'TBD'}`;
       if (bet.status === 'cancelled') return 'Minimum requirements not met or deadline missed. Stakes will be refunded.';
-      if (bet.status === 'betting_closed') return 'The creator must submit proof before the public voting phase can begin.';
-      if (votingPeriodOver) return 'The voting period has now finished. Results will be processed shortly.';
-      if (bettingPeriodOver && bet.status === 'open_for_bets') return 'The betting window has closed. The bet will be updated shortly.';
-      return 'No more interactions are allowed on this bet.';
+      if (bet.status === 'betting_closed') {
+         const proofDeadline = new Date(bet.proof_deadline);
+         if (now > proofDeadline) {
+             return 'The creator missed the proof deadline. The market must be cancelled by a keeper.';
+         }
+         return 'The creator must submit proof before the public voting phase can begin.';
+      }
+      return 'No more interactions are allowed on this bet at this time.';
     };
 
     return (
@@ -294,14 +291,14 @@ export default function VotingPanel({
               <p className={`text-sm ${bet.status === 'cancelled' ? 'text-red-400/80' : 'text-blue-400/80'}`}>
                 {getEndDescription()}
               </p>
-              {votingPeriodOver && votingDeadline && (
+              {bet.status === 'betting_closed' && bet.betting_deadline && (
                 <p className="text-xs text-gray-400 mt-1">
-                  Voting ended {formatDistanceToNow(votingDeadline, { addSuffix: true })}
+                  Betting ended {formatDistanceToNow(new Date(bet.betting_deadline), { addSuffix: true })}
                 </p>
               )}
-              {bettingPeriodOver && !votingPeriodOver && bettingDeadline && (
+              {bet.status === 'voting' && bet.voting_deadline && ( // If status is voting but no longer canAcceptVotes, it's over
                 <p className="text-xs text-gray-400 mt-1">
-                  Betting ended {formatDistanceToNow(bettingDeadline, { addSuffix: true })}
+                  Voting ended {formatDistanceToNow(new Date(bet.voting_deadline), { addSuffix: true })}
                 </p>
               )}
             </div>
@@ -520,12 +517,47 @@ export default function VotingPanel({
           <div className="text-xs text-gray-400 bg-blue-500/10 border border-blue-500/20 rounded p-2">
             💡 Using internal wallet - no token approvals needed for each bet!
           </div>
+          
+          <div className="text-xs text-gray-300 bg-yellow-500/10 border border-yellow-500/20 rounded p-2 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-yellow-400" />
+            <span>⛽ Small ETH gas fee (~$0.50-$2) required to submit transaction</span>
+          </div>
         </CardContent>
       </Card>
     );
   }
 
   if (canAcceptVotes) {
+    const now = new Date();
+    const votingDeadline = bet.voting_deadline ? new Date(bet.voting_deadline) : null;
+    const votingPeriodOver = votingDeadline && now >= votingDeadline;
+
+    if (votingPeriodOver) {
+        return (
+             <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="text-white">Betting Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border-blue-500/20">
+                    <AlertCircle className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <h4 className="font-semibold text-blue-300">Voting Period Ended</h4>
+                      <p className="text-sm text-blue-400/80">
+                        The voting period has now finished. A keeper must trigger the final resolution.
+                      </p>
+                      {votingDeadline && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          Voting ended {formatDistanceToNow(votingDeadline, { addSuffix: true })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+        )
+    }
+    
     const totalVotes = votes?.length || 0;
     const minimumVotes = bet.minimum_votes || 3;
     const votesNeeded = Math.max(0, minimumVotes - totalVotes);

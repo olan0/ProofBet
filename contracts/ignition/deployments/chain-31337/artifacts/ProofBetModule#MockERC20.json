@@ -426,5 +426,5 @@
   "deployedLinkReferences": {},
   "immutableReferences": {},
   "inputSourceName": "project/contracts/MockERC20.sol",
-  "buildInfoId": "solc-0_8_28-8991738d6efb2ea43e7632b40a2c2aaa60b55e33"
+  "buildInfoId": "solc-0_8_28-66dd0adb226453da91e60554eda037d9d53d9f06"
 }

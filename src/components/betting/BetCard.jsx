@@ -1,3 +1,4 @@
+
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +9,8 @@ import { formatDistanceToNow } from "date-fns";
 
 // An array to map the category enum (number) from the contract to a string
 const CATEGORY_MAP = ["Politics", "Sports", "Tech", "Crypto", "Other"];
-// An array to map the status enum (number) from the contract to a string
-const STATUS_MAP = ["Open", "Voting", "Resolved", "Cancelled"];
+// CORRECTED STATUS MAPPING TO MATCH THE CONTRACT
+const STATUS_MAP = ["Open", "Awaiting Proof", "Voting", "Resolved", "Cancelled"];
 
 export default function BetCard({ bet }) {
   const categoryName = CATEGORY_MAP[bet.category] || "Other";
@@ -19,6 +20,8 @@ export default function BetCard({ bet }) {
     switch (statusName) {
       case "Open":
         return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+      case "Awaiting Proof":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
       case "Voting":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
       case "Resolved":

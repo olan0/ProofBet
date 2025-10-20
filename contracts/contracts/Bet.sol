@@ -26,6 +26,7 @@ contract Bet is ReentrancyGuard {
         uint8 minimumTrustScore;
         uint8 voterRewardPercentage;
         uint8 platformFeePercentage;
+        uint256 minimumVotes; // NEW: Added minimum votes requirement
     }
 
     struct Participant {
@@ -256,6 +257,14 @@ contract Bet is ReentrancyGuard {
     
     function checkAndResolve() external {
         if (_currentStatus == Status.VOTING && block.timestamp >= details.votingDeadline) {
+            // NEW: Check for minimum votes first
+            if (totalVotes < details.minimumVotes) {
+                _currentStatus = Status.CANCELLED;
+                _notifyFactoryOfCompletion();
+                emit BetCancelled();
+                return; // Exit, bet is cancelled
+            }
+
             if (yesVotes > noVotes) {
                 winningSide = Side.YES;
                 _currentStatus = Status.COMPLETED;
@@ -266,7 +275,7 @@ contract Bet is ReentrancyGuard {
                 _currentStatus = Status.COMPLETED;
                 _notifyFactoryOfCompletion();
                 emit BetResolved(winningSide);
-            } else {
+            } else { // This now correctly handles a tie in votes
                 _currentStatus = Status.CANCELLED;
                 _notifyFactoryOfCompletion();
                 emit BetCancelled();

@@ -24,3 +24,19 @@ dist-ssr
 *.sw?
 
 .env
+contracts/ignition/deployments/chain-31337/journal.jsonl
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#MockERC20.json
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#ProofToken.json
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#TokenVesting.json
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#TrustScore.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-0e9c4b897040a61f36c9c85d767a00f0aa749d2d.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-5a6e9ffac830142c95e58bcd394da174acc0ac26.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-038e7466860e4069572d973bcaf8b81d6f9afe3a.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-46ba31b22f9a2ada35a988343aae5c12edb1e2b7.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-66dd0adb226453da91e60554eda037d9d53d9f06.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-9978a2d468524fb9898060ece1d320de19f0e243.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-36969e2cdb77ecb863e423a0c9402899fd17c7b6.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-1425716ddd1c1c0f6d4d8d9dfdd832dc5c78b8f1.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-8991738d6efb2ea43e7632b40a2c2aaa60b55e33.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-b2fa7f7b2b5de2a0a5b8f458b65da775ed0d4112.json

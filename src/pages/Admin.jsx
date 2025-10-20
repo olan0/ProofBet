@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Shield, Loader2 } from "lucide-react";
 import FaucetPanel from "../components/admin/FaucetPanel";
-import { connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
+import MarketSeederPanel from "../components/admin/MarketSeederPanel";
+import KeeperPanel from "../components/admin/KeeperPanel"; // Import the new panel
+import { connectWallet, getConnectedAddress, formatAddress } from "../components/blockchain/contracts";
 
-export default function Admin() {
+export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState(null);
 
@@ -49,25 +51,9 @@ export default function Admin() {
     );
   }
 
-  if (!walletAddress) {
-      return (
-        <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
-            <Card className="bg-gray-800 border-gray-700 text-center w-full max-w-md">
-                <CardHeader>
-                    <CardTitle className="text-white text-2xl">Admin Access Required</CardTitle>
-                    <CardDescription className="text-gray-400">Please connect your wallet to manage the platform.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button onClick={handleConnect} className="bg-gradient-to-r from-cyan-500 to-purple-600">Connect Wallet</Button>
-                </CardContent>
-            </Card>
-        </div>
-      );
-  }
-
   return (
-    <div className="bg-gray-900 min-h-screen p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="container mx-auto p-4 md:p-6 min-h-screen bg-gray-900 text-white">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
             <Shield className="w-8 h-8 text-cyan-400" />
@@ -77,11 +63,35 @@ export default function Admin() {
             <p className="text-gray-400">Tools for managing the local test environment.</p>
           </div>
         </div>
-        
-        {/* The FaucetPanel is the only remaining component, as it interacts directly with the blockchain */}
-        <FaucetPanel walletAddress={walletAddress} />
+        {walletAddress && (
+          <div className="mt-4 md:mt-0 text-right">
+            <p className="text-sm text-gray-400">Connected Wallet:</p>
+            <p className="text-md font-medium text-white">{formatAddress(walletAddress)}</p>
+          </div>
+        )}
+      </header>
 
-      </div>
+      {walletAddress ? (
+        <div className="grid gap-8 grid-cols-1 lg:grid-cols-2">
+            <FaucetPanel walletAddress={walletAddress} />
+            <KeeperPanel walletAddress={walletAddress} />
+            <div className="lg:col-span-2">
+              <MarketSeederPanel walletAddress={walletAddress} />
+            </div>
+        </div>
+      ) : (
+        <div className="text-center py-16 bg-gray-800/50 rounded-lg max-w-md mx-auto">
+            <Card className="bg-transparent border-none text-center w-full">
+                <CardHeader>
+                    <CardTitle className="text-white text-2xl">Admin Access Required</CardTitle>
+                    <CardDescription className="text-gray-400">Please connect your wallet to manage the platform.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button onClick={handleConnect} className="bg-gradient-to-r from-cyan-500 to-purple-600">Connect Wallet</Button>
+                </CardContent>
+            </Card>
+        </div>
+      )}
     </div>
   );
 }

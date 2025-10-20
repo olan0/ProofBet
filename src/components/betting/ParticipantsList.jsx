@@ -1,5 +1,5 @@
+
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { User, Users } from "lucide-react";
 import AddressDisplay from "../common/AddressDisplay";
 
@@ -8,20 +8,10 @@ export default function ParticipantsList({ participants, bet }) {
   const noParticipants = participants.filter(p => p.position === 'no');
 
   return (
-    <Card className="bg-gray-800 border-gray-700">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <Users className="w-5 h-5 text-cyan-400" />
-          Participants ({participants.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <ParticipantSideList title="YES Bettors" participants={yesParticipants} totalStake={bet.total_yes_stake_usd} />
-          <ParticipantSideList title="NO Bettors" participants={noParticipants} totalStake={bet.total_no_stake_usd} />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <ParticipantSideList title="YES Bettors" participants={yesParticipants} totalStake={bet.total_yes_stake_usd} />
+      <ParticipantSideList title="NO Bettors" participants={noParticipants} totalStake={bet.total_no_stake_usd} />
+    </div>
   );
 }
 

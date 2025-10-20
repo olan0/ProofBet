@@ -10,37 +10,38 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title BetFactory
- * @dev Creates bets and manages internal user balances for seamless betting experience
+ * @dev Factory for creating and managing Bet contracts.
+ * Implements an internal wallet system for USDC and PROOF tokens
+ * to optimize user experience by reducing gas and approval steps.
  */
 contract BetFactory is Ownable, ReentrancyGuard {
-    address[] public allBets;
     TrustScore public trustScoreContract;
     IERC20 public usdcToken;
     ProofToken public proofToken;
-    
     address public feeCollector;
-    uint256 public creationFeeProof;
-    uint256 public voteStakeAmountProof;
 
-    uint8 public defaultVoterRewardPercentage;
-    uint8 public defaultPlatformFeePercentage;
-    uint256 public maxActiveBetsPerUser;
-    
-    mapping(address => uint256) public activeBetsCount;
-    mapping(address => bool) public isBetFromFactory;
-    
-    // NEW: Internal wallet balances
+    address[] public allBets;
+    mapping(address => bool) public isBetFromFactory; // To verify if a Bet contract was created by this factory
+
+    // Internal wallet balances
     mapping(address => uint256) public internalUsdcBalance;
     mapping(address => uint256) public internalProofBalance;
-    
+
+    // Configuration parameters
+    uint256 public creationFeeProof;
+    uint256 public voteStakeAmountProof;
+    uint8 public defaultVoterRewardPercentage;
+    uint8 public defaultPlatformFeePercentage;
+    uint256 public maxActiveBetsPerUser; // Maximum number of active bets a user can create
+    mapping(address => uint256) public activeBetsCount; // Tracks active bets per user
+
+    // Events
     event BetCreated(address indexed betAddress, address indexed creator, string title);
-    event FeeProcessed(address indexed user, uint256 totalFee, uint256 burned, uint256 kept);
+    event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
     event DefaultVoterRewardChanged(uint8 oldPercentage, uint8 newPercentage);
     event DefaultPlatformFeeChanged(uint8 oldPercentage, uint8 newPercentage);
     event MaxActiveBetsChanged(uint256 oldLimit, uint256 newLimit);
-    
-    // NEW: Internal wallet events
     event UsdcDeposited(address indexed user, uint256 amount);
     event ProofDeposited(address indexed user, uint256 amount);
     event UsdcWithdrawn(address indexed user, uint256 amount);
@@ -139,11 +140,24 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(internalProofBalance[msg.sender] >= creationFeeProof, "Insufficient internal PROOF balance");
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Creator has too many active bets");
         
-        // Deduct creation fee from internal balance
+        // Deduct creation fee from user's internal balance
         internalProofBalance[msg.sender] -= creationFeeProof;
         
-        // The factory holds the actual PROOF tokens and burns them from its own balance.
-        (uint256 burnAmount, uint256 keepAmount) = proofToken.burnFromFees(address(this), creationFeeProof);
+        // --- CORRECTED FEE PROCESSING ---
+        // The factory now directly burns tokens it holds and transfers the rest.
+        uint256 burnAmount = (creationFeeProof * proofToken.feeBurnPercentage()) / 100;
+        uint256 keepAmount = creationFeeProof - burnAmount;
+
+        if (burnAmount > 0) {
+            // The factory calls the public burn function on the token contract.
+            // This burns tokens from the factory's own address balance.
+            proofToken.burn(burnAmount);
+        }
+        if (keepAmount > 0) {
+            // Transfer the kept portion to the fee collector.
+            proofToken.transfer(feeCollector, keepAmount);
+        }
+        // --- END CORRECTION ---
         
         emit FeeProcessed(msg.sender, creationFeeProof, burnAmount, keepAmount);
         

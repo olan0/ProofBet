@@ -8,18 +8,29 @@ export default function SmartContractsPage() {
   const contracts = [
     {
       name: "MockERC20.sol",
-      description: "A simple ERC20 token for local testing (replaces USDC).",
+      description: "A simple ERC20 token for local testing (replaces USDC). The mint function is now properly restricted to the contract owner.",
       code: `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-// This is a simple ERC20 token for testing purposes on local networks.
+/**
+ * @title MockERC20
+ * @dev A simple ERC20 token for testing on local networks.
+ * The mint function is restricted to the owner, acting as a secure faucet.
+ */
 contract MockERC20 is ERC20, Ownable {
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) Ownable(msg.sender) {}
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) Ownable(msg.sender) {
+        // Optionally mint an initial supply to the contract deployer for convenience.
+        // 10 million mUSDC (6 decimals)
+        _mint(msg.sender, 10000000 * 10**6);
+    }
 
-    // Function to mint tokens to any address, useful for testing.
+    /**
+     * @dev Owner-only function to mint tokens to any address.
+     * This acts as a secure faucet for your test environment.
+     */
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
     }
@@ -77,7 +88,7 @@ contract ProofToken is ERC20, Ownable {
     event InflationMinted(address indexed to, uint255 amount, uint255 year);
     event BurnerAuthorized(address indexed burner, bool authorized);
     event InflationRateChanged(uint255 oldRate, uint255 newRate);
-    event BurnRateChanged(uint255 oldRate, uint255 newRate);
+    event BurnRateChanged(uint255 oldRate, uint225 newRate);
     
     modifier onlyAuthorizedBurner() {
         require(authorizedBurners[msg.sender], "Not authorized to burn");
@@ -140,6 +151,20 @@ contract ProofToken is ERC20, Ownable {
         _burn(msg.sender, amount);
         totalBurned += amount;
         emit TokensBurned(msg.sender, amount, "Manual burn");
+    }
+
+    /**
+     * @dev Public burn function that can be called by anyone on any address,
+     * provided the caller has been approved to spend tokens on behalf of the owner.
+     * This is useful for contracts that hold tokens and need to burn them.
+     */
+    function burnFrom(address account, uint252 amount) public virtual {
+        uint256 currentAllowance = allowance(account, msg.sender);
+        require(currentAllowance >= amount, "ERC20: burn amount exceeds allowance");
+        _spendAllowance(account, msg.sender, amount);
+        _burn(account, amount);
+        totalBurned += amount;
+        emit TokensBurned(account, amount, "Contract burn");
     }
     
     /**
@@ -321,44 +346,45 @@ pragma solidity ^0.8.19;
 
 import "./Bet.sol";
 import "./TrustScore.sol";
-import "./ProofToken.sol";
+import "./ProofToken.sol"; // Import the concrete contract
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title BetFactory
- * @dev Creates bets and manages internal user balances for seamless betting experience
+ * @dev Factory for creating and managing Bet contracts.
+ * Implements an internal wallet system for USDC and PROOF tokens
+ * to optimize user experience by reducing gas and approval steps.
  */
 contract BetFactory is Ownable, ReentrancyGuard {
-    address[] public allBets;
     TrustScore public trustScoreContract;
     IERC20 public usdcToken;
-    ProofToken public proofToken;
-    
+    ProofToken public proofToken; // FIX: Use the concrete ProofToken type
     address public feeCollector;
+
+    address[] public allBets;
+    mapping(address => bool) public isBetFromFactory; // To verify if a Bet contract was created by this factory
+
+    // Internal wallet balances
+    mapping(address => uint252) public internalUsdcBalance;
+    mapping(address => uint252) public internalProofBalance;
+
+    // Configuration parameters
     uint256 public creationFeeProof;
     uint256 public voteStakeAmountProof;
-
     uint8 public defaultVoterRewardPercentage;
     uint8 public defaultPlatformFeePercentage;
-    uint256 public maxActiveBetsPerUser;
-    
-    mapping(address => uint256) public activeBetsCount;
-    mapping(address => bool) public isBetFromFactory;
-    
-    // NEW: Internal wallet balances
-    mapping(address => uint256) public internalUsdcBalance;
-    mapping(address => uint256) public internalProofBalance;
-    
+    uint252 public maxActiveBetsPerUser; // Maximum number of active bets a user can create
+    mapping(address => uint252) public activeBetsCount; // Tracks active bets per user
+
+    // Events
     event BetCreated(address indexed betAddress, address indexed creator, string title);
-    event FeeProcessed(address indexed user, uint256 totalFee, uint256 burned, uint256 kept);
+    event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
     event DefaultVoterRewardChanged(uint8 oldPercentage, uint8 newPercentage);
     event DefaultPlatformFeeChanged(uint8 oldPercentage, uint8 newPercentage);
-    event MaxActiveBetsChanged(uint256 oldLimit, uint256 newLimit);
-    
-    // NEW: Internal wallet events
+    event MaxActiveBetsChanged(uint252 oldLimit, uint252 newLimit);
     event UsdcDeposited(address indexed user, uint256 amount);
     event ProofDeposited(address indexed user, uint256 amount);
     event UsdcWithdrawn(address indexed user, uint256 amount);
@@ -368,7 +394,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     constructor(
         address _trustScore,
         address _usdcToken,
-        address _proofToken,
+        address _proofToken, // This is the address of the deployed ProofToken
         address _feeCollector,
         uint256 _creationFeeProof,
         uint256 _initialVoteStakeAmountProof,
@@ -377,7 +403,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(_initialVoteStakeAmountProof > 0, "Initial vote stake must be greater than 0");
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
-        proofToken = ProofToken(_proofToken);
+        proofToken = ProofToken(_proofToken); // FIX: Cast the address to the concrete contract
         feeCollector = _feeCollector;
         creationFeeProof = _creationFeeProof;
         voteStakeAmountProof = _initialVoteStakeAmountProof;
@@ -457,26 +483,35 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(internalProofBalance[msg.sender] >= creationFeeProof, "Insufficient internal PROOF balance");
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Creator has too many active bets");
         
-        // Deduct creation fee from internal balance
+        // Deduct creation fee from user's internal balance
         internalProofBalance[msg.sender] -= creationFeeProof;
         
-        // The factory holds the actual PROOF tokens and burns them from its own balance.
-        (uint256 burnAmount, uint256 keepAmount) = proofToken.burnFromFees(address(this), creationFeeProof);
+        // --- CORRECTED FEE PROCESSING ---
+        // The factory now directly burns tokens it holds and transfers the rest.
+        uint256 burnAmount = (creationFeeProof * proofToken.feeBurnPercentage()) / 100;
+        uint256 keepAmount = creationFeeProof - burnAmount;
+
+        if (burnAmount > 0) {
+            // The factory calls the public burn function on the token contract.
+            // This burns tokens from the factory's own address balance.
+            proofToken.burn(burnAmount);
+        }
+        if (keepAmount > 0) {
+            // Transfer the kept portion to the fee collector.
+            proofToken.transfer(feeCollector, keepAmount);
+        }
+        // --- END CORRECTION ---
         
         emit FeeProcessed(msg.sender, creationFeeProof, burnAmount, keepAmount);
         
-        _details.creator = msg.sender;
-        _details.voterRewardPercentage = defaultVoterRewardPercentage;
-        _details.platformFeePercentage = defaultPlatformFeePercentage;
-        
         Bet newBet = new Bet(
             _details,
+            msg.sender, // Pass creator directly
             address(this),
             address(trustScoreContract),
             address(usdcToken),
             address(proofToken),
-            feeCollector,
-            voteStakeAmountProof
+            feeCollector
         );
         address newBetAddress = address(newBet);
         allBets.push(newBetAddress);
@@ -509,7 +544,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     }
 
     // --- Admin functions ---
-    function setCreationFee(uint256 _newFee) external onlyOwner {
+    function setCreationFee(uint252 _newFee) external onlyOwner {
         creationFeeProof = _newFee;
     }
     
@@ -517,7 +552,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         feeCollector = _newCollector;
     }
     
-    function setVoteStakeAmount(uint256 _amount) external onlyOwner {
+    function setVoteStakeAmount(uint252 _amount) external onlyOwner {
         require(_amount > 0, "Vote stake must be greater than 0");
         uint256 oldAmount = voteStakeAmountProof;
         voteStakeAmountProof = _amount;
@@ -539,7 +574,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     }
     
     // Admin function to set the max active bets limit
-    function setMaxActiveBetsPerUser(uint256 _limit) external onlyOwner {
+    function setMaxActiveBetsPerUser(uint252 _limit) external onlyOwner {
         require(_limit > 0, "Limit must be greater than 0");
         uint256 oldLimit = maxActiveBetsPerUser;
         maxActiveBetsPerUser = _limit;
@@ -571,7 +606,6 @@ contract Bet is ReentrancyGuard {
     enum Side { NONE, YES, NO }
 
     struct BetDetails {
-        address creator;
         string title;
         string description;
         uint256 bettingDeadline;
@@ -580,8 +614,7 @@ contract Bet is ReentrancyGuard {
         uint256 minimumBetAmount;
         uint256 minimumSideStake;
         uint8 minimumTrustScore;
-        uint8 voterRewardPercentage;
-        uint8 platformFeePercentage;
+        uint256 minimumVotes; // NEW: Added minimum votes requirement
     }
 
     struct Participant {
@@ -591,6 +624,7 @@ contract Bet is ReentrancyGuard {
     }
 
     BetDetails public details;
+    address public creator; // Moved creator out of BetDetails
     BetFactory public betFactory;
     TrustScore public trustScoreContract;
     IERC20 public usdcToken;
@@ -599,12 +633,10 @@ contract Bet is ReentrancyGuard {
 
     uint256 public totalYesStake;
     uint256 public totalNoStake;
-    uint256 public totalVoteStakeProof;
-    uint256 public voteStakeAmountProof;
+    uint225 public totalVoteStakeProof;
     string public proofUrl;
     Side public winningSide;
     bool public fundsDistributed;
-    bool private creatorCountDecremented;
 
     uint256 public yesVotes;
     uint256 public noVotes;
@@ -621,13 +653,13 @@ contract Bet is ReentrancyGuard {
 
     event BetPlaced(address indexed user, Side position, uint256 amountUsdc);
     event ProofSubmitted(address indexed creator, string proofUrl);
-    event VoteCast(address indexed voter, uint256 vote, uint256 amountProof);
+    event VoteCast(address indexed voter, Side vote, uint225 amountProof);
     event BetResolved(Side winningSide);
-    event BetCancelled();
+    event BetCancelled(string reason); // Updated to include reason
     event FundsWithdrawn(address indexed user, uint256 amountUsdc, uint256 amountProof);
 
     modifier onlyCreator() {
-        require(msg.sender == details.creator, "Not creator");
+        require(msg.sender == creator, "Not creator");
         _;
     }
 
@@ -638,22 +670,21 @@ contract Bet is ReentrancyGuard {
 
     constructor(
         BetDetails memory _details, 
+        address _creator, // Creator now passed explicitly
         address _betFactory,
         address _trustScore, 
         address _usdcToken,
         address _proofToken,
-        address _feeCollector,
-        uint256 _voteStakeAmountProof
+        address _feeCollector
     ) {
         details = _details;
+        creator = _creator; // Assign to the new state variable
         betFactory = BetFactory(_betFactory);
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken); // Keep reference, but transfers are internal to factory
         feeCollector = _feeCollector;
-        voteStakeAmountProof = _voteStakeAmountProof;
         _currentStatus = Status.OPEN_FOR_BETS;
-        creatorCountDecremented = false;
         participantCount = 0;
         totalVotes = 0;
     }
@@ -677,22 +708,24 @@ contract Bet is ReentrancyGuard {
     function getBetInfo() external view returns (
         string memory title,
         string memory description,
-        address creator,
-        Status status,
         uint256 totalYes,
         uint256 totalNo,
-        uint256 creationTimestamp, // Using this name as per outline, corresponds to bettingDeadline proxy
-        uint256 participantsCount, // FIXED: Renamed to avoid shadowing
-        uint256 votersCount // FIXED: Renamed to avoid shadowing
+        uint256 bettingDeadline,
+        uint256 proofDeadline,
+        uint256 votingDeadline,
+        string memory proof,
+        uint256 participants,
+        uint256 voters
     ) {
         return (
             details.title,
             details.description,
-            details.creator,
-            _currentStatus,
             totalYesStake,
             totalNoStake,
-            details.bettingDeadline, // Using bettingDeadline as a proxy for a time reference
+            details.bettingDeadline, // Using bettingDeadline as a time reference
+            details.proofDeadline,
+            details.votingDeadline,
+            proofUrl,
             participantCount,
             totalVotes
         );
@@ -753,7 +786,7 @@ contract Bet is ReentrancyGuard {
         require(bytes(_proofUrl).length > 0, "Proof URL cannot be empty");
         proofUrl = _proofUrl;
         _currentStatus = Status.VOTING;
-        emit ProofSubmitted(details.creator, _proofUrl);
+        emit ProofSubmitted(creator, _proofUrl); // Use new creator state variable
     }
 
     // NEW: Vote using internal wallet balance
@@ -764,17 +797,18 @@ contract Bet is ReentrancyGuard {
         require(!voted[msg.sender], "Already voted");
         require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust score too low");
         
-        // Use internal wallet balance instead of direct token transfer
-        (, uint255 userProofBalance) = betFactory.getInternalBalances(msg.sender);
-        require(userProofBalance >= voteStakeAmountProof, "Insufficient internal PROOF balance");
+        // Fetch vote stake amount dynamically from BetFactory
+        uint256 voteStakeAmount = betFactory.voteStakeAmountProof();
+        (, uint256 userProofBalance) = betFactory.getInternalBalances(msg.sender);
+        require(userProofBalance >= voteStakeAmount, "Insufficient internal PROOF balance");
 
         // Transfer from user's internal balance to this contract's address (held by factory)
-        betFactory.transferInternalProof(msg.sender, address(this), voteStakeAmountProof, "Vote stake");
+        betFactory.transferInternalProof(msg.sender, address(this), voteStakeAmount, "Vote stake");
         
         voted[msg.sender] = true;
         votes[msg.sender] = _vote;
-        voterStakesProof[msg.sender] += voteStakeAmountProof;
-        totalVoteStakeProof += voteStakeAmountProof;
+        voterStakesProof[msg.sender] += voteStakeAmount;
+        totalVoteStakeProof += voteStakeAmount;
         totalVotes++;
         
         if (_vote == Side.YES) {
@@ -785,64 +819,86 @@ contract Bet is ReentrancyGuard {
 
         betFactory.factoryLogVote(msg.sender);
         
-        emit VoteCast(msg.sender, uint256(_vote), voteStakeAmountProof);
+        emit VoteCast(msg.sender, _vote, voteStakeAmount);
     }
 
     // === AUTOMATED KEEPER FUNCTIONS ===
+    // These functions are intended to be called by an off-chain "Keeper" or "Automation" service (like Chainlink Automation).
+    // Smart contracts cannot run automatically. They need an external transaction to trigger their state changes.
+    // These functions check time-based conditions and update the contract's status accordingly.
 
+    /**
+     * @dev KEEPER FUNCTION: Checks if the betting deadline has passed.
+     * If so, transitions the state to AWAITING_PROOF or CANCELLED if stake minimums aren't met.
+     */
     function checkAndCloseBetting() external {
         if (_currentStatus == Status.OPEN_FOR_BETS && block.timestamp >= details.bettingDeadline) {
             if (totalYesStake >= details.minimumSideStake && totalNoStake >= details.minimumSideStake) {
                 _currentStatus = Status.AWAITING_PROOF;
             } else {
                 _currentStatus = Status.CANCELLED;
-                _notifyFactoryOfCompletion();
-                emit BetCancelled();
+                betFactory.factoryLogBetCompletion(creator); // Notify factory on completion
+                emit BetCancelled("Minimum side stake not met"); // Reason added
             }
         }
     }
     
+    /**
+     * @dev KEEPER FUNCTION: Checks if the proof submission deadline has passed without a proof.
+     * If so, transitions the state to CANCELLED.
+     */
     function checkAndCancelForProof() external {
         if (_currentStatus == Status.AWAITING_PROOF && block.timestamp >= details.proofDeadline) {
             _currentStatus = Status.CANCELLED;
-            _notifyFactoryOfCompletion();
-            emit BetCancelled();
+            betFactory.factoryLogBetCompletion(creator); // Notify factory on completion
+            emit BetCancelled("Proof deadline missed"); // Reason added
         }
     }
     
+    /**
+     * @dev KEEPER FUNCTION: Checks if the voting deadline has passed.
+     * If so, it tallies the votes and resolves the bet to COMPLETED or CANCELLED.
+     */
     function checkAndResolve() external {
         if (_currentStatus == Status.VOTING && block.timestamp >= details.votingDeadline) {
-            if (yesVotes > noVotes) {
-                winningSide = Side.YES;
-                _currentStatus = Status.COMPLETED;
-                _notifyFactoryOfCompletion();
-                emit BetResolved(winningSide);
-            } else if (noVotes > yesVotes) {
-                winningSide = Side.NO;
-                _currentStatus = Status.COMPLETED;
-                _notifyFactoryOfCompletion();
-                emit BetResolved(winningSide);
-            } else {
+            // NEW: Check for minimum votes first
+            if (totalVotes < details.minimumVotes) {
+                // If not enough votes, cancel the bet
                 _currentStatus = Status.CANCELLED;
-                _notifyFactoryOfCompletion();
-                emit BetCancelled();
+                emit BetCancelled("Insufficient public votes"); // Reason added
+            } else {
+                // If enough votes, proceed to tally
+                if (yesVotes > noVotes) {
+                    winningSide = Side.YES;
+                    _currentStatus = Status.COMPLETED;
+                    emit BetResolved(winningSide);
+                } else if (noVotes > yesVotes) {
+                    winningSide = Side.NO;
+                    _currentStatus = Status.COMPLETED;
+                    emit BetResolved(winningSide);
+                } else {
+                    // It's a tie, so cancel
+                    _currentStatus = Status.CANCELLED;
+                    emit BetCancelled("Vote tie"); // Reason added
+                }
             }
+            betFactory.factoryLogBetCompletion(creator); // Notify factory on completion regardless of outcome
         }
     }
     
-    // Internal function to notify factory
-    function _notifyFactoryOfCompletion() internal {
-        if (!creatorCountDecremented) {
-            creatorCountDecremented = true;
-            betFactory.factoryLogBetCompletion(details.creator);
-        }
-    }
+    // Internal function to notify factory - REMOVED, now called directly in keeper functions
+    // function _notifyFactoryOfCompletion() internal {
+    //     if (!creatorCountDecremented) {
+    //         creatorCountDecremented = true;
+    //         betFactory.factoryLogBetCompletion(details.creator);
+    //     }
+    // }
     
     // === FUND WITHDRAWAL ===
 
     function withdrawFunds() external nonReentrant {
         require(_currentStatus == Status.COMPLETED || _currentStatus == Status.CANCELLED, "Bet not finished");
-        require(!fundsDistributed, "Funds already being distribution");
+        require(!fundsDistributed, "Funds already being distributed"); // Corrected typo
 
         if (_currentStatus == Status.COMPLETED) {
             distributeWinnings();
@@ -854,10 +910,11 @@ contract Bet is ReentrancyGuard {
     function distributeWinnings() internal {
         fundsDistributed = true;
         
-        uint252 totalStake = totalYesStake + totalNoStake;
+        uint256 totalStake = totalYesStake + totalNoStake;
         require(totalStake > 0, "No stakes to distribute");
         
-        uint256 platformFeeAmount = (totalStake * details.platformFeePercentage) / 100;
+        // Fetch platform fee percentage dynamically from BetFactory
+        uint256 platformFeeAmount = (totalStake * betFactory.defaultPlatformFeePercentage()) / 100;
         if (platformFeeAmount > 0) {
             betFactory.transferInternalUsdc(address(this), feeCollector, platformFeeAmount, "Platform fee");
         }
@@ -886,8 +943,9 @@ contract Bet is ReentrancyGuard {
         require(participantWinningStake > 0, "Not a winner or no stake");
         
         uint256 totalStake = totalYesStake + totalNoStake;
-        uint256 voterRewardAmount = (totalStake * details.voterRewardPercentage) / 100;
-        uint256 platformFeeAmount = (totalStake * details.platformFeePercentage) / 100;
+        // Fetch percentages dynamically from BetFactory
+        uint256 voterRewardAmount = (totalStake * betFactory.defaultVoterRewardPercentage()) / 100;
+        uint256 platformFeeAmount = (totalStake * betFactory.defaultPlatformFeePercentage()) / 100;
         uint256 netWinningsPool = totalStake - voterRewardAmount - platformFeeAmount;
         
         uint256 winningStake = (winningSide == Side.YES) ? totalYesStake : totalNoStake;
@@ -899,7 +957,9 @@ contract Bet is ReentrancyGuard {
         
         participant.hasWithdrawn = true;
         
-        betFactory.transferInternalUsdc(address(this), msg.sender, participantPayout, "Bet winnings");
+        if(participantPayout > 0) { // Only transfer if there's a payout
+            betFactory.transferInternalUsdc(address(this), msg.sender, participantPayout, "Bet winnings");
+        }
         
         emit FundsWithdrawn(msg.sender, participantPayout, 0);
     }
@@ -909,35 +969,39 @@ contract Bet is ReentrancyGuard {
         require(voted[msg.sender], "Did not vote");
         require(voterStakesProof[msg.sender] > 0, "No stake to claim");
         
-        uint256 originalProofStakeAmount = voterStakesProof[msg.sender];
-        uint256 proofStakeToReturn = 0;
+        uint256 proofToReturn = 0;
         uint256 usdcReward = 0;
 
-        voterStakesProof[msg.sender] = 0;
+        uint256 originalProofStake = voterStakesProof[msg.sender]; // Get original stake before clearing
+        voterStakesProof[msg.sender] = 0; // Prevent re-claiming
         
         if (_currentStatus == Status.COMPLETED) {
             bool votedCorrectly = (votes[msg.sender] == winningSide);
             
             if (votedCorrectly) {
-                proofStakeToReturn = originalProofStakeAmount;
-                uint256 totalVoterRewardPool = ((totalYesStake + totalNoStake) * details.voterRewardPercentage) / 100; 
+                proofToReturn = originalProofStake;
                 
-                if (totalVoteStakeProof > 0) {
-                    usdcReward = (totalVoterRewardPool * originalProofStakeAmount) / totalVoteStakeProof;
+                // Fetch voter reward percentage dynamically from BetFactory
+                uint225 totalVoterRewardPool = ((totalYesStake + totalNoStake) * betFactory.defaultVoterRewardPercentage()) / 100; 
+                
+                // Distribute rewards evenly among winning voters
+                uint256 winningVoterCount = (winningSide == Side.YES) ? yesVotes : noVotes;
+                if (totalVoterRewardPool > 0 && winningVoterCount > 0) {
+                    usdcReward = totalVoterRewardPool / winningVoterCount;
                 }
             }
-        } else {
-            proofStakeToReturn = originalProofStakeAmount;
+        } else { // Bet was CANCELLED, so return original stake
+            proofToReturn = originalProofStake;
         }
         
-        if (proofStakeToReturn > 0) {
-            betFactory.transferInternalProof(address(this), msg.sender, proofStakeToReturn, "Vote stake return");
+        if (proofToReturn > 0) {
+            betFactory.transferInternalProof(address(this), msg.sender, proofToReturn, "Vote stake return");
         }
         if (usdcReward > 0) {
             betFactory.transferInternalUsdc(address(this), msg.sender, usdcReward, "Voter reward");
         }
         
-        emit FundsWithdrawn(msg.sender, usdcReward, proofStakeToReturn);
+        emit FundsWithdrawn(msg.sender, usdcReward, proofToReturn);
     }
     
     function claimRefund() external nonReentrant {
@@ -954,8 +1018,7 @@ contract Bet is ReentrancyGuard {
         betFactory.transferInternalUsdc(address(this), msg.sender, totalRefund, "Bet refund");
         
         emit FundsWithdrawn(msg.sender, totalRefund, 0);
-    }
-}`
+    }`
     },
     {
       name: "TokenVesting.sol",
@@ -1100,8 +1163,7 @@ contract TokenVesting is Ownable, ReentrancyGuard {
     
     function getAllBeneficiaries() public view returns (address[] memory) {
         return _beneficiaries;
-    }
-}`
+    }`
     },
     {
       name: "Deployment Instructions",
@@ -1156,6 +1218,26 @@ contract TokenVesting is Ownable, ReentrancyGuard {
 //    npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia --parameters '{"maxActiveBets": 5}'
 //
 // (Ensure your hardhat.config.ts has a configured 'sepolia' network)
+//
+// --- AFTER DEPLOYMENT ---
+//
+// ⚠️  CRITICAL: After deployment, you MUST update the contract addresses in the app!
+//
+// 1. Copy the deployed contract addresses from the deployment output
+// 2. Open 'components/blockchain/contracts.js'
+// 3. Replace the placeholder addresses with your new deployed addresses:
+//
+//    const CONTRACT_ADDRESSES = {
+//      BetFactory: "0xYourNewBetFactoryAddress",
+//      ProofToken: "0xYourNewProofTokenAddress",   
+//      TrustScore: "0xYourNewTrustScoreAddress",   
+//      USDC: "0xYourNewUSDCAddress"  
+//    };
+//
+// 4. Restart your React app for the changes to take effect
+//
+// Without updating these addresses, the app will try to use the old contracts
+// that don't have the internal wallet functionality!
 `
     },
     {
@@ -1184,8 +1266,9 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
     const mockUsdc = m.contract("MockERC20", ["Mock USDC", "mUSDC"]);
     usdcAddress = mockUsdc;
 
-    // Mint 10,000 mock USDC to the deployer (USDC has 6 decimals)
-    m.call(mockUsdc, "mint", [deployer, "10000000000"]); // 10,000 * 10^6
+    // The MockERC20 constructor already mints to msg.sender (deployer).
+    // If you need more for other accounts or the factory, you can call 'mint' again.
+    // m.call(mockUsdc, "mint", [deployer, "10000000000"]); // Example if needed later
   } else {
     // For live networks, use the official USDC contract address.
     // We create a contract "from" an existing address.

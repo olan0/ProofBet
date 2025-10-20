@@ -165,7 +165,7 @@ const BET_FACTORY_ABI = [
         {
           "indexed": true,
           "internalType": "address",
-          "name": "user",
+          "name": "payer",
           "type": "address"
         },
         {
@@ -177,13 +177,13 @@ const BET_FACTORY_ABI = [
         {
           "indexed": false,
           "internalType": "uint256",
-          "name": "burned",
+          "name": "burnAmount",
           "type": "uint256"
         },
         {
           "indexed": false,
           "internalType": "uint256",
-          "name": "kept",
+          "name": "keepAmount",
           "type": "uint256"
         }
       ],
@@ -456,6 +456,11 @@ const BET_FACTORY_ABI = [
               "internalType": "uint8",
               "name": "platformFeePercentage",
               "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumVotes",
+              "type": "uint256"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -946,7 +951,7 @@ const BET_FACTORY_ABI = [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-const BET_ABI = [
+const BET_ABI =  [
     {
       "inputs": [
         {
@@ -1005,6 +1010,11 @@ const BET_ABI = [
               "internalType": "uint8",
               "name": "platformFeePercentage",
               "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumVotes",
+              "type": "uint256"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -1289,6 +1299,11 @@ const BET_ABI = [
           "internalType": "uint8",
           "name": "platformFeePercentage",
           "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "minimumVotes",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -1380,6 +1395,11 @@ const BET_ABI = [
               "internalType": "uint8",
               "name": "platformFeePercentage",
               "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumVotes",
+              "type": "uint256"
             }
           ],
           "internalType": "struct Bet.BetDetails",

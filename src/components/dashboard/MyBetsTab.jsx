@@ -3,9 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { getBetFactoryContract, getBetContract } from '../blockchain/contracts';
 import { ethers } from 'ethers';
-import BetRow from './BetRow';
+import BetRow from '../betting/BetRow'; // CORRECTED PATH
 
-const STATUS_MAP = ["Open", "Voting", "Resolved", "Cancelled"];
+const STATUS_MAP = ["Open", "Awaiting Proof", "Voting", "Resolved", "Cancelled"]; // Corrected map
 
 export default function MyBetsTab({ walletAddress }) {
   const [loading, setLoading] = useState(true);

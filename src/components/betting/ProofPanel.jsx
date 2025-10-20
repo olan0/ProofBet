@@ -65,6 +65,25 @@ export default function ProofPanel({ bet, isCreator = false, onProofSubmit }) {
             Proof submitted! Public voting is now open.
           </p>
         )}
+        {/* New: Header messages for final states */}
+        {bet.status === 'resolved' && (
+          <p className="text-sm mt-1 text-green-400 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Bet Resolved! Proof is available below.
+          </p>
+        )}
+        {bet.status === 'cancelled' && (
+          <p className="text-sm mt-1 text-red-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            Bet Cancelled. Details below.
+          </p>
+        )}
+        {bet.status === 'disputed' && (
+          <p className="text-sm mt-1 text-yellow-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            Bet Disputed. Details below.
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {hasProof ? (
@@ -93,22 +112,74 @@ export default function ProofPanel({ bet, isCreator = false, onProofSubmit }) {
                 </p>
               </div>
             )}
+            {/* New: Messages for resolved/cancelled/disputed with proof */}
+            {bet.status === 'resolved' && (
+              <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-green-300 font-semibold">✓ Bet Resolved!</p>
+                <p className="text-green-400 text-sm mt-1">
+                  This bet has been successfully resolved based on the proof and voting outcome.
+                </p>
+              </div>
+            )}
+            {bet.status === 'cancelled' && (
+              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <p className="text-red-300 font-semibold">✖ Bet Cancelled</p>
+                <p className="text-red-400 text-sm mt-1">
+                  This bet was cancelled. This could be due to invalid proof, deadline expiration, or other reasons.
+                </p>
+              </div>
+            )}
+            {bet.status === 'disputed' && (
+              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <p className="text-yellow-300 font-semibold">⚠️ Bet Disputed</p>
+                <p className="text-yellow-400 text-sm mt-1">
+                  The outcome of this bet is currently under dispute and is awaiting moderation.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center p-8 border-2 border-dashed border-gray-700 rounded-lg space-y-4">
-            <FileQuestion className="w-12 h-12 text-gray-600 mx-auto" />
-            <div>
-                <h3 className="text-xl font-semibold text-white">
-                  {bet.status === 'betting_closed' ? 'Waiting for Proof' : 'Proof Not Submitted Yet'}
-                </h3>
-                <p className="text-gray-400">
-                  {bet.proof_type === 'live_stream' 
-                    ? 'The creator will start a live stream to provide proof.'
-                    : bet.status === 'betting_closed' && deadline
-                      ? `Creator has until ${format(deadline, 'PPpp')} to submit proof.`
-                      : 'The creator has not submitted proof for this bet.'}
-                </p>
-            </div>
+            {/* New: Main messages for final states when no proof */}
+            {bet.status === 'cancelled' && (
+                <>
+                    <AlertCircle className="w-12 h-12 text-red-600 mx-auto" />
+                    <h3 className="text-xl font-semibold text-red-400">Bet Cancelled</h3>
+                    <p className="text-gray-400">This bet was cancelled, likely due to no proof being submitted by the deadline, or due to a dispute.</p>
+                </>
+            )}
+            {bet.status === 'resolved' && ( // Should rarely happen without explicit proof being displayed, but good to cover
+                <>
+                    <CheckCircle className="w-12 h-12 text-green-600 mx-auto" />
+                    <h3 className="text-xl font-semibold text-green-400">Bet Resolved</h3>
+                    <p className="text-gray-400">This bet has been resolved, even without explicit proof being displayed here.</p>
+                </>
+            )}
+            {bet.status === 'disputed' && ( // If disputed before proof submission
+                <>
+                    <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto" />
+                    <h3 className="text-xl font-semibold text-yellow-400">Bet Disputed</h3>
+                    <p className="text-gray-400">The outcome of this bet is currently under dispute, and proof has not yet been submitted or accepted.</p>
+                </>
+            )}
+            {/* Existing 'Waiting for Proof' messages - only show if not in a final state without proof */}
+            {bet.status !== 'cancelled' && bet.status !== 'resolved' && bet.status !== 'disputed' && (
+                <>
+                    <FileQuestion className="w-12 h-12 text-gray-600 mx-auto" />
+                    <div>
+                        <h3 className="text-xl font-semibold text-white">
+                          {bet.status === 'betting_closed' ? 'Waiting for Proof' : 'Proof Not Submitted Yet'}
+                        </h3>
+                        <p className="text-gray-400">
+                          {bet.proof_type === 'live_stream' 
+                            ? 'The creator will start a live stream to provide proof.'
+                            : bet.status === 'betting_closed' && deadline
+                              ? `Creator has until ${format(deadline, 'PPpp')} to submit proof.`
+                              : 'The creator has not submitted proof for this bet.'}
+                        </p>
+                    </div>
+                </>
+            )}
 
             {bet.status === 'betting_closed' && isCreator && !hasProof && !isDeadlinePassed && bet.proof_type !== 'live_stream' && (
               <div className="space-y-3 pt-4 border-t border-gray-700/50">

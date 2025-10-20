@@ -25,10 +25,11 @@ export default function Dashboard() {
   const [justConnected, setJustConnected] = useState(false);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
 
-  // Memoized filtered bets
+  // Memoized filtered bets - CORRECTED STATUS MAPPING
   const openBets = useMemo(() => bets.filter(b => b.status === 0), [bets]);
-  const votingBets = useMemo(() => bets.filter(b => b.status === 1), [bets]);
-  const completedBets = useMemo(() => bets.filter(b => b.status === 2), [bets]);
+  const awaitingProofBets = useMemo(() => bets.filter(b => b.status === 1), [bets]);
+  const votingBets = useMemo(() => bets.filter(b => b.status === 2), [bets]);
+  const completedBets = useMemo(() => bets.filter(b => b.status === 3 || b.status === 4), [bets]); // Completed and Cancelled
 
   const handleConnectWallet = async () => {
     setConnecting(true);
@@ -99,7 +100,7 @@ export default function Dashboard() {
                 creator: creator,
                 creationTimestamp: Number(creationTime),
                 category: 0, // Default category - you can enhance this later
-                status: Number(status),
+                status: Number(status), // The status from the contract is correct
                 totalYesStake: ethers.formatUnits(totalYes, 6),
                 totalNoStake: ethers.formatUnits(totalNo, 6),
                 participants_count: Number(participantCount),
@@ -136,7 +137,7 @@ export default function Dashboard() {
     // Check for a tab parameter in the URL to deep-link to a specific tab
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    if (tabParam && ["open-for-betting", "open-for-voting", "completed", "my-bets", "history", "wallet"].includes(tabParam)) {
+    if (tabParam && ["open-for-betting", "awaiting-proof", "open-for-voting", "completed", "my-bets", "wallet"].includes(tabParam)) {
         setActiveTab(tabParam);
     }
 
@@ -205,12 +206,12 @@ export default function Dashboard() {
 
       {walletAddress ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-gray-800 border border-gray-700">
-            <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open for Betting</TabsTrigger>
-            <TabsTrigger value="open-for-voting" className="data-[state=active]:bg-cyan-600">Open for Voting</TabsTrigger>
-            <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-600">Completed</TabsTrigger>
+          <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-3 sm:grid-cols-6">
+            <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open</TabsTrigger>
+            <TabsTrigger value="awaiting-proof" className="data-[state=active]:bg-cyan-600">Awaiting Proof</TabsTrigger>
+            <TabsTrigger value="open-for-voting" className="data-[state=active]:bg-cyan-600">Voting</TabsTrigger>
+            <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-600">Resolved</TabsTrigger>
             <TabsTrigger value="my-bets" className="data-[state=active]:bg-cyan-600">My Bets</TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-cyan-600">History</TabsTrigger>
             <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">Wallet</TabsTrigger>
           </TabsList>
 
@@ -224,6 +225,19 @@ export default function Dashboard() {
             emptyState={{
               title: "No Markets Open for Betting",
               description: "There are currently no active markets accepting bets. Why not create one?",
+            }}
+          />
+
+          <MarketplaceTabContent 
+            value="awaiting-proof" 
+            bets={awaitingProofBets} 
+            loading={loading} 
+            error={error} 
+            viewMode={viewMode} 
+            setViewMode={setViewMode} 
+            emptyState={{
+              title: "No Markets Awaiting Proof",
+              description: "Markets where betting has closed but proof has not yet been submitted will appear here.",
             }}
           />
 
@@ -248,8 +262,8 @@ export default function Dashboard() {
             viewMode={viewMode} 
             setViewMode={setViewMode} 
             emptyState={{
-              title: "No Completed Markets",
-              description: "Resolved markets will appear here once they are finalized.",
+              title: "No Resolved Markets",
+              description: "Completed and cancelled markets will appear here once they are finalized.",
             }}
           />
 
@@ -257,9 +271,11 @@ export default function Dashboard() {
             <MyBetsTab walletAddress={walletAddress} />
           </TabsContent>
 
-          <TabsContent value="history">
+          {/* History tab is now conceptually part of My Bets or could be its own page */}
+          {/* For now, removing direct access to avoid confusion, My Bets and Resolved cover it */}
+          {/* <TabsContent value="history">
             <HistoryTab walletAddress={walletAddress} />
-          </TabsContent>
+          </TabsContent> */}
 
           <TabsContent value="wallet">
             <InternalWalletPanel walletAddress={walletAddress} />

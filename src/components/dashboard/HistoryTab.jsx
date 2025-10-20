@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, Book, FolderOpen } from 'lucide-react';
 import { getBetFactoryContract, getBetContract } from '../blockchain/contracts';
 import { ethers } from 'ethers';
-import BetRow from './BetRow';
+import BetRow from '../betting/BetRow'; // CORRECTED PATH
 
 export default function HistoryTab({ walletAddress }) {
   const [loading, setLoading] = useState(true);

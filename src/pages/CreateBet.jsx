@@ -201,7 +201,8 @@ export default function CreateBet() {
         minimumSideStake: ethers.parseUnits(formData.minimumSideStake, 6),
         minimumTrustScore: parseInt(formData.minimumTrustScore),
         voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5, // Use fetched value with fallback
-        platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3  // Use fetched value with fallback
+        platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,  // Use fetched value with fallback
+        minimumVotes: parseInt(formData.minimumVotes) || 3, // FIX: Added missing minimumVotes field
       };
 
       // Create the bet on the blockchain - The contract now handles the fee deduction.
