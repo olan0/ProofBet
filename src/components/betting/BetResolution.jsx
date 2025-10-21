@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Trophy, DollarSign, TrendingUp, Users, CheckCircle, Vote, Building } from "lucide-react";
 
 export default function BetResolution({ bet, participants, votes, appSettings }) {
-  if (bet.status !== 'completed') return null;
+  // Removed: if (bet.status !== 'completed') return null;
 
   const totalVotes = votes.length;
   const yesVotes = votes.filter(v => v.vote === 'yes').length;
@@ -130,7 +130,7 @@ export default function BetResolution({ bet, participants, votes, appSettings })
                 {votes.map((vote, index) => (
                   <div key={vote.id} className="flex items-center justify-between p-2 bg-gray-800 rounded">
                     <span className="font-mono text-sm text-gray-300">
-                      {vote.voter_address.substring(0, 10)}...
+                      {vote.address.substring(0, 10)}...
                     </span>
                     <div className="text-right">
                       <div className="text-purple-400 font-semibold text-sm">+{voterRewardPerVoter.toFixed(4)} USDC</div>

@@ -15,7 +15,6 @@ contract Bet is ReentrancyGuard {
     enum Side { NONE, YES, NO }
 
     struct BetDetails {
-        address creator;
         string title;
         string description;
         uint256 bettingDeadline;
@@ -24,8 +23,6 @@ contract Bet is ReentrancyGuard {
         uint256 minimumBetAmount;
         uint256 minimumSideStake;
         uint8 minimumTrustScore;
-        uint8 voterRewardPercentage;
-        uint8 platformFeePercentage;
         uint256 minimumVotes; // NEW: Added minimum votes requirement
     }
 
@@ -36,6 +33,7 @@ contract Bet is ReentrancyGuard {
     }
 
     BetDetails public details;
+    address public creator; // Moved creator out of BetDetails
     BetFactory public betFactory;
     TrustScore public trustScoreContract;
     IERC20 public usdcToken;
@@ -45,11 +43,9 @@ contract Bet is ReentrancyGuard {
     uint256 public totalYesStake;
     uint256 public totalNoStake;
     uint256 public totalVoteStakeProof;
-    uint256 public voteStakeAmountProof;
     string public proofUrl;
     Side public winningSide;
     bool public fundsDistributed;
-    bool private creatorCountDecremented;
 
     uint256 public yesVotes;
     uint256 public noVotes;
@@ -66,13 +62,13 @@ contract Bet is ReentrancyGuard {
 
     event BetPlaced(address indexed user, Side position, uint256 amountUsdc);
     event ProofSubmitted(address indexed creator, string proofUrl);
-    event VoteCast(address indexed voter, uint256 vote, uint256 amountProof);
+    event VoteCast(address indexed voter, Side vote, uint256 amountProof);
     event BetResolved(Side winningSide);
-    event BetCancelled();
+    event BetCancelled(string reason); // Updated to include reason
     event FundsWithdrawn(address indexed user, uint256 amountUsdc, uint256 amountProof);
 
     modifier onlyCreator() {
-        require(msg.sender == details.creator, "Not creator");
+        require(msg.sender == creator, "Not creator");
         _;
     }
 
@@ -83,22 +79,21 @@ contract Bet is ReentrancyGuard {
 
     constructor(
         BetDetails memory _details, 
+        address _creator, // Creator now passed explicitly
         address _betFactory,
         address _trustScore, 
         address _usdcToken,
         address _proofToken,
-        address _feeCollector,
-        uint256 _voteStakeAmountProof
+        address _feeCollector
     ) {
         details = _details;
+        creator = _creator; // Assign to the new state variable
         betFactory = BetFactory(_betFactory);
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken); // Keep reference, but transfers are internal to factory
         feeCollector = _feeCollector;
-        voteStakeAmountProof = _voteStakeAmountProof;
         _currentStatus = Status.OPEN_FOR_BETS;
-        creatorCountDecremented = false;
         participantCount = 0;
         totalVotes = 0;
     }
@@ -122,22 +117,24 @@ contract Bet is ReentrancyGuard {
     function getBetInfo() external view returns (
         string memory title,
         string memory description,
-        address creator,
-        Status status,
         uint256 totalYes,
         uint256 totalNo,
-        uint256 creationTimestamp, // Using this name as per outline, corresponds to bettingDeadline proxy
-        uint256 participantsCount, // FIXED: Renamed to avoid shadowing
-        uint256 votersCount // FIXED: Renamed to avoid shadowing
+        uint256 bettingDeadline,
+        uint256 proofDeadline,
+        uint256 votingDeadline,
+        string memory proof,
+        uint256 participantsCount,
+        uint256 voters
     ) {
         return (
             details.title,
             details.description,
-            details.creator,
-            _currentStatus,
             totalYesStake,
             totalNoStake,
-            details.bettingDeadline, // Using bettingDeadline as a proxy for a time reference
+            details.bettingDeadline, // Using bettingDeadline as a time reference
+            details.proofDeadline,
+            details.votingDeadline,
+            proofUrl,
             participantCount,
             totalVotes
         );
@@ -198,7 +195,7 @@ contract Bet is ReentrancyGuard {
         require(bytes(_proofUrl).length > 0, "Proof URL cannot be empty");
         proofUrl = _proofUrl;
         _currentStatus = Status.VOTING;
-        emit ProofSubmitted(details.creator, _proofUrl);
+        emit ProofSubmitted(creator, _proofUrl); // Use new creator state variable
     }
 
     // NEW: Vote using internal wallet balance
@@ -209,17 +206,18 @@ contract Bet is ReentrancyGuard {
         require(!voted[msg.sender], "Already voted");
         require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust score too low");
         
-        // Use internal wallet balance instead of direct token transfer
+        // Fetch vote stake amount dynamically from BetFactory
+        uint256 voteStakeAmount = betFactory.voteStakeAmountProof();
         (, uint256 userProofBalance) = betFactory.getInternalBalances(msg.sender);
-        require(userProofBalance >= voteStakeAmountProof, "Insufficient internal PROOF balance");
+        require(userProofBalance >= voteStakeAmount, "Insufficient internal PROOF balance");
 
         // Transfer from user's internal balance to this contract's address (held by factory)
-        betFactory.transferInternalProof(msg.sender, address(this), voteStakeAmountProof, "Vote stake");
+        betFactory.transferInternalProof(msg.sender, address(this), voteStakeAmount, "Vote stake");
         
         voted[msg.sender] = true;
         votes[msg.sender] = _vote;
-        voterStakesProof[msg.sender] += voteStakeAmountProof;
-        totalVoteStakeProof += voteStakeAmountProof;
+        voterStakesProof[msg.sender] += voteStakeAmount;
+        totalVoteStakeProof += voteStakeAmount;
         totalVotes++;
         
         if (_vote == Side.YES) {
@@ -230,72 +228,86 @@ contract Bet is ReentrancyGuard {
 
         betFactory.factoryLogVote(msg.sender);
         
-        emit VoteCast(msg.sender, uint256(_vote), voteStakeAmountProof);
+        emit VoteCast(msg.sender, _vote, voteStakeAmount);
     }
 
     // === AUTOMATED KEEPER FUNCTIONS ===
+    // These functions are intended to be called by an off-chain "Keeper" or "Automation" service (like Chainlink Automation).
+    // Smart contracts cannot run automatically. They need an external transaction to trigger their state changes.
+    // These functions check time-based conditions and update the contract's status accordingly.
 
+    /**
+     * @dev KEEPER FUNCTION: Checks if the betting deadline has passed.
+     * If so, transitions the state to AWAITING_PROOF or CANCELLED if stake minimums aren't met.
+     */
     function checkAndCloseBetting() external {
         if (_currentStatus == Status.OPEN_FOR_BETS && block.timestamp >= details.bettingDeadline) {
             if (totalYesStake >= details.minimumSideStake && totalNoStake >= details.minimumSideStake) {
                 _currentStatus = Status.AWAITING_PROOF;
             } else {
                 _currentStatus = Status.CANCELLED;
-                _notifyFactoryOfCompletion();
-                emit BetCancelled();
+                betFactory.factoryLogBetCompletion(creator); // Notify factory on completion
+                emit BetCancelled("Minimum side stake not met"); // Reason added
             }
         }
     }
     
+    /**
+     * @dev KEEPER FUNCTION: Checks if the proof submission deadline has passed without a proof.
+     * If so, transitions the state to CANCELLED.
+     */
     function checkAndCancelForProof() external {
         if (_currentStatus == Status.AWAITING_PROOF && block.timestamp >= details.proofDeadline) {
             _currentStatus = Status.CANCELLED;
-            _notifyFactoryOfCompletion();
-            emit BetCancelled();
+            betFactory.factoryLogBetCompletion(creator); // Notify factory on completion
+            emit BetCancelled("Proof deadline missed"); // Reason added
         }
     }
     
+    /**
+     * @dev KEEPER FUNCTION: Checks if the voting deadline has passed.
+     * If so, it tallies the votes and resolves the bet to COMPLETED or CANCELLED.
+     */
     function checkAndResolve() external {
         if (_currentStatus == Status.VOTING && block.timestamp >= details.votingDeadline) {
             // NEW: Check for minimum votes first
             if (totalVotes < details.minimumVotes) {
+                // If not enough votes, cancel the bet
                 _currentStatus = Status.CANCELLED;
-                _notifyFactoryOfCompletion();
-                emit BetCancelled();
-                return; // Exit, bet is cancelled
+                emit BetCancelled("Insufficient public votes"); // Reason added
+            } else {
+                // If enough votes, proceed to tally
+                if (yesVotes > noVotes) {
+                    winningSide = Side.YES;
+                    _currentStatus = Status.COMPLETED;
+                    emit BetResolved(winningSide);
+                } else if (noVotes > yesVotes) {
+                    winningSide = Side.NO;
+                    _currentStatus = Status.COMPLETED;
+                    emit BetResolved(winningSide);
+                } else {
+                    // It's a tie, so cancel
+                    _currentStatus = Status.CANCELLED;
+                    emit BetCancelled("Vote tie"); // Reason added
+                }
             }
-
-            if (yesVotes > noVotes) {
-                winningSide = Side.YES;
-                _currentStatus = Status.COMPLETED;
-                _notifyFactoryOfCompletion();
-                emit BetResolved(winningSide);
-            } else if (noVotes > yesVotes) {
-                winningSide = Side.NO;
-                _currentStatus = Status.COMPLETED;
-                _notifyFactoryOfCompletion();
-                emit BetResolved(winningSide);
-            } else { // This now correctly handles a tie in votes
-                _currentStatus = Status.CANCELLED;
-                _notifyFactoryOfCompletion();
-                emit BetCancelled();
-            }
+            betFactory.factoryLogBetCompletion(creator); // Notify factory on completion regardless of outcome
         }
     }
     
-    // Internal function to notify factory
-    function _notifyFactoryOfCompletion() internal {
-        if (!creatorCountDecremented) {
-            creatorCountDecremented = true;
-            betFactory.factoryLogBetCompletion(details.creator);
-        }
-    }
+    // Internal function to notify factory - REMOVED, now called directly in keeper functions
+    // function _notifyFactoryOfCompletion() internal {
+    //     if (!creatorCountDecremented) {
+    //         creatorCountDecremented = true;
+    //         betFactory.factoryLogBetCompletion(details.creator);
+    //     }
+    // }
     
     // === FUND WITHDRAWAL ===
 
     function withdrawFunds() external nonReentrant {
         require(_currentStatus == Status.COMPLETED || _currentStatus == Status.CANCELLED, "Bet not finished");
-        require(!fundsDistributed, "Funds already being distribution");
+        require(!fundsDistributed, "Funds already being distributed"); // Corrected typo
 
         if (_currentStatus == Status.COMPLETED) {
             distributeWinnings();
@@ -310,7 +322,8 @@ contract Bet is ReentrancyGuard {
         uint256 totalStake = totalYesStake + totalNoStake;
         require(totalStake > 0, "No stakes to distribute");
         
-        uint256 platformFeeAmount = (totalStake * details.platformFeePercentage) / 100;
+        // Fetch platform fee percentage dynamically from BetFactory
+        uint256 platformFeeAmount = (totalStake * betFactory.defaultPlatformFeePercentage()) / 100;
         if (platformFeeAmount > 0) {
             betFactory.transferInternalUsdc(address(this), feeCollector, platformFeeAmount, "Platform fee");
         }
@@ -339,8 +352,9 @@ contract Bet is ReentrancyGuard {
         require(participantWinningStake > 0, "Not a winner or no stake");
         
         uint256 totalStake = totalYesStake + totalNoStake;
-        uint256 voterRewardAmount = (totalStake * details.voterRewardPercentage) / 100;
-        uint256 platformFeeAmount = (totalStake * details.platformFeePercentage) / 100;
+        // Fetch percentages dynamically from BetFactory
+        uint256 voterRewardAmount = (totalStake * betFactory.defaultVoterRewardPercentage()) / 100;
+        uint256 platformFeeAmount = (totalStake * betFactory.defaultPlatformFeePercentage()) / 100;
         uint256 netWinningsPool = totalStake - voterRewardAmount - platformFeeAmount;
         
         uint256 winningStake = (winningSide == Side.YES) ? totalYesStake : totalNoStake;
@@ -352,7 +366,9 @@ contract Bet is ReentrancyGuard {
         
         participant.hasWithdrawn = true;
         
-        betFactory.transferInternalUsdc(address(this), msg.sender, participantPayout, "Bet winnings");
+        if(participantPayout > 0) { // Only transfer if there's a payout
+            betFactory.transferInternalUsdc(address(this), msg.sender, participantPayout, "Bet winnings");
+        }
         
         emit FundsWithdrawn(msg.sender, participantPayout, 0);
     }
@@ -362,35 +378,39 @@ contract Bet is ReentrancyGuard {
         require(voted[msg.sender], "Did not vote");
         require(voterStakesProof[msg.sender] > 0, "No stake to claim");
         
-        uint256 originalProofStakeAmount = voterStakesProof[msg.sender];
-        uint256 proofStakeToReturn = 0;
+        uint256 proofToReturn = 0;
         uint256 usdcReward = 0;
 
-        voterStakesProof[msg.sender] = 0;
+        uint256 originalProofStake = voterStakesProof[msg.sender]; // Get original stake before clearing
+        voterStakesProof[msg.sender] = 0; // Prevent re-claiming
         
         if (_currentStatus == Status.COMPLETED) {
             bool votedCorrectly = (votes[msg.sender] == winningSide);
             
             if (votedCorrectly) {
-                proofStakeToReturn = originalProofStakeAmount;
-                uint256 totalVoterRewardPool = ((totalYesStake + totalNoStake) * details.voterRewardPercentage) / 100; 
+                proofToReturn = originalProofStake;
                 
-                if (totalVoteStakeProof > 0) {
-                    usdcReward = (totalVoterRewardPool * originalProofStakeAmount) / totalVoteStakeProof;
+                // Fetch voter reward percentage dynamically from BetFactory
+                uint256 totalVoterRewardPool = ((totalYesStake + totalNoStake) * betFactory.defaultVoterRewardPercentage()) / 100; 
+                
+                // Distribute rewards evenly among winning voters
+                uint256 winningVoterCount = (winningSide == Side.YES) ? yesVotes : noVotes;
+                if (totalVoterRewardPool > 0 && winningVoterCount > 0) {
+                    usdcReward = totalVoterRewardPool / winningVoterCount;
                 }
             }
-        } else {
-            proofStakeToReturn = originalProofStakeAmount;
+        } else { // Bet was CANCELLED, so return original stake
+            proofToReturn = originalProofStake;
         }
         
-        if (proofStakeToReturn > 0) {
-            betFactory.transferInternalProof(address(this), msg.sender, proofStakeToReturn, "Vote stake return");
+        if (proofToReturn > 0) {
+            betFactory.transferInternalProof(address(this), msg.sender, proofToReturn, "Vote stake return");
         }
         if (usdcReward > 0) {
             betFactory.transferInternalUsdc(address(this), msg.sender, usdcReward, "Voter reward");
         }
         
-        emit FundsWithdrawn(msg.sender, usdcReward, proofStakeToReturn);
+        emit FundsWithdrawn(msg.sender, usdcReward, proofToReturn);
     }
     
     function claimRefund() external nonReentrant {

@@ -16,11 +16,15 @@ import {
   Vote,
   Trophy,
   FileText,
-  ExternalLink,
-  Copy,
   ArrowRight,
-  CheckCircle
+  CheckCircle,
+  PieChart,
+  Lock,
+  Wallet, // New Icon
+  Download, // New Icon
+  Upload, // New Icon
 } from "lucide-react";
+import VestingScheduleDisplay from "../components/documentation/VestingScheduleDisplay";
 
 export default function DocumentationPage() {
   const [activeSection, setActiveSection] = useState("overview");
@@ -208,126 +212,77 @@ export default function DocumentationPage() {
                   <CardHeader>
                     <CardTitle className="text-2xl text-white flex items-center gap-2">
                       <Coins className="w-6 h-6 text-yellow-500" />
-                      Dual-Token System
+                      PROOF Tokenomics
                     </CardTitle>
+                    <p className="text-gray-300 text-lg leading-relaxed pt-2">
+                      The PROOF token is the backbone of the ProofBet ecosystem, designed for long-term utility, decentralized governance, and sustainable growth. The total supply is capped at 1 billion tokens.
+                    </p>
                   </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* USDC */}
-                      <div className="p-6 bg-green-500/10 border border-green-500/20 rounded-lg">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                            <DollarSign className="w-6 h-6 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-white text-lg">USDC (USD Coin)</h3>
-                            <p className="text-green-300 text-sm">Betting Currency</p>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Purpose:</span>
-                            <span className="text-white font-medium">Betting stakes</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Stability:</span>
-                            <span className="text-white font-medium">Pegged to USD</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Usage:</span>
-                            <span className="text-white font-medium">Bet stakes & winnings</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PROOF */}
-                      <div className="p-6 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
-                            <Shield className="w-6 h-6 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-white text-lg">PROOF Token</h3>
-                            <p className="text-purple-300 text-sm">Platform Currency</p>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Purpose:</span>
-                            <span className="text-white font-medium">Platform fees</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Supply:</span>
-                            <span className="text-white font-medium">1B max supply</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-300 text-sm">Usage:</span>
-                            <span className="text-white font-medium">Create bets & vote</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
+                  <CardContent className="space-y-8">
+                    {/* Allocation Section */}
                     <Card className="bg-gray-700 border-gray-600">
                       <CardHeader>
-                        <CardTitle className="text-white text-lg">PROOF Token Mechanics</CardTitle>
+                        <CardTitle className="text-white text-xl flex items-center gap-2">
+                          <PieChart className="w-5 h-5 text-cyan-400"/>
+                          Token Allocation
+                        </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="text-center p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                            <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <Zap className="w-6 h-6 text-white" />
-                            </div>
-                            <h4 className="font-semibold text-white mb-2">Fee Burning</h4>
-                            <p className="text-gray-300 text-sm mb-2">50% of platform fees are permanently burned</p>
-                            <Badge className="bg-red-500/20 text-red-300">Deflationary</Badge>
+                      <CardContent className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        {[
+                          { name: 'Community & Ecosystem', percentage: '45%', color: 'cyan' },
+                          { name: 'Team & Advisors', percentage: '20%', color: 'purple' },
+                          { name: 'Seed Investors', percentage: '15%', color: 'green' },
+                          { name: 'Foundation Treasury', percentage: '10%', color: 'orange' },
+                          { name: 'Public Sale & Liquidity', percentage: '10%', color: 'pink' }
+                        ].map(item => (
+                          <div key={item.name} className={`p-4 border border-${item.color}-500/30 bg-${item.color}-500/10 rounded-lg text-center`}>
+                            <h3 className={`font-bold text-2xl text-${item.color}-300`}>{item.percentage}</h3>
+                            <p className="text-sm text-gray-300 mt-1">{item.name}</p>
                           </div>
-                          
-                          <div className="text-center p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <TrendingUp className="w-6 h-6 text-white" />
-                            </div>
-                            <h4 className="font-semibold text-white mb-2">Annual Inflation</h4>
-                            <p className="text-gray-300 text-sm mb-2">5% yearly mint for development & rewards</p>
-                            <Badge className="bg-green-500/20 text-green-300">Growth Fund</Badge>
-                          </div>
-                          
-                          <div className="text-center p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <Trophy className="w-6 h-6 text-white" />
-                            </div>
-                            <h4 className="font-semibold text-white mb-2">Staking Rewards</h4>
-                            <p className="text-gray-300 text-sm mb-2">Earn PROOF by participating in the ecosystem</p>
-                            <Badge className="bg-blue-500/20 text-blue-300">Earn & Hold</Badge>
-                          </div>
-                        </div>
-
-                        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                          <h4 className="font-semibold text-white mb-2 flex items-center gap-2">
-                            <Vote className="w-4 h-4 text-yellow-400" />
-                            Token Distribution
-                          </h4>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-300">Initial Supply:</span>
-                              <div className="font-semibold text-white">100M PROOF</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-300">Annual Inflation:</span>
-                              <div className="font-semibold text-white">5% per year</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-300">Fee Burn Rate:</span>
-                              <div className="font-semibold text-white">50% of fees</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-300">Max Supply:</span>
-                              <div className="font-semibold text-white">1B PROOF</div>
-                            </div>
-                          </div>
-                        </div>
+                        ))}
                       </CardContent>
                     </Card>
+
+                    {/* Vesting Schedule Section */}
+                    <Card className="bg-gray-700 border-gray-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-xl flex items-center gap-2">
+                          <Lock className="w-5 h-5 text-red-400"/>
+                           Vesting & Release Schedule
+                        </CardTitle>
+                        <p className="text-gray-400 pt-2">
+                          To ensure long-term commitment and prevent market manipulation, team and investor tokens are subject to a multi-year vesting schedule. This table displays the live release status for all allocated tokens.
+                        </p>
+                      </CardHeader>
+                      <CardContent>
+                        <VestingScheduleDisplay />
+                      </CardContent>
+                    </Card>
+                    
+                    {/* Core Mechanics */}
+                    <Card className="bg-gray-700 border-gray-600">
+                      <CardHeader>
+                        <CardTitle className="text-white text-xl flex items-center gap-2">
+                          <Zap className="w-5 h-5 text-yellow-400"/>
+                          Core Mechanics
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            <h4 className="font-semibold text-white mb-2">Fee Burning</h4>
+                            <p className="text-gray-300 text-sm">50% of all PROOF platform fees are permanently burned, creating a deflationary pressure on the token supply.</p>
+                          </div>
+                          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                            <h4 className="font-semibold text-white mb-2">Staking & Rewards</h4>
+                            <p className="text-gray-300 text-sm">Users can stake PROOF tokens to participate in governance and earn a share of platform revenue.</p>
+                          </div>
+                          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                            <h4 className="font-semibold text-white mb-2">Governance</h4>
+                            <p className="text-gray-300 text-sm">PROOF holders will be able to vote on key platform decisions, such as fee changes and feature development.</p>
+                          </div>
+                      </CardContent>
+                    </Card>
+
                   </CardContent>
                 </Card>
               </div>
@@ -351,16 +306,16 @@ export default function DocumentationPage() {
                           Connect Wallet
                         </h3>
                         <p className="text-gray-300 text-sm">
-                          Connect your Web3 wallet (MetaMask, WalletConnect) to start interacting with the platform.
+                          Connect your Web3 wallet (e.g., MetaMask) to start interacting with the platform.
                         </p>
                       </div>
                       <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                         <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                           <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-sm">2</span>
-                          Get Tokens
+                          Deposit Funds
                         </h3>
                         <p className="text-gray-300 text-sm">
-                          Acquire USDC for betting and PROOF tokens for platform fees through the deposit system.
+                          Use the Wallet tab to deposit USDC and PROOF tokens from your personal wallet into your gas-efficient internal wallet.
                         </p>
                       </div>
                       <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
@@ -369,20 +324,59 @@ export default function DocumentationPage() {
                           Start Participating
                         </h3>
                         <p className="text-gray-300 text-sm">
-                          Browse markets, place bets, or create your own prediction markets for others to participate in.
+                          Browse markets, place bets, create markets, and vote on outcomes using your internal balances.
                         </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Tabs defaultValue="betting" className="space-y-6">
+                <Tabs defaultValue="wallet" className="space-y-6">
                   <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-4">
-                    <TabsTrigger value="betting">Betting</TabsTrigger>
-                    <TabsTrigger value="creating">Creating Bets</TabsTrigger>
+                    <TabsTrigger value="wallet">Internal Wallet</TabsTrigger>
+                    <TabsTrigger value="betting">Placing Bets</TabsTrigger>
+                    <TabsTrigger value="creating">Creating Markets</TabsTrigger>
                     <TabsTrigger value="voting">Voting</TabsTrigger>
-                    <TabsTrigger value="wallet">Wallet Management</TabsTrigger>
                   </TabsList>
+                  
+                  <TabsContent value="wallet">
+                    <Card className="bg-gray-800 border-gray-700">
+                      <CardHeader>
+                        <CardTitle className="text-white flex items-center gap-2"><Wallet className="w-5 h-5 text-cyan-400"/>The Internal Wallet System</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <p className="text-gray-300">
+                          To save on gas fees and improve user experience, ProofBet uses an internal wallet system. Instead of approving every single transaction, you deposit funds once into the platform's smart contract, and all subsequent actions (betting, creating, voting) use this internal balance.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-3">
+                            <h4 className="font-semibold text-white flex items-center gap-2"><Upload className="w-4 h-4"/>Depositing Funds</h4>
+                             <p className="text-gray-300 text-sm">
+                                1. Go to the "Wallet" tab on the main dashboard.
+                                <br/>
+                                2. Enter the amount of USDC or PROOF you wish to deposit.
+                                <br/>
+                                3. Approve the token transfer in your wallet.
+                                <br/>
+                                4. Confirm the deposit transaction. Your internal balance will update.
+                             </p>
+                          </div>
+                           <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg space-y-3">
+                            <h4 className="font-semibold text-white flex items-center gap-2"><Download className="w-4 h-4"/>Withdrawing Funds</h4>
+                             <p className="text-gray-300 text-sm">
+                                1. Go to the "Wallet" tab.
+                                <br/>
+                                2. In the "Withdraw" section, enter the amount to transfer back to your personal wallet.
+                                <br/>
+                                3. Confirm the withdrawal transaction.
+                                <br/>
+                                4. Your funds will be sent from the contract back to your connected wallet address.
+                             </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
 
                   <TabsContent value="betting">
                     <Card className="bg-gray-800 border-gray-700">
@@ -393,10 +387,10 @@ export default function DocumentationPage() {
                         {[
                           "Browse the Markets tab to find active prediction markets",
                           "Check the bet details, deadlines, and minimum trust score requirements",
-                          "Ensure you have sufficient USDC balance for betting",
+                          "Ensure you have sufficient USDC deposited in your internal wallet",
                           "Click 'Place Bet' and choose YES or NO side",
-                          "Enter your stake amount (minimum varies per bet)",
-                          "Confirm the transaction in your wallet",
+                          "Enter your stake amount (in USDC)",
+                          "Confirm the transaction (no separate approval needed!)",
                           "Wait for outcome resolution to claim winnings"
                         ].map((step, index) => (
                           <div key={index} className="flex items-start gap-3">
@@ -419,22 +413,21 @@ export default function DocumentationPage() {
                         <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                           <h4 className="font-semibold text-white mb-2">Requirements:</h4>
                           <ul className="space-y-1 text-gray-300 text-sm">
-                            <li>• Creation fee: 100 PROOF tokens</li>
-                            <li>• Maximum 3 active bets per user</li>
-                            <li>• Must provide clear, verifiable claim</li>
-                            <li>• Set appropriate deadlines and minimums</li>
+                            <li>• A creation fee in PROOF tokens (set by the contract) from your internal balance.</li>
+                            <li>• Must provide a clear, verifiable claim with specific outcomes.</li>
+                            <li>• Set appropriate deadlines for betting, proof submission, and voting.</li>
                           </ul>
                         </div>
                         
                         <div className="space-y-4">
                           {[
-                            "Navigate to 'Create Bet' (requires wallet connection)",
-                            "Fill in bet title and detailed description",
-                            "Set category and proof type (video, photo, stream)",
-                            "Configure minimum bet amounts and trust score requirements", 
-                            "Set betting, proof, and voting deadlines",
-                            "Pay 100 PROOF token creation fee",
-                            "Your bet goes live immediately for others to participate"
+                            "Navigate to 'Create Market' (requires wallet connection)",
+                            "Fill in the market title and a detailed description",
+                            "Set the category and the required proof type (e.g., video, photo)",
+                            "Configure financial parameters like minimum bet amount", 
+                            "Set the three key deadlines for the market lifecycle",
+                            "Confirm the transaction. The PROOF fee will be deducted from your internal wallet.",
+                            "Your market goes live immediately for others to participate."
                           ].map((step, index) => (
                             <div key={index} className="flex items-start gap-3">
                               <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
@@ -457,22 +450,21 @@ export default function DocumentationPage() {
                         <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
                           <h4 className="font-semibold text-white mb-2">Voting Requirements:</h4>
                           <ul className="space-y-1 text-gray-300 text-sm">
-                            <li>• Cannot have bet on the market you're voting on</li>
-                            <li>• Must stake 10 PROOF tokens per vote</li>
-                            <li>• Meet minimum trust score (varies per bet)</li>
-                            <li>• Vote based on provided proof evidence</li>
+                            <li>• You cannot have a financial stake (bet) in the market you're voting on.</li>
+                            <li>• You must have enough PROOF tokens in your internal balance for the vote stake.</li>
+                            <li>• Vote honestly based on the provided evidence to earn rewards.</li>
                           </ul>
                         </div>
 
                         <div className="space-y-4">
                           {[
-                            "Find bets in 'Voting Phase' status",
-                            "Review the submitted proof carefully", 
+                            "Find markets in the 'Voting' tab",
+                            "Carefully review the submitted proof link", 
                             "Ensure you haven't bet on this market",
-                            "Stake 10 PROOF tokens to cast your vote",
-                            "Vote YES if proof validates the claim, NO if it doesn't",
-                            "Earn rewards if you vote with the majority",
-                            "Forfeit stake if you vote dishonestly (minority)"
+                            "Click 'Vote' and choose YES if the proof is valid, or NO if it is not",
+                            "Confirm the transaction. The PROOF stake will be deducted from your internal wallet.",
+                            "Earn rewards and get your stake back if you vote with the majority.",
+                            "Forfeit your stake if you vote against the consensus."
                           ].map((step, index) => (
                             <div key={index} className="flex items-start gap-3">
                               <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
@@ -485,40 +477,10 @@ export default function DocumentationPage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
-
-                  <TabsContent value="wallet">
-                    <Card className="bg-gray-800 border-gray-700">
-                      <CardHeader>
-                        <CardTitle className="text-white">Managing Your Funds</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                            <h4 className="font-semibold text-white mb-3">USDC Balance</h4>
-                            <ul className="space-y-2 text-gray-300 text-sm">
-                              <li>• Used for all betting activities</li>
-                              <li>• Deposit via crypto exchanges</li>
-                              <li>• Withdraw winnings anytime</li>
-                              <li>• Stable 1:1 USD value</li>
-                            </ul>
-                          </div>
-                          <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                            <h4 className="font-semibold text-white mb-3">PROOF Balance</h4>
-                            <ul className="space-y-2 text-gray-300 text-sm">
-                              <li>• Required for bet creation (100 tokens)</li>
-                              <li>• Needed for voting (10 tokens per vote)</li>
-                              <li>• Earn through platform participation</li>
-                              <li>• 50% of fees burned, increasing value</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
                 </Tabs>
               </div>
             )}
-
+            
             {/* Trust Score System */}
             {activeSection === "trust-score" && (
               <div className="space-y-8">
@@ -598,25 +560,25 @@ export default function DocumentationPage() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <p className="text-gray-300 text-lg leading-relaxed">
-                      ProofBet runs on Ethereum smart contracts, ensuring transparency, security, and trustless execution of all platform operations.
+                      ProofBet runs on a modular system of smart contracts, ensuring transparency, security, and trustless execution. The core logic is split between a central factory and individual market contracts.
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {[
                         {
                           name: "BetFactory.sol",
-                          purpose: "Creates and manages all prediction markets",
-                          features: ["Bet creation", "Fee handling", "Market registry"]
+                          purpose: "The central hub for creating and managing all prediction markets.",
+                          features: ["Creates new Bet contracts", "Manages internal USDC/PROOF wallets", "Sets platform-wide fees", "Maintains market registry"]
                         },
                         {
                           name: "Bet.sol", 
-                          purpose: "Individual market contract with full lifecycle",
-                          features: ["Betting logic", "Proof submission", "Vote counting", "Payouts"]
+                          purpose: "An individual, self-contained contract for a single market.",
+                          features: ["Handles all betting logic", "Manages proof submission", "Counts votes & determines outcome", "Processes claims & refunds"]
                         },
                         {
                           name: "ProofToken.sol",
-                          purpose: "Platform token with tokenomics",
-                          features: ["Fee burning", "Inflation minting", "Staking rewards"]
+                          purpose: "The platform's utility and governance token.",
+                          features: ["ERC-20 standard token", "Used for fees and voting stakes", "Future governance capabilities"]
                         }
                       ].map((contract) => (
                         <div key={contract.name} className="p-4 bg-gray-700 border border-gray-600 rounded-lg">
@@ -636,29 +598,21 @@ export default function DocumentationPage() {
 
                     <Card className="bg-gray-700 border-gray-600">
                       <CardHeader>
-                        <CardTitle className="text-white text-lg">Key Features</CardTitle>
+                        <CardTitle className="text-white text-lg">Key Concepts</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div>
-                            <h4 className="font-semibold text-white mb-3">Security Features</h4>
-                            <ul className="space-y-2 text-gray-300 text-sm">
-                              <li>• Reentrancy protection on all functions</li>
-                              <li>• Multi-signature admin controls</li>
-                              <li>• Automated deadline enforcement</li>
-                              <li>• Emergency pause mechanisms</li>
-                              <li>• Comprehensive event logging</li>
-                            </ul>
+                            <h4 className="font-semibold text-white mb-3">Internal Wallet System</h4>
+                            <p className="text-gray-300 text-sm">
+                              Users deposit/withdraw funds into the `BetFactory` contract. This allows for gas-less internal transfers for betting and voting, requiring only a single transaction signature instead of multiple on-chain token approvals.
+                            </p>
                           </div>
                           <div>
-                            <h4 className="font-semibold text-white mb-3">Gas Optimizations</h4>
-                            <ul className="space-y-2 text-gray-300 text-sm">
-                              <li>• Efficient storage patterns</li>
-                              <li>• Batch operations support</li>
-                              <li>• Minimal external calls</li>
-                              <li>• Optimized loops and mappings</li>
-                              <li>• Event-based data retrieval</li>
-                            </ul>
+                            <h4 className="font-semibold text-white mb-3">Keeper Functions</h4>
+                            <p className="text-gray-300 text-sm">
+                               Functions like `checkAndCloseBetting` and `checkAndResolve` are public and can be called by anyone (a "keeper"). This allows for decentralized, automated maintenance of market statuses once deadlines have passed.
+                            </p>
                           </div>
                         </div>
                       </CardContent>
@@ -667,7 +621,7 @@ export default function DocumentationPage() {
                 </Card>
               </div>
             )}
-
+            
             {/* Technical Specs */}
             {activeSection === "api" && (
               <div className="space-y-8">

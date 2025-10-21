@@ -1,53 +1,62 @@
+
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Video, Camera, Image as ImageIcon, User } from "lucide-react";
+import { Video, Camera, Image as ImageIcon, User, Clock, Users, Vote, Target } from "lucide-react";
 import AddressDisplay from "../common/AddressDisplay";
+import moment from 'moment'; // Import moment
 
-const categoryColors = {
-  sports: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  politics: "bg-red-500/20 text-red-400 border-red-500/30",
-  entertainment: "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  crypto: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  personal: "bg-green-500/20 text-green-400 border-green-500/30",
-  other: "bg-gray-500/20 text-gray-400 border-gray-500/30"
-};
-
-const statusColors = {
-  active: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  voting: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  completed: "bg-green-500/20 text-green-400 border-green-500/30",
-  cancelled: "bg-red-500/20 text-red-400 border-red-500/30"
-};
-
-const proofIcons = {
-  video: Video,
-  live_stream: Camera,
-  photo: ImageIcon
+const getStatusInfo = (status) => {
+    const statuses = {
+      open_for_bets: { text: 'Open for Betting', color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+      betting_closed: { text: 'Awaiting Proof', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
+      voting: { text: 'Voting Active', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+      completed: { text: 'Completed', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+      cancelled: { text: 'Cancelled', color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+      awaiting_resolution: { text: 'Awaiting Resolution', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
+      awaiting_cancellation_no_proof: { text: 'Pending Cancellation', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' }
+    };
+    return statuses[status] || { text: 'Unknown', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30' };
 };
 
 export default function BetDetailHeader({ bet }) {
-  const ProofIcon = proofIcons[bet.proof_type] || Video;
+  const { text, color } = getStatusInfo(bet.effectiveStatus);
+
+  const deadlines = [
+    { label: 'Betting Closes', date: moment.unix(bet.bettingDeadline) },
+    { label: 'Proof Deadline', date: moment.unix(bet.proofDeadline) },
+    { label: 'Voting Ends', date: moment.unix(bet.votingDeadline) },
+  ];
 
   return (
     <Card className="bg-gray-800 border-gray-700">
-      <CardContent className="p-6">
-        <div className="flex items-center gap-4 mb-4">
-          <Badge className={categoryColors[bet.category] || categoryColors.other}>{bet.category}</Badge>
-          <Badge className={statusColors[bet.status] || statusColors.active}>{bet.status}</Badge>
-          <div className="flex items-center gap-1 text-gray-400 ml-auto">
-            <ProofIcon className="w-4 h-4" />
-            <span className="text-xs capitalize">{bet.proof_type?.replace('_', ' ')}</span>
-          </div>
+      <CardContent className="p-6 space-y-4">
+        <div className="flex justify-between items-start">
+            <div>
+                <Badge className={color}>{text}</Badge>
+                <h1 className="text-3xl font-bold text-white mt-2">{bet.title}</h1>
+                <p className="text-gray-400 mt-2">{bet.description}</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+                <span className="text-sm text-gray-400">Created by:</span>
+                <AddressDisplay address={bet.creator_address} />
+            </div>
         </div>
-        <h1 className="text-3xl font-bold text-white mb-3">{bet.title}</h1>
-        <p className="text-gray-400 mb-4">{bet.description}</p>
         
-        {/* Creator Information - Now Prominent */}
-        <div className="flex items-center gap-2 p-3 bg-gray-700/30 rounded-lg border border-gray-600">
-          <User className="w-5 h-5 text-cyan-400" />
-          <span className="text-gray-300 font-medium">Created by:</span>
-          <AddressDisplay address={bet.creator_address} />
+        <div className="border-t border-gray-700 pt-4 flex flex-wrap justify-between items-center gap-x-6 gap-y-3 text-sm text-gray-300">
+            <div className="flex items-center gap-6">
+                <span title="Participants" className="flex items-center gap-1.5"><Users className="w-4 h-4 text-cyan-400"/> {bet.participants_count || 0}</span>
+                <span title="Voters" className="flex items-center gap-1.5"><Vote className="w-4 h-4 text-purple-400"/> {bet.voters_count || 0}</span>
+                <span title="Min Votes" className="flex items-center gap-1.5"><Target className="w-4 h-4 text-gray-400"/> {bet.minimum_votes || 'N/A'}</span>
+            </div>
+            <div className="flex items-center gap-4">
+                {deadlines.map(d => (
+                    <span key={d.label} className="flex items-center gap-1.5" title={d.date.format('lll')}>
+                        <Clock className="w-4 h-4 text-gray-500"/> 
+                        {d.label}: {d.date.fromNow()}
+                    </span>
+                ))}
+            </div>
         </div>
       </CardContent>
     </Card>

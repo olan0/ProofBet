@@ -1,83 +1,94 @@
 
 import React from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Users, Vote, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DollarSign, Users, Clock, ArrowRight } from 'lucide-react';
-import { formatDistanceToNow } from "date-fns";
+import moment from 'moment';
 
-// The STATUS_MAP constant is not used in the getStatusInfo logic,
-// and the new logic directly maps numbers to states.
-// Removing it to avoid potential confusion or mismatch with the new `getStatusInfo`.
-// const STATUS_MAP = ["Open", "Voting", "Resolved", "Cancelled"]; 
-const CATEGORY_MAP = ["Politics", "Sports", "Tech", "Crypto", "Other"];
-
-const getStatusInfo = (status) => {
-  switch (status) {
-    case 0: // Open
-      return { text: "Open", className: "bg-green-500/20 text-green-300 border-green-500/30" };
-    case 1: // Awaiting Proof
-      return { text: "Awaiting Proof", className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" };
-    case 2: // Voting
-      return { text: "Voting", className: "bg-blue-500/20 text-blue-300 border-blue-500/30" };
-    case 3: // Resolved
-      return { text: "Resolved", className: "bg-purple-500/20 text-purple-300 border-purple-500/30" };
-    case 4: // Cancelled
-      return { text: "Cancelled", className: "bg-gray-500/20 text-gray-300 border-gray-500/30" };
-    default:
-      return { text: "Unknown", className: "bg-gray-500/20 text-gray-300 border-gray-500/30" };
-  }
+const StatusBadge = ({ status }) => {
+    const statusInfo = {
+        open_for_bets: { text: 'Open', color: 'bg-green-500/20 text-green-300 border-green-500/30' },
+        betting_closed: { text: 'Awaiting Proof', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
+        voting: { text: 'Voting', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+        awaiting_resolution: { text: 'Resolving', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+        completed: { text: 'Completed', color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' },
+        cancelled: { text: 'Cancelled', color: 'bg-red-500/20 text-red-300 border-red-500/30' },
+        awaiting_cancellation_no_proof: { text: 'Cancelling', color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
+    };
+    const info = statusInfo[status] || statusInfo.completed;
+    return <Badge className={`px-2 py-1 ${info.color}`}>{info.text}</Badge>;
 };
 
-export default function BetRow({ bet }) {
-  const status = getStatusInfo(bet.status);
-  const categoryName = CATEGORY_MAP[bet.category] || "Other";
-  const totalStake = parseFloat(bet.totalYesStake) + parseFloat(bet.totalNoStake);
-  const creationDate = new Date(Number(bet.creationTimestamp) * 1000);
-  const timeAgo = formatDistanceToNow(creationDate, { addSuffix: true });
-
-  return (
-    <Card className="bg-gray-800/60 border-gray-700 hover:border-cyan-500/50 transition-colors duration-300">
-      <div className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-1">
-             <Badge className={status.className}>{status.text}</Badge>
-             <Badge variant="outline" className="border-gray-600 text-gray-400">{categoryName}</Badge>
-          </div>
-          <Link to={createPageUrl(`BetDetails?address=${bet.address}`)} className="group">
-             <h3 className="text-lg font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">
-              {bet.title}
-             </h3>
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-4 md:gap-6 text-sm text-gray-300 w-full md:w-auto">
-          <div className="flex items-center gap-2" title="Total Staked">
-            <DollarSign className="w-4 h-4 text-purple-400" />
-            <span>${totalStake.toFixed(2)}</span>
-          </div>
-          <div className="flex items-center gap-2" title="Participants">
-            <Users className="w-4 h-4 text-cyan-400" />
-            <span>{bet.participants_count}</span>
-          </div>
-          <div className="flex items-center gap-2" title="Created">
-            <Clock className="w-4 h-4 text-gray-500" />
-            <span className="hidden md:inline">{timeAgo}</span>
-          </div>
-        </div>
-
-        <div className="w-full md:w-auto flex justify-end">
-          <Link to={createPageUrl(`BetDetails?address=${bet.address}`)}>
-            <Button variant="outline" size="sm" className="border-gray-600 hover:bg-gray-700 hover:text-white">
-              View
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </Card>
-  );
+const CountdownTimer = ({ deadline, prefix }) => {
+    const deadlineMoment = moment.unix(deadline);
+    const now = moment();
+    if (now.isAfter(deadlineMoment)) {
+      return <span className="text-gray-400">Finished</span>;
+    }
+    return <span className="text-gray-300">{prefix}{moment.unix(deadline).fromNow(true)}</span>
 }
+
+
+export default function BetRow({ bet }) {
+    const totalStake = (bet.total_yes_stake_usd || 0) + (bet.total_no_stake_usd || 0);
+
+    const getDeadlineInfo = () => {
+        switch(bet.effectiveStatus) {
+            case 'open_for_bets': return { deadline: bet.bettingDeadline, prefix: 'Closes in ' };
+            case 'betting_closed': return { deadline: bet.proofDeadline, prefix: 'Proof in ' };
+            case 'voting': return { deadline: bet.votingDeadline, prefix: 'Voting ends in ' };
+            default: return null;
+        }
+    }
+    const deadlineInfo = getDeadlineInfo();
+
+    return (
+        <Link to={createPageUrl(`BetDetails?address=${bet.address}`)}>
+            <Card className="bg-gray-800 border-gray-700 hover:border-cyan-500 transition-all duration-300">
+                <CardContent className="p-4 grid grid-cols-12 items-center gap-4">
+                    <div className="col-span-12 md:col-span-5">
+                        <p className="text-white font-semibold truncate">{bet.title}</p>
+                        <p className="text-gray-400 text-sm truncate">{bet.description}</p>
+                    </div>
+                    <div className="col-span-4 md:col-span-2 flex items-center gap-2">
+                        <Users className="w-4 h-4 text-cyan-400 shrink-0"/>
+                        <span className="text-gray-300">{bet.participants_count || 0}</span>
+                    </div>
+                     <div className="col-span-4 md:col-span-2 flex items-center gap-2">
+                        <Vote className="w-4 h-4 text-purple-400 shrink-0"/>
+                        <span className="text-gray-300">{bet.voters_count || 0}</span>
+                    </div>
+                    <div className="col-span-4 md:col-span-1 text-right">
+                        <span className="font-semibold text-white">${totalStake.toFixed(2)}</span>
+                    </div>
+                    <div className="col-span-6 md:col-span-1 text-center">
+                         <StatusBadge status={bet.effectiveStatus} />
+                    </div>
+                    <div className="col-span-6 md:col-span-1 text-right">
+                       <div className="flex items-center gap-2 text-sm justify-end">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            {
+                                bet.effectiveStatus === 'completed' ? (
+                                    <span className="text-gray-400">Completed</span>
+                                ) : bet.effectiveStatus === 'cancelled' ? (
+                                    <span className="text-gray-400">Cancelled</span>
+                                ) : bet.effectiveStatus === 'awaiting_cancellation_no_proof' ? (
+                                    <span className="text-gray-400">Cancelling</span>
+                                ) : bet.effectiveStatus === 'awaiting_resolution' ? (
+                                    <span className="text-gray-400">Resolving</span>
+                                ) : deadlineInfo ? (
+                                    <CountdownTimer deadline={deadlineInfo.deadline} prefix={deadlineInfo.prefix} />
+                                ) : (
+                                    <span className="text-gray-400">N/A</span> // Fallback for any other unexpected status
+                                )
+                            }
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        </Link>
+    );
+}
+

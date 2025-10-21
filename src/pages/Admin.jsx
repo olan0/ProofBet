@@ -1,97 +1,90 @@
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Shield, Loader2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getConnectedAddress } from "../components/blockchain/contracts";
 import FaucetPanel from "../components/admin/FaucetPanel";
 import MarketSeederPanel from "../components/admin/MarketSeederPanel";
-import KeeperPanel from "../components/admin/KeeperPanel"; // Import the new panel
-import { connectWallet, getConnectedAddress, formatAddress } from "../components/blockchain/contracts";
+import KeeperPanel from "../components/admin/KeeperPanel";
+import { Settings, Droplets, DatabaseZap, Bot } from 'lucide-react';
 
 export default function AdminPage() {
-  const [loading, setLoading] = useState(true);
-  const [walletAddress, setWalletAddress] = useState(null);
+    const [walletAddress, setWalletAddress] = useState(null);
 
-  useEffect(() => {
-    const checkWallet = async () => {
-      const address = await getConnectedAddress();
-      setWalletAddress(address);
-      setLoading(false);
-    };
-    checkWallet();
-
-    // Add listener for account changes to ensure state is always fresh
-    if (window.ethereum) {
-        const handleAccountsChanged = (accounts) => {
-            if (accounts.length > 0) {
-                setWalletAddress(accounts[0]);
-            } else {
-                setWalletAddress(null);
-            }
+    useEffect(() => {
+        const fetchAddress = async () => {
+            const address = await getConnectedAddress();
+            setWalletAddress(address);
         };
+        fetchAddress();
+    }, []);
 
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-
-        return () => {
-            window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        };
-    }
-  }, []);
-  
-  const handleConnect = async () => {
-      const address = await connectWallet();
-      setWalletAddress(address);
-  };
-
-  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
-        <Loader2 className="h-16 w-16 animate-spin text-cyan-500" />
-      </div>
-    );
-  }
+        <div className="min-h-screen bg-gray-900 text-white p-8">
+            <div className="max-w-7xl mx-auto space-y-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl flex items-center justify-center">
+                        <Settings className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <h1 className="text-4xl font-bold text-white">Admin Panel</h1>
+                        <p className="text-orange-200 text-lg">Tools for local development and testing.</p>
+                    </div>
+                </div>
 
-  return (
-    <div className="container mx-auto p-4 md:p-6 min-h-screen bg-gray-900 text-white">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
-            <Shield className="w-8 h-8 text-cyan-400" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
-            <p className="text-gray-400">Tools for managing the local test environment.</p>
-          </div>
-        </div>
-        {walletAddress && (
-          <div className="mt-4 md:mt-0 text-right">
-            <p className="text-sm text-gray-400">Connected Wallet:</p>
-            <p className="text-md font-medium text-white">{formatAddress(walletAddress)}</p>
-          </div>
-        )}
-      </header>
+                <Alert variant="destructive" className="bg-red-900/30 border-red-500/50 text-red-300">
+                    <AlertTitle>Development Only</AlertTitle>
+                    <AlertDescription>
+                        These tools are designed for use on a local Hardhat development network. Most features will not work on a live network.
+                    </AlertDescription>
+                </Alert>
 
-      {walletAddress ? (
-        <div className="grid gap-8 grid-cols-1 lg:grid-cols-2">
-            <FaucetPanel walletAddress={walletAddress} />
-            <KeeperPanel walletAddress={walletAddress} />
-            <div className="lg:col-span-2">
-              <MarketSeederPanel walletAddress={walletAddress} />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <Card className="bg-gray-800 border-gray-700">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Droplets className="w-5 h-5 text-cyan-400" />
+                                Token Faucet
+                            </CardTitle>
+                            <CardDescription>
+                                Mint mock USDC and PROOF tokens to your connected wallet. This is essential for testing betting, creation, and voting features.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <FaucetPanel walletAddress={walletAddress} />
+                        </CardContent>
+                    </Card>
+
+                    <Card className="bg-gray-800 border-gray-700">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <DatabaseZap className="w-5 h-5 text-purple-400" />
+                                Hardhat Market Seeder
+                            </CardTitle>
+                            <CardDescription>
+                                Run an E2E script to automatically create a diverse set of markets with different statuses (Open, Voting, Completed, etc.). This script populates your local blockchain with realistic test data.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <MarketSeederPanel walletAddress={walletAddress} />
+                        </CardContent>
+                    </Card>
+                    
+                    <Card className="bg-gray-800 border-gray-700 lg:col-span-2">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bot className="w-5 h-5 text-green-400" />
+                                Keeper Functions
+                            </CardTitle>
+                             <CardDescription>
+                                Manually trigger the time-based "keeper" functions that advance market states. In a live environment, this would be automated. Use this to move markets from 'Open' to 'Awaiting Proof' or from 'Voting' to 'Resolved' after their deadlines have passed.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <KeeperPanel walletAddress={walletAddress} />
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
-      ) : (
-        <div className="text-center py-16 bg-gray-800/50 rounded-lg max-w-md mx-auto">
-            <Card className="bg-transparent border-none text-center w-full">
-                <CardHeader>
-                    <CardTitle className="text-white text-2xl">Admin Access Required</CardTitle>
-                    <CardDescription className="text-gray-400">Please connect your wallet to manage the platform.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Button onClick={handleConnect} className="bg-gradient-to-r from-cyan-500 to-purple-600">Connect Wallet</Button>
-                </CardContent>
-            </Card>
-        </div>
-      )}
-    </div>
-  );
+    );
 }

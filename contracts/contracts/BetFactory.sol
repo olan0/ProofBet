@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "./Bet.sol";
 import "./TrustScore.sol";
-import "./ProofToken.sol";
+import "./ProofToken.sol"; // Import the concrete contract
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -17,7 +17,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 contract BetFactory is Ownable, ReentrancyGuard {
     TrustScore public trustScoreContract;
     IERC20 public usdcToken;
-    ProofToken public proofToken;
+    ProofToken public proofToken; // FIX: Use the concrete ProofToken type
     address public feeCollector;
 
     address[] public allBets;
@@ -51,7 +51,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     constructor(
         address _trustScore,
         address _usdcToken,
-        address _proofToken,
+        address _proofToken, // This is the address of the deployed ProofToken
         address _feeCollector,
         uint256 _creationFeeProof,
         uint256 _initialVoteStakeAmountProof,
@@ -60,7 +60,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(_initialVoteStakeAmountProof > 0, "Initial vote stake must be greater than 0");
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
-        proofToken = ProofToken(_proofToken);
+        proofToken = ProofToken(_proofToken); // FIX: Cast the address to the concrete contract
         feeCollector = _feeCollector;
         creationFeeProof = _creationFeeProof;
         voteStakeAmountProof = _initialVoteStakeAmountProof;
@@ -161,18 +161,14 @@ contract BetFactory is Ownable, ReentrancyGuard {
         
         emit FeeProcessed(msg.sender, creationFeeProof, burnAmount, keepAmount);
         
-        _details.creator = msg.sender;
-        _details.voterRewardPercentage = defaultVoterRewardPercentage;
-        _details.platformFeePercentage = defaultPlatformFeePercentage;
-        
         Bet newBet = new Bet(
             _details,
+            msg.sender, // Pass creator directly
             address(this),
             address(trustScoreContract),
             address(usdcToken),
             address(proofToken),
-            feeCollector,
-            voteStakeAmountProof
+            feeCollector
         );
         address newBetAddress = address(newBet);
         allBets.push(newBetAddress);

@@ -27,7 +27,7 @@ const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-const BET_FACTORY_ABI = [
+const BET_FACTORY_ABI =  [
     {
       "inputs": [
         {
@@ -403,11 +403,6 @@ const BET_FACTORY_ABI = [
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "creator",
-              "type": "address"
-            },
-            {
               "internalType": "string",
               "name": "title",
               "type": "string"
@@ -445,16 +440,6 @@ const BET_FACTORY_ABI = [
             {
               "internalType": "uint8",
               "name": "minimumTrustScore",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint8",
-              "name": "voterRewardPercentage",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint8",
-              "name": "platformFeePercentage",
               "type": "uint8"
             },
             {
@@ -951,16 +936,11 @@ const BET_FACTORY_ABI = [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-const BET_ABI =  [
+const BET_ABI = [
     {
       "inputs": [
         {
           "components": [
-            {
-              "internalType": "address",
-              "name": "creator",
-              "type": "address"
-            },
             {
               "internalType": "string",
               "name": "title",
@@ -1002,16 +982,6 @@ const BET_ABI =  [
               "type": "uint8"
             },
             {
-              "internalType": "uint8",
-              "name": "voterRewardPercentage",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint8",
-              "name": "platformFeePercentage",
-              "type": "uint8"
-            },
-            {
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
@@ -1020,6 +990,11 @@ const BET_ABI =  [
           "internalType": "struct Bet.BetDetails",
           "name": "_details",
           "type": "tuple"
+        },
+        {
+          "internalType": "address",
+          "name": "_creator",
+          "type": "address"
         },
         {
           "internalType": "address",
@@ -1045,11 +1020,6 @@ const BET_ABI =  [
           "internalType": "address",
           "name": "_feeCollector",
           "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_voteStakeAmountProof",
-          "type": "uint256"
         }
       ],
       "stateMutability": "nonpayable",
@@ -1062,7 +1032,14 @@ const BET_ABI =  [
     },
     {
       "anonymous": false,
-      "inputs": [],
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
       "name": "BetCancelled",
       "type": "event"
     },
@@ -1159,9 +1136,9 @@ const BET_ABI =  [
         },
         {
           "indexed": false,
-          "internalType": "uint256",
+          "internalType": "enum Bet.Side",
           "name": "vote",
-          "type": "uint256"
+          "type": "uint8"
         },
         {
           "indexed": false,
@@ -1230,6 +1207,19 @@ const BET_ABI =  [
     },
     {
       "inputs": [],
+      "name": "creator",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "currentStatus",
       "outputs": [
         {
@@ -1245,11 +1235,6 @@ const BET_ABI =  [
       "inputs": [],
       "name": "details",
       "outputs": [
-        {
-          "internalType": "address",
-          "name": "creator",
-          "type": "address"
-        },
         {
           "internalType": "string",
           "name": "title",
@@ -1288,16 +1273,6 @@ const BET_ABI =  [
         {
           "internalType": "uint8",
           "name": "minimumTrustScore",
-          "type": "uint8"
-        },
-        {
-          "internalType": "uint8",
-          "name": "voterRewardPercentage",
-          "type": "uint8"
-        },
-        {
-          "internalType": "uint8",
-          "name": "platformFeePercentage",
           "type": "uint8"
         },
         {
@@ -1342,11 +1317,6 @@ const BET_ABI =  [
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "creator",
-              "type": "address"
-            },
-            {
               "internalType": "string",
               "name": "title",
               "type": "string"
@@ -1387,16 +1357,6 @@ const BET_ABI =  [
               "type": "uint8"
             },
             {
-              "internalType": "uint8",
-              "name": "voterRewardPercentage",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint8",
-              "name": "platformFeePercentage",
-              "type": "uint8"
-            },
-            {
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
@@ -1425,16 +1385,6 @@ const BET_ABI =  [
           "type": "string"
         },
         {
-          "internalType": "address",
-          "name": "creator",
-          "type": "address"
-        },
-        {
-          "internalType": "enum Bet.Status",
-          "name": "status",
-          "type": "uint8"
-        },
-        {
           "internalType": "uint256",
           "name": "totalYes",
           "type": "uint256"
@@ -1446,8 +1396,23 @@ const BET_ABI =  [
         },
         {
           "internalType": "uint256",
-          "name": "creationTimestamp",
+          "name": "bettingDeadline",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "proofDeadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "votingDeadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "proof",
+          "type": "string"
         },
         {
           "internalType": "uint256",
@@ -1456,7 +1421,7 @@ const BET_ABI =  [
         },
         {
           "internalType": "uint256",
-          "name": "votersCount",
+          "name": "voters",
           "type": "uint256"
         }
       ],
@@ -1706,19 +1671,6 @@ const BET_ABI =  [
       "name": "vote",
       "outputs": [],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "voteStakeAmountProof",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
       "type": "function"
     },
     {

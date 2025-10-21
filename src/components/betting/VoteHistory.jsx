@@ -1,8 +1,6 @@
-
 import React from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle, XCircle } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import AddressDisplay from "../common/AddressDisplay";
 
 export default function VoteHistory({ votes }) {
@@ -26,7 +24,6 @@ export default function VoteHistory({ votes }) {
             <TableRow className="border-gray-700 hover:bg-transparent">
               <TableHead className="text-gray-400">Vote</TableHead>
               <TableHead className="text-gray-400">Voter</TableHead>
-              <TableHead className="text-gray-400 text-right">Time</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -45,10 +42,7 @@ export default function VoteHistory({ votes }) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <AddressDisplay address={vote.voter_address} />
-                </TableCell>
-                <TableCell className="text-right text-gray-400 text-xs">
-                  {formatDistanceToNow(new Date(vote.created_date), { addSuffix: true })}
+                  <AddressDisplay address={vote.address} />
                 </TableCell>
               </TableRow>
             ))}
