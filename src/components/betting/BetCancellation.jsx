@@ -1,19 +1,69 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw, User, Vote } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
+import { AlertCircle, RefreshCw, User, Vote, Loader2, DollarSign } from "lucide-react";
+import { getBetContract } from "../blockchain/contracts";
+import { ethers } from "ethers";
 
-export default function BetCancellation({ bet, participants }) {
-  if (bet.status !== 'cancelled') return null;
+export default function BetCancellation({ bet, participants, walletAddress, loadBetDetails }) {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState("");
+  const [userHasRefund, setUserHasRefund] = useState(false);
+  const [userRefundAmount, setUserRefundAmount] = useState(0);
+  const [hasClaimedRefund, setHasClaimedRefund] = useState(false);
+
+  useEffect(() => {
+    const checkRefundStatus = async () => {
+      if (!walletAddress || !bet) return;
+      
+      try {
+        const betContract = getBetContract(bet.address);
+        const participantData = await betContract.participants(walletAddress);
+        
+        const totalStake = parseFloat(ethers.formatUnits(participantData.yesStake, 6)) + 
+                          parseFloat(ethers.formatUnits(participantData.noStake, 6));
+        
+        setUserRefundAmount(totalStake);
+        setUserHasRefund(totalStake > 0);
+        setHasClaimedRefund(participantData.hasWithdrawn);
+      } catch (e) {
+        console.error("Could not check refund status:", e);
+      }
+    };
+    
+    checkRefundStatus();
+  }, [walletAddress, bet]);
+
+  const handleClaimRefund = async () => {
+    setIsProcessing(true);
+    setError("");
+    
+    try {
+      const betContract = getBetContract(bet.address, true);
+      const tx = await betContract.claimRefund();
+      await tx.wait();
+      
+      // Reload to update the UI
+      if (loadBetDetails) {
+        loadBetDetails(bet.address);
+      }
+      
+      setHasClaimedRefund(true);
+    } catch (err) {
+      console.error("Failed to claim refund:", err);
+      setError(err.reason || err.message || "Failed to claim refund. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (bet.effectiveStatus !== 'cancelled') return null;
 
   const getCancellationReason = () => {
-    // Check if cancellation was due to voting failure
-    const votingDeadline = new Date(bet.voting_deadline);
+    const votingDeadline = new Date(bet.votingDeadline * 1000);
     const now = new Date();
-    // A bit of a proxy: if we are past the voting deadline and status is cancelled, it was likely a vote failure
-    if (now > votingDeadline && bet.proof_submitted) {
+
+    if (now > votingDeadline && bet.proofUrl) {
         const minimumVotes = bet.minimum_votes || 3;
         if (bet.voters_count < minimumVotes) {
             return `The minimum of ${minimumVotes} public votes was not reached by the voting deadline.`;
@@ -21,15 +71,13 @@ export default function BetCancellation({ bet, participants }) {
         return `The vote resulted in a tie, so the bet could not be resolved.`;
     }
     
-    // Check if cancellation was due to proof failure
-    const proofDeadline = new Date(bet.proof_deadline);
-    if (now > proofDeadline && !bet.proof_submitted) {
+    const proofDeadline = new Date(bet.proofDeadline * 1000);
+    if (now > proofDeadline && !bet.proofUrl) {
         return `The creator did not submit proof of the outcome before the deadline.`;
     }
 
-    // Default to stake failure
     const minSideStake = bet.minimum_side_stake || 0;
-    return `The minimum stake of ${minSideStake} USDC was not met on both the YES and NO sides by the betting deadline.`;
+    return `The minimum stake of ${minSideStake.toLocaleString()} USDC was not met on both the YES and NO sides by the betting deadline.`;
   };
 
   return (
@@ -37,7 +85,7 @@ export default function BetCancellation({ bet, participants }) {
       <CardHeader>
         <CardTitle className="text-white flex items-center gap-2">
           <AlertCircle className="w-5 h-5 text-red-400" />
-          Bet Cancelled & Stakes Refundable
+          Market Cancelled - Refunds Available
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -46,20 +94,61 @@ export default function BetCancellation({ bet, participants }) {
           <p className="text-red-300">{getCancellationReason()}</p>
         </div>
 
-        <div className="space-y-3">
-          <h3 className="font-semibold text-white flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-cyan-400" />
-            Stake Refunds Issued
-          </h3>
-          <p className="text-sm text-gray-400">
-            All participants can now claim a full refund of their original stake from their internal wallet on the Dashboard Wallet tab.
-          </p>
-          <Link to={createPageUrl("Dashboard?tab=wallet")}>
-            <Button variant="outline" className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10">
-              Go to Wallet
-            </Button>
-          </Link>
-        </div>
+        {walletAddress && userHasRefund && (
+          <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-green-400" />
+                Your Refund
+              </h3>
+              <span className="text-2xl font-bold text-green-400">
+                ${userRefundAmount.toFixed(2)} USDC
+              </span>
+            </div>
+            
+            {hasClaimedRefund ? (
+              <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-md">
+                <p className="text-green-300 text-sm">✓ Refund claimed successfully! Check your internal wallet.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-400">
+                  Your original stake is ready to be claimed. It will be returned to your internal wallet.
+                </p>
+                <Button 
+                  onClick={handleClaimRefund} 
+                  disabled={isProcessing}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Claiming Refund...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Claim Refund
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+            
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/50 rounded-md">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-300">{error}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {walletAddress && !userHasRefund && !hasClaimedRefund && (
+          <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-md">
+            <p className="text-blue-300 text-sm">You did not participate in this market, so there is no refund to claim.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

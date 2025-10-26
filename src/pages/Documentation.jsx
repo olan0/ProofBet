@@ -20,11 +20,20 @@ import {
   CheckCircle,
   PieChart,
   Lock,
-  Wallet, // New Icon
-  Download, // New Icon
-  Upload, // New Icon
+  Wallet,
+  Download,
+  Upload,
+  PlayCircle, // New Icon
 } from "lucide-react";
-import VestingScheduleDisplay from "../components/documentation/VestingScheduleDisplay";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 
 export default function DocumentationPage() {
   const [activeSection, setActiveSection] = useState("overview");
@@ -37,6 +46,45 @@ export default function DocumentationPage() {
     { id: "smart-contracts", title: "Smart Contracts", icon: Code },
     { id: "api", title: "Technical Specs", icon: FileText },
     { id: "roadmap", title: "Roadmap", icon: TrendingUp }
+  ];
+
+  const vestingSchedules = [
+    {
+      beneficiary: 'Team & Advisors',
+      total_allocation: '200,000,000',
+      allocation_percentage: 20,
+      cliff_duration_months: 12,
+      vesting_duration_months: 48,
+      status: { label: "Vesting", icon: <PlayCircle className="w-4 h-4 text-blue-400" />, color: "bg-blue-500/10 text-blue-300" },
+      unlocked: '25.00'
+    },
+    {
+      beneficiary: 'Seed Investors',
+      total_allocation: '150,000,000',
+      allocation_percentage: 15,
+      cliff_duration_months: 6,
+      vesting_duration_months: 24,
+      status: { label: "Vesting", icon: <PlayCircle className="w-4 h-4 text-blue-400" />, color: "bg-blue-500/10 text-blue-300" },
+      unlocked: '50.00'
+    },
+    {
+      beneficiary: 'Foundation Treasury',
+      total_allocation: '100,000,000',
+      allocation_percentage: 10,
+      cliff_duration_months: 0,
+      vesting_duration_months: 60,
+      status: { label: "Vesting", icon: <PlayCircle className="w-4 h-4 text-blue-400" />, color: "bg-blue-500/10 text-blue-300" },
+      unlocked: '10.00'
+    },
+     {
+      beneficiary: 'Community & Ecosystem',
+      total_allocation: '450,000,000',
+      allocation_percentage: 45,
+      cliff_duration_months: 0,
+      vesting_duration_months: 72,
+      status: { label: "Locked", icon: <Lock className="w-4 h-4 text-red-400" />, color: "bg-red-500/10 text-red-300" },
+      unlocked: '0.00'
+    }
   ];
 
   return (
@@ -251,11 +299,48 @@ export default function DocumentationPage() {
                            Vesting & Release Schedule
                         </CardTitle>
                         <p className="text-gray-400 pt-2">
-                          To ensure long-term commitment and prevent market manipulation, team and investor tokens are subject to a multi-year vesting schedule. This table displays the live release status for all allocated tokens.
+                          To ensure long-term commitment and prevent market manipulation, team and investor tokens are subject to a multi-year vesting schedule. This table displays the planned release schedule for all allocated tokens.
                         </p>
                       </CardHeader>
                       <CardContent>
-                        <VestingScheduleDisplay />
+                        <div className="overflow-x-auto">
+                          <Table className="bg-gray-800 border-gray-700 rounded-lg">
+                            <TableHeader>
+                              <TableRow className="border-b-gray-700">
+                                <TableHead className="text-white">Beneficiary</TableHead>
+                                <TableHead className="text-white">Total Allocation (PROOF)</TableHead>
+                                <TableHead className="text-white">Cliff</TableHead>
+                                <TableHead className="text-white">Vesting Period</TableHead>
+                                <TableHead className="text-white">Status</TableHead>
+                                <TableHead className="text-white text-right">Unlocked</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {vestingSchedules.map((schedule) => {
+                                const status = schedule.status;
+                                const unlocked = schedule.unlocked;
+                                return (
+                                  <TableRow key={schedule.beneficiary} className="border-b-gray-700/50">
+                                    <TableCell className="font-medium text-gray-200">{schedule.beneficiary}</TableCell>
+                                    <TableCell className="text-gray-300">
+                                      {schedule.total_allocation} 
+                                      <span className="text-gray-400 ml-2">({schedule.allocation_percentage}%)</span>
+                                    </TableCell>
+                                    <TableCell className="text-gray-300">{schedule.cliff_duration_months} months</TableCell>
+                                    <TableCell className="text-gray-300">{schedule.vesting_duration_months} months</TableCell>
+                                    <TableCell>
+                                      <Badge className={`flex items-center gap-2 ${status.color}`}>
+                                        {status.icon}
+                                        {status.label}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right text-gray-300">{unlocked}%</TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </CardContent>
                     </Card>
                     
@@ -727,50 +812,49 @@ export default function DocumentationPage() {
                         phase: "Phase 1: Core Platform Launch",
                         status: "Completed",
                         color: "green",
-                        timeline: "Q2 2024",
+                        timeline: "Q3 2025",
                         features: [
                           "Dual-token system (USDC & PROOF)",
                           "Core bet creation, betting, and voting logic",
-                          "Smart contract architecture defined",
-                          "Trust score system V1 implementation",
-                          "Web3 wallet connectivity"
+                          "Internal wallet system for gasless actions",
+                          "Smart contract architecture on local testnet",
+                          "Web3 wallet connectivity and basic UI"
                         ]
                       },
                       {
-                        phase: "Phase 2: Feature Expansion", 
+                        phase: "Phase 2: UX & Feature Polish", 
                         status: "In Progress",
                         color: "blue",
-                        timeline: "Q3 2024",
+                        timeline: "Q4 2025",
                         features: [
-                          "Live streaming integration for real-time proof",
-                          "Advanced market filtering and search",
-                          "Social features and enhanced user profiles",
-                          "Personalized analytics and statistics dashboard",
-                          "Mobile-first responsive design improvements"
+                          "Advanced market filtering and search capabilities",
+                          "Mobile-first responsive design improvements",
+                          "Social features (e.g., user aliases) and enhanced profiles",
+                          "Real-time UI updates for market status changes",
+                          "Comprehensive documentation portal"
                         ]
                       },
                       {
                         phase: "Phase 3: DeFi & Scalability",
                         status: "Planned",
                         color: "purple", 
-                        timeline: "Q4 2024",
+                        timeline: "Q1-Q2 2026",
                         features: [
-                          "PROOF token staking with yield rewards",
-                          "Liquidity mining programs",
-                          "Cross-chain support (e.g., Polygon, Arbitrum)",
-                          "Integration with major DeFi protocols",
-                          "Automated Market Makers (AMMs) for improved odds",
-                          "Ethereum Name Service (ENS) integration for decentralized usernames"
+                          "PROOF token staking to earn yield from platform revenue",
+                          "Lending protocol integration to enable betting without selling assets",
+                          "Personalized analytics and statistics dashboard",
+                          "Live streaming integration for real-time proof",
+                          "Cross-chain support (e.g., Polygon, Arbitrum) for lower gas fees"
                         ]
                       },
                       {
                         phase: "Phase 4: Decentralized Governance",
                         status: "Vision",
                         color: "orange",
-                        timeline: "Q1 2025",
+                        timeline: "Q3 2026 and beyond",
                         features: [
                           "DAO formation for community governance",
-                          "On-chain voting with PROOF tokens",
+                          "On-chain voting with PROOF tokens for platform proposals",
                           "Community-managed treasury",
                           "Public API for third-party developers",
                           "Expansion into enterprise prediction solutions"

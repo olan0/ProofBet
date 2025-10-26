@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, PartyPopper, Wallet, AlertCircle } from 'lucide-react';
+import { Loader2, PartyPopper, Wallet, AlertCircle, Clock, Bug } from 'lucide-react';
 import { getBetContract } from '../blockchain/contracts';
 import { ethers } from 'ethers';
 
@@ -10,26 +9,38 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
   const [userParticipantData, setUserParticipantData] = useState(null);
-  const [userVoteStake, setUserVoteStake] = useState(null); // New state variable
+  const [userVoteStake, setUserVoteStake] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null);
 
   useEffect(() => {
-    const findUserData = async () => { // Renamed from findParticipantData for clarity
+    const findUserData = async () => {
       if (!walletAddress || !bet) return;
       try {
         const betContract = getBetContract(bet.address);
-        // Fetch both participant data and vote stake in parallel
-        const [participantData, voteStakeData] = await Promise.all([
+        const [participantData, voteStakeData, winningSide] = await Promise.all([
             betContract.participants(walletAddress),
-            betContract.voterStakesProof(walletAddress)
+            betContract.voterStakesProof(walletAddress),
+            betContract.winningSide()
         ]);
+        
         setUserParticipantData(participantData);
         setUserVoteStake(voteStakeData);
+        
+        // Debug info
+        setDebugInfo({
+          winningSide: Number(winningSide),
+          userYesStake: ethers.formatUnits(participantData.yesStake, 6),
+          userNoStake: ethers.formatUnits(participantData.noStake, 6),
+          hasWithdrawn: participantData.hasWithdrawn,
+          voterStake: ethers.formatEther(voteStakeData)
+        });
+        
       } catch (e) {
-        console.error("Could not fetch user data:", e); // Updated error message
+        console.error("Could not fetch user data:", e);
       }
     };
     findUserData();
-  }, [walletAddress, bet, loadBetDetails]);
+  }, [walletAddress, bet]);
 
   const { canClaimWinnings, canClaimVoterRewards } = useMemo(() => {
     if (!walletAddress || !bet || bet.effectiveStatus !== 'completed') {
@@ -46,8 +57,6 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
 
     // Check for voter rewards
     const didVote = votes.some(v => v.address.toLowerCase() === walletAddress.toLowerCase());
-    // A voter's stake is set to 0 after they claim rewards.
-    // Check if userVoteStake is not null (meaning it has been fetched) and if it's 0n (BigInt zero)
     const hasWithdrawnVoterRewards = userVoteStake !== null && userVoteStake === 0n; 
     const hasVoterRewardsToClaim = didVote && !hasWithdrawnVoterRewards;
 
@@ -56,7 +65,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
       canClaimVoterRewards: hasVoterRewardsToClaim 
     };
 
-  }, [walletAddress, bet, participants, votes, userParticipantData, userVoteStake]); // Added userVoteStake to dependencies
+  }, [walletAddress, bet, participants, votes, userParticipantData, userVoteStake]);
 
   const handleClaim = async () => {
     setIsProcessing(true);
@@ -65,17 +74,28 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
       const betContract = getBetContract(bet.address, true);
       let tx;
       if (canClaimWinnings) {
+        console.log("Attempting to claim winnings...");
         tx = await betContract.claimWinnings();
       } else if (canClaimVoterRewards) {
+        console.log("Attempting to claim voter rewards...");
         tx = await betContract.claimVoterRewards();
       }
       if (tx) {
+        console.log("Transaction sent, waiting for confirmation...");
         await tx.wait();
-        loadBetDetails(bet.address); // Refresh details to update claimed status
+        console.log("Transaction confirmed!");
+        loadBetDetails(bet.address);
       }
     } catch (err) {
       console.error("Claim failed:", err);
-      setError(err.reason || "The transaction failed. Please check your wallet and try again.");
+      
+      if (err.message && err.message.includes("Winnings not yet distributed")) {
+        setError("⚠️ Contract Error: The market status is 'Completed' but the smart contract hasn't finalized winnings distribution. This is likely a bug in the contract's resolution logic. Please check the Admin panel's Keeper section or contact support.");
+      } else if (err.message && err.message.includes("No winnings to claim")) {
+        setError("You don't have any winnings to claim from this market.");
+      } else {
+        setError(err.reason || err.message || "Transaction failed. Please try again.");
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -112,10 +132,25 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
         </Button>
 
         {error && (
-          <div className="flex items-center gap-2 text-sm text-red-400">
-            <AlertCircle className="w-4 h-4" />
-            <p>{error}</p>
+          <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/50 rounded-md">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-red-300 font-semibold mb-1">Claim Failed</p>
+              <p className="text-sm text-red-200">{error}</p>
+            </div>
           </div>
+        )}
+        
+        {debugInfo && (
+          <details className="text-xs text-gray-400 bg-gray-900/50 border border-gray-700 rounded p-2">
+            <summary className="cursor-pointer flex items-center gap-2 font-semibold">
+              <Bug className="w-3 h-3" />
+              Debug Info (for developers)
+            </summary>
+            <pre className="mt-2 overflow-x-auto">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </details>
         )}
       </CardContent>
     </Card>

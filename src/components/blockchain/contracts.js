@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 
 // --- ACTION REQUIRED: PASTE YOUR DEPLOYED CONTRACT ADDRESSES HERE ---
 // You can get these from the output of the 'npx hardhat ignition deploy' command.
-const CONTRACT_ADDRESSES = {
+export const CONTRACT_ADDRESSES = {
   BetFactory: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
   ProofToken: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
   TrustScore: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
@@ -14,7 +14,7 @@ const CONTRACT_ADDRESSES = {
 // You can find these JSON files in your local 'artifacts/contracts/...' directory after compiling.
 
 // This is a standard ABI for token interactions.
-const ERC20_ABI = [
+export const ERC20_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
@@ -27,7 +27,7 @@ const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-const BET_FACTORY_ABI =  [
+export const BET_FACTORY_ABI =  [
     {
       "inputs": [
         {
@@ -936,7 +936,7 @@ const BET_FACTORY_ABI =  [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-const BET_ABI = [
+export const BET_ABI = [
     {
       "inputs": [
         {
@@ -1745,13 +1745,6 @@ const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "withdrawFunds",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "yesVotes",
       "outputs": [
         {
@@ -1765,7 +1758,7 @@ const BET_ABI = [
     }
   ];
 // Find the full ABI array in: 'artifacts/contracts/TrustScore.sol/TrustScore.json'
-const TRUST_SCORE_ABI = [
+export const TRUST_SCORE_ABI = [
     {
       "inputs": [],
       "stateMutability": "nonpayable",

@@ -1,10 +1,9 @@
-
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Video, Camera, Image as ImageIcon, User, Clock, Users, Vote, Target } from "lucide-react";
 import AddressDisplay from "../common/AddressDisplay";
-import moment from 'moment'; // Import moment
+import moment from 'moment';
 
 const getStatusInfo = (status) => {
     const statuses = {
@@ -22,6 +21,8 @@ const getStatusInfo = (status) => {
 export default function BetDetailHeader({ bet }) {
   const { text, color } = getStatusInfo(bet.effectiveStatus);
 
+  // Convert Unix timestamps (seconds) to moment objects
+  // Note: bet.bettingDeadline is already in seconds from the blockchain
   const deadlines = [
     { label: 'Betting Closes', date: moment.unix(bet.bettingDeadline) },
     { label: 'Proof Deadline', date: moment.unix(bet.proofDeadline) },
@@ -51,7 +52,7 @@ export default function BetDetailHeader({ bet }) {
             </div>
             <div className="flex items-center gap-4">
                 {deadlines.map(d => (
-                    <span key={d.label} className="flex items-center gap-1.5" title={d.date.format('lll')}>
+                    <span key={d.label} className="flex items-center gap-1.5" title={d.date.format('LLLL')}>
                         <Clock className="w-4 h-4 text-gray-500"/> 
                         {d.label}: {d.date.fromNow()}
                     </span>

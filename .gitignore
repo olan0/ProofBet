@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 .env
-contracts/ignition/deployments/chain-31337/journal.jsonl
+contracts/ignition/*.*
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#MockERC20.json
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#ProofToken.json
@@ -50,3 +50,6 @@ contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.j
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
 contracts/ignition/deployments/chain-31337/journal.jsonl
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
+contracts/ignition/deployments/chain-31337/journal.jsonl
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-b5537340bff35a68318490ab414f9e0b2d90bebe.json

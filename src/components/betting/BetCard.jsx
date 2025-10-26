@@ -23,6 +23,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const CountdownTimer = ({ deadline, status, prefix }) => {
+    // deadline is already in Unix seconds from the blockchain
     const deadlineMoment = moment.unix(deadline);
     const now = moment();
 
@@ -33,7 +34,7 @@ const CountdownTimer = ({ deadline, status, prefix }) => {
         return <span className="text-gray-400">Finished</span>;
     }
     
-    return <span className="text-gray-300">{prefix}{moment.unix(deadline).fromNow(true)}</span>;
+    return <span className="text-gray-300">{prefix}{deadlineMoment.fromNow(true)}</span>;
 }
 
 export default function BetCard({ bet }) {
@@ -43,7 +44,7 @@ export default function BetCard({ bet }) {
         switch(bet.effectiveStatus) {
             case 'open_for_bets': return { deadline: bet.bettingDeadline, prefix: 'Closes in ' };
             case 'betting_closed':
-            case 'awaiting_proof': // Use the same deadline for both
+            case 'awaiting_proof':
                 return { deadline: bet.proofDeadline, prefix: 'Proof due in ' };
             case 'voting': return { deadline: bet.votingDeadline, prefix: 'Voting ends in ' };
             default: return null;
@@ -74,11 +75,21 @@ export default function BetCard({ bet }) {
                 <CardFooter className="border-t border-gray-700 pt-3">
                     <div className="flex items-center gap-2 text-sm">
                         <Clock className="w-4 h-4 text-gray-500" />
-                        {deadlineInfo ? (
-                            <CountdownTimer deadline={deadlineInfo.deadline} status={bet.effectiveStatus} prefix={deadlineInfo.prefix} />
-                        ) : (
-                            <span className="text-gray-400">Resolution in progress</span>
-                        )}
+                        {
+                            bet.effectiveStatus === 'completed' ? (
+                                <span className="text-gray-400">Completed</span>
+                            ) : bet.effectiveStatus === 'cancelled' ? (
+                                <span className="text-gray-400">Cancelled</span>
+                            ) : bet.effectiveStatus === 'awaiting_resolution' ? (
+                                <span className="text-purple-400">Resolving...</span>
+                            ) : bet.effectiveStatus === 'awaiting_cancellation_no_proof' ? (
+                                <span className="text-orange-400">Cancelling...</span>
+                            ) : deadlineInfo ? (
+                                <CountdownTimer deadline={deadlineInfo.deadline} status={bet.effectiveStatus} prefix={deadlineInfo.prefix} />
+                            ) : (
+                                <span className="text-gray-400">Resolution in progress</span>
+                            )
+                        }
                     </div>
                 </CardFooter>
             </Card>

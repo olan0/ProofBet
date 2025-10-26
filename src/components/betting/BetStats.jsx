@@ -1,18 +1,19 @@
-
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, Users, Clock, CheckCircle, Info, Vote, XCircle } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 
 export default function BetStats({ bet, votes = [] }) {
   const totalStake = (bet.total_yes_stake_usd || 0) + (bet.total_no_stake_usd || 0);
   const minimumVotes = bet.minimum_votes || 3;
 
-  // Use the participant and voter counts from the bet object (now refreshed from blockchain)
   const participantCount = bet.participants_count || 0;
   const voterCount = bet.voters_count || 0;
 
   const DeadlineInfo = () => {
+    // Convert Unix seconds to milliseconds for JavaScript Date
+    const toDate = (unixSeconds) => new Date(unixSeconds * 1000);
+    
     switch (bet.effectiveStatus) {
       case 'open_for_bets':
         return (
@@ -22,7 +23,7 @@ export default function BetStats({ bet, votes = [] }) {
               <span>Betting Ends</span>
             </div>
             <span className="font-semibold text-sm">
-              {bet.bettingDeadline ? formatDistanceToNow(new Date(bet.bettingDeadline * 1000), { addSuffix: true }) : 'N/A'}
+              {bet.bettingDeadline ? formatDistanceToNow(toDate(bet.bettingDeadline), { addSuffix: true }) : 'N/A'}
             </span>
           </div>
         );
@@ -35,7 +36,7 @@ export default function BetStats({ bet, votes = [] }) {
               <span>Proof Deadline</span>
             </div>
             <span className="font-semibold text-sm">
-              {bet.proofDeadline ? formatDistanceToNow(new Date(bet.proofDeadline * 1000), { addSuffix: true }) : 'N/A'}
+              {bet.proofDeadline ? formatDistanceToNow(toDate(bet.proofDeadline), { addSuffix: true }) : 'N/A'}
             </span>
           </div>
         );
@@ -48,7 +49,7 @@ export default function BetStats({ bet, votes = [] }) {
               <span>Voting Ends</span>
             </div>
             <span className="font-semibold text-sm">
-              {bet.votingDeadline ? formatDistanceToNow(new Date(bet.votingDeadline * 1000), { addSuffix: true }) : 'N/A'}
+              {bet.votingDeadline ? formatDistanceToNow(toDate(bet.votingDeadline), { addSuffix: true }) : 'N/A'}
             </span>
           </div>
         );
@@ -60,7 +61,6 @@ export default function BetStats({ bet, votes = [] }) {
               <span>Resolved</span>
             </div>
             <span className="font-semibold text-sm">
-               {/* No on-chain resolution date, so we leave this static */}
                Awaiting claims
             </span>
           </div>

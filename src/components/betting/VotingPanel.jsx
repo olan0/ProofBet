@@ -158,11 +158,6 @@ export default function VotingPanel({
 
   // Betting UI
   if (bet.effectiveStatus === 'open_for_bets') {
-    const handleBetButtonClick = (side) => {
-      if (!walletConnected) { onRequestWalletConnect(); return; }
-      if (!hasSufficientUsdcForBet) { navigate(createPageUrl("Dashboard") + "?tab=wallet"); return; }
-      handlePlaceBet(side);
-    };
     return (
       <Card className="bg-gray-800 border-gray-700">
         <CardHeader>
@@ -175,10 +170,39 @@ export default function VotingPanel({
             <Label htmlFor="betAmount" className="text-gray-300">Bet Amount (USDC)</Label>
             <Input id="betAmount" type="number" step="0.01" min={bet.minimum_bet_amount} value={betAmount} onChange={(e) => setBetAmount(parseFloat(e.target.value))} className="bg-gray-700 border-gray-600 text-white" />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button onClick={() => handleBetButtonClick('yes')} disabled={isProcessing} className="bg-green-600">Bet YES</Button>
-            <Button onClick={() => handleBetButtonClick('no')} disabled={isProcessing} className="bg-red-600">Bet NO</Button>
-          </div>
+
+          {!walletConnected ? (
+            <Button onClick={onRequestWalletConnect} className="w-full bg-cyan-600 hover:bg-cyan-700">
+              <Wallet className="w-4 h-4 mr-2" />
+              Connect Wallet to Bet
+            </Button>
+          ) : !hasSufficientUsdcForBet ? (
+            <div className="space-y-2 text-center">
+              <p className="text-sm text-yellow-400">
+                You need at least {betAmount.toFixed(2)} USDC to place this bet. Your balance is {internalBalances.usdc.toFixed(2)} USDC.
+              </p>
+              <Button onClick={() => navigate(createPageUrl("Dashboard") + "?tab=wallet")} className="w-full bg-yellow-600 hover:bg-yellow-700 text-black">
+                <Plus className="w-4 h-4 mr-2" />
+                Deposit USDC
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => handlePlaceBet('yes')} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "Bet YES"}
+              </Button>
+              <Button onClick={() => handlePlaceBet('no')} disabled={isProcessing} className="bg-red-600 hover:bg-red-700">
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "Bet NO"}
+              </Button>
+            </div>
+          )}
+          
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-400 pt-2">
+                <AlertCircle className="w-4 h-4" />
+                <p>{error}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

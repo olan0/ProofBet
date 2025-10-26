@@ -292,6 +292,7 @@ contract Bet is ReentrancyGuard {
                 }
             }
             betFactory.factoryLogBetCompletion(creator); // Notify factory on completion regardless of outcome
+            withdrawFunds(); // Automatically trigger fund distribution/refunds
         }
     }
     
@@ -305,7 +306,7 @@ contract Bet is ReentrancyGuard {
     
     // === FUND WITHDRAWAL ===
 
-    function withdrawFunds() external nonReentrant {
+    function withdrawFunds() internal {
         require(_currentStatus == Status.COMPLETED || _currentStatus == Status.CANCELLED, "Bet not finished");
         require(!fundsDistributed, "Funds already being distributed"); // Corrected typo
 

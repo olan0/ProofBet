@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Wallet, TrendingUp, Settings, BookOpen, Code, ChevronDown, LogOut, DollarSign, ShieldCheck } from "lucide-react";
+import { Wallet, TrendingUp, Settings, BookOpen, Code, ChevronDown, LogOut, DollarSign, ShieldCheck, Award } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { getConnectedAddress, disconnectWallet, formatAddress, connectWallet, getUsdcTokenContract, getProofTokenContract, getBetFactoryContract } from "@/components/blockchain/contracts";
+import { TrustScoreManager } from "@/components/trust/TrustScoreManager";
 import { ethers } from "ethers";
 
 export default function Layout({ children }) {
@@ -21,6 +21,7 @@ export default function Layout({ children }) {
   const [connecting, setConnecting] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState("0");
   const [proofBalance, setProofBalance] = useState("0");
+  const [trustScore, setTrustScore] = useState(null);
 
   const fetchBalances = async (address) => {
       if(!address) return;
@@ -28,12 +29,23 @@ export default function Layout({ children }) {
           const factory = getBetFactoryContract();
           const [internalUsdc, internalProof] = await factory.getInternalBalances(address);
           
-          setUsdcBalance(ethers.formatUnits(internalUsdc, 6)); // 6 decimals for USDC
-          setProofBalance(ethers.formatEther(internalProof)); // 18 decimals for PROOF
+          setUsdcBalance(ethers.formatUnits(internalUsdc, 6));
+          setProofBalance(ethers.formatEther(internalProof));
       } catch (error) {
           console.error("Failed to fetch internal balances:", error);
           setUsdcBalance("0");
           setProofBalance("0");
+      }
+  };
+
+  const fetchTrustScore = async (address) => {
+      if(!address) return;
+      try {
+          const score = await TrustScoreManager.getTrustScore(address);
+          setTrustScore(score);
+      } catch (error) {
+          console.error("Failed to fetch trust score:", error);
+          setTrustScore({ overall_score: 0 });
       }
   };
 
@@ -44,12 +56,12 @@ export default function Layout({ children }) {
         setWalletAddress(address);
         setWalletConnected(true);
         fetchBalances(address);
+        fetchTrustScore(address);
       }
     };
     checkWallet();
   }, []);
   
-  // Add a listener for account changes
   useEffect(() => {
       if(window.ethereum) {
           const handleAccountsChanged = (accounts) => {
@@ -58,6 +70,7 @@ export default function Layout({ children }) {
                   setWalletAddress(newAddress);
                   setWalletConnected(true);
                   fetchBalances(newAddress);
+                  fetchTrustScore(newAddress);
               } else {
                   handleDisconnectWallet();
               }
@@ -77,6 +90,7 @@ export default function Layout({ children }) {
         setWalletAddress(address);
         setWalletConnected(true);
         fetchBalances(address);
+        fetchTrustScore(address);
       }
     } catch (error) {
       console.error("Failed to connect wallet:", error);
@@ -91,11 +105,19 @@ export default function Layout({ children }) {
       setWalletConnected(false);
       setUsdcBalance("0");
       setProofBalance("0");
-      // Reload the page to ensure all components reflect the disconnected state
+      setTrustScore(null);
       window.location.reload();
     } catch (error) {
       console.error("Failed to disconnect wallet:", error);
     }
+  };
+
+  const getTrustScoreColor = (score) => {
+    if (score >= 80) return 'text-green-400';
+    if (score >= 60) return 'text-blue-400';
+    if (score >= 40) return 'text-yellow-400';
+    if (score >= 20) return 'text-orange-400';
+    return 'text-red-400';
   };
 
   return (
@@ -131,7 +153,6 @@ export default function Layout({ children }) {
               </Button>
             </Link>
             
-            {/* Always show Create Market button when wallet is connected */}
             {walletConnected && (
               <Link to={createPageUrl("CreateBet")}>
                 <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
@@ -154,7 +175,6 @@ export default function Layout({ children }) {
               </Button>
             </Link>
             
-            {/* Always show Admin for testing - all users can access faucet */}
             <Link to={createPageUrl("Admin")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
                 <Settings className="w-4 h-4 mr-2" />
@@ -178,14 +198,29 @@ export default function Layout({ children }) {
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-gray-800 border-gray-700 text-white w-56">
+                <DropdownMenuContent align="end" className="bg-gray-800 border-gray-700 text-white w-64">
                   <DropdownMenuLabel className="font-normal">
                     <p className="text-xs text-gray-400">Connected wallet</p>
                     <p className="text-sm font-mono">{formatAddress(walletAddress)}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-gray-700" />
+                  
+                  <DropdownMenuLabel className="font-normal text-xs text-gray-400">Trust Score</DropdownMenuLabel>
+                  <DropdownMenuItem className="focus:bg-gray-700/50 cursor-default">
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <Award className="w-4 h-4 text-cyan-400" />
+                        <span>Reputation</span>
+                      </div>
+                      <span className={`font-bold text-lg ${getTrustScoreColor(trustScore?.overall_score || 0)}`}>
+                        {trustScore ? Math.round(trustScore.overall_score) : 0}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuSeparator className="bg-gray-700" />
                   <DropdownMenuLabel className="font-normal text-xs text-gray-400">Internal Balances</DropdownMenuLabel>
-                  <DropdownMenuItem className="focus:bg-gray-700/50">
+                  <DropdownMenuItem className="focus:bg-gray-700/50 cursor-default">
                     <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-green-400" />
@@ -194,7 +229,7 @@ export default function Layout({ children }) {
                       <span className="font-mono">{parseFloat(usdcBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="focus:bg-gray-700/50">
+                  <DropdownMenuItem className="focus:bg-gray-700/50 cursor-default">
                      <div className="flex items-center justify-between w-full">
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="w-4 h-4 text-purple-400" />
@@ -215,7 +250,7 @@ export default function Layout({ children }) {
               </DropdownMenu>
             ) : (
               <Button 
-                onClick={handleConnectWallet}
+                onClick={handleConnectWallet} 
                 disabled={connecting}
                 className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white"
               >

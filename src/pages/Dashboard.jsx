@@ -3,15 +3,15 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { LayoutGrid, List, Loader2, Wallet, LogOut } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { LayoutGrid, List, Loader2, Wallet, Plus } from "lucide-react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ethers } from "ethers";
 
 import BetCard from '../components/betting/BetCard';
 import BetRow from "../components/betting/BetRow";
 import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
-import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress, formatAddress } from "../components/blockchain/contracts";
+import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
 
 const STATUS_ENUM = { OPEN_FOR_BETS: 0, AWAITING_PROOF: 1, VOTING: 2, COMPLETED: 3, CANCELLED: 4 };
 const ON_CHAIN_STATUS_MAP = {
@@ -67,6 +67,7 @@ const getEffectiveStatus = (bet) => {
 
 // Main Component
 export default function Dashboard() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("open-for-betting");
   const [bets, setBets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -120,10 +121,6 @@ export default function Dashboard() {
   const handleConnectWallet = async () => {
     const address = await connectWallet();
     setWalletAddress(address);
-  };
-
-  const handleDisconnectWallet = () => {
-    setWalletAddress(null);
   };
 
   const loadBets = useCallback(async () => {
@@ -218,6 +215,14 @@ export default function Dashboard() {
     getConnectedAddress().then(setWalletAddress);
   }, [loadBets]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
+
   const renderBetList = (betList) => {
     if (isLoading) {
       return (
@@ -253,24 +258,14 @@ export default function Dashboard() {
     <div className="container mx-auto p-4 md:p-6">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <h1 className="text-4xl font-bold text-white mb-4 md:mb-0">Markets</h1>
-        <div className="flex gap-2 items-center">
-            {walletAddress ? (
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400 bg-gray-800 px-3 py-2 rounded-md border border-gray-700">{formatAddress(walletAddress)}</span>
-                    <Button variant="ghost" size="icon" onClick={handleDisconnectWallet}>
-                        <LogOut className="w-5 h-5 text-gray-400" />
-                    </Button>
-                </div>
-            ) : (
-                <Button onClick={handleConnectWallet} className="bg-cyan-600 hover:bg-cyan-700">
-                  <Wallet className="w-4 h-4 mr-2" />
-                  Connect Wallet
-                </Button>
-            )}
-            <Link to={createPageUrl("CreateBet")}>
-              <Button className="bg-purple-600 hover:bg-purple-700">Create Bet</Button>
-            </Link>
-        </div>
+        {walletAddress && (
+          <Link to={createPageUrl("CreateBet")}>
+            <Button className="bg-cyan-600 hover:bg-cyan-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Market
+            </Button>
+          </Link>
+        )}
       </header>
 
       {walletAddress ? (

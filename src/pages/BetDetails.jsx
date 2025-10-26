@@ -247,7 +247,8 @@ export default function BetDetails() {
         
         if(tx) {
           await tx.wait();
-          loadBetDetails(betAddress);
+          // Wait a bit for the blockchain to update before reloading
+          setTimeout(() => loadBetDetails(betAddress), 1000);
         }
 
     } catch (err) {
@@ -354,7 +355,12 @@ export default function BetDetails() {
           )}
 
           {effectiveStatus === 'cancelled' && (
-            <BetCancellation bet={bet} participants={participants} />
+            <BetCancellation 
+              bet={{...bet, effectiveStatus}}
+              participants={participants}
+              walletAddress={walletAddress}
+              loadBetDetails={() => loadBetDetails(betAddress)}
+            />
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
