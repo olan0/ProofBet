@@ -38,6 +38,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     uint8 public defaultPlatformFeePercentage;
     uint256 public maxActiveBetsPerUser;                 // Maximum number of active bets a user can create
     mapping(address => uint256) public activeBetsCount;  // Tracks active bets per user
+    mapping(address => uint256) public firstInteraction; // timestamp when user first interacted
 
     // Events
     event BetCreated(address indexed betAddress, address indexed creator, string title);
@@ -87,7 +88,10 @@ contract BetFactory is Ownable, ReentrancyGuard {
     function depositUsdc(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
         require(usdcToken.transferFrom(msg.sender, address(this), _amount), "USDC transfer failed");
-
+        // Record first interaction if not already set
+        if (firstInteraction[msg.sender] == 0) {
+            firstInteraction[msg.sender] = block.timestamp;
+        }
         internalUsdcBalance[msg.sender] += _amount;
         emit UsdcDeposited(msg.sender, _amount);
     }
@@ -95,7 +99,10 @@ contract BetFactory is Ownable, ReentrancyGuard {
     function depositProof(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
         require(proofToken.transferFrom(msg.sender, address(this), _amount), "PROOF transfer failed");
-
+        // Record first interaction if not already set
+        if (firstInteraction[msg.sender] == 0) {
+            firstInteraction[msg.sender] = block.timestamp;
+        }
         internalProofBalance[msg.sender] += _amount;
         emit ProofDeposited(msg.sender, _amount);
     }
@@ -244,7 +251,23 @@ contract BetFactory is Ownable, ReentrancyGuard {
             unchecked { activeBetsCount[creator]--; }
         }
     }
+    // ======== Dynamic stake calculation =========
+    function calculateRequiredStake(address voter) public view returns (uint256) {
+        uint8 trust = trustScoreContract.getScore(voter);
+        uint256 createdAt = firstInteraction[voter] == 0
+            ? block.timestamp // default to now if firstInteraction missing
+            : firstInteraction[voter];
+        uint256 ageDays = (block.timestamp - createdAt) / 1 days;
 
+        uint256 baseStake = voteStakeAmountProof;
+
+        // Multiplier = 3.0x for new users, down to 1.0x for mature trusted users
+        int256 rawMult = 300 - int256(uint256(trust) * 2) - int256(ageDays * 3);
+        if (rawMult < 100) rawMult = 100; // floor 1.0x
+        uint256 multiplier = uint256(rawMult); // scaled by 100
+
+        return (baseStake * multiplier) / 100;
+    }
     // ========= Admin =========
 
     function setCreationFee(uint256 _newFee) external onlyOwner {

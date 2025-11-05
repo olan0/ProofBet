@@ -68,6 +68,9 @@ contract Bet is ReentrancyGuard {
     mapping(address => Side) public votes;
     mapping(address => bool) public voted;
 
+     // track all voter addresses so we can iterate later
+   address[] private voters;
+
     Status private _currentStatus;
 
     // ======== EVENTS ========
@@ -254,12 +257,12 @@ contract Bet is ReentrancyGuard {
             "Trust too low"
         );
 
-        uint256 stakeAmt = betFactory.voteStakeAmountProof();
+        uint256 stakeAmt = betFactory.calculateRequiredStake(msg.sender);
         (, uint256 userProofBalance) = betFactory.getInternalBalances(msg.sender);
         require(userProofBalance >= stakeAmt, "Insufficient PROOF");
 
         betFactory.transferInternalProof(msg.sender, address(this), stakeAmt, "Vote stake");
-
+        voters.push(msg.sender);
         voted[msg.sender] = true;
         votes[msg.sender] = _vote;
         voterStakesProof[msg.sender] += stakeAmt;
@@ -373,12 +376,17 @@ contract Bet is ReentrancyGuard {
             betFactory.transferInternalUsdc(address(this), feeCollector, platformFeeAmount, "Platform fee");
         }
 
-        uint256 losingVoterCount = (winningSide == Side.YES) ? noVotes : yesVotes;
-        if (losingVoterCount > 0) {
-            uint256 losingProof = losingVoterCount * betFactory.voteStakeAmountProof();
-            if (losingProof > 0) {
-                betFactory.transferInternalProof(address(this), address(betFactory), losingProof, "Voter losing stake");
+       // Collect losing voters' proof stakes (dynamic per voter)
+        uint256 totalLosingProofStake = 0;
+        for (uint256 i = 0; i < voters.length; i++) {
+            address voter = voters[i];
+            if (voted[voter] && votes[voter] != winningSide) {
+                totalLosingProofStake += voterStakesProof[voter];
             }
+        }
+
+        if (totalLosingProofStake > 0) {
+            betFactory.transferInternalProof(address(this), address(betFactory), totalLosingProofStake, "Collect losing proof stakes");
         }
     }
 

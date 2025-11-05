@@ -92,8 +92,9 @@ export default function BetDetails() {
   const loadAppSettings = useCallback(async () => {
     try {
       const factory = getBetFactoryContract();
+      const connectedAddr = await getConnectedAddress();
       const [voteStakeAmount, voterRewardPercentage, platformFeePercentage] = await Promise.all([
-        factory.voteStakeAmountProof(),
+        factory.calculateRequiredStake(connectedAddr),
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage()
       ]);

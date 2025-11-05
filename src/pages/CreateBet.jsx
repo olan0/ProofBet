@@ -103,7 +103,7 @@ export default function CreateBet() {
       // Get creation fee, vote stake amount, and default percentages from BetFactory
       const [creationFee, voteStake, defaultVoterReward, defaultPlatformFee, internalBalances] = await Promise.all([
         factory.creationFeeProof(),
-        factory.voteStakeAmountProof(),
+        factory.calculateRequiredStake(address),
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage(),
         factory.getInternalBalances(address) // FETCH INTERNAL BALANCES
