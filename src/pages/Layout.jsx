@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -14,6 +15,10 @@ import {
 import { getConnectedAddress, disconnectWallet, formatAddress, connectWallet, getUsdcTokenContract, getProofTokenContract, getBetFactoryContract } from "@/components/blockchain/contracts";
 import { TrustScoreManager } from "@/components/trust/TrustScoreManager";
 import { ethers } from "ethers";
+import axios from "axios";
+
+
+const apiBaseUrl =import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
 
 export default function Layout({ children }) {
   const [walletAddress, setWalletAddress] = useState("");
@@ -22,6 +27,7 @@ export default function Layout({ children }) {
   const [usdcBalance, setUsdcBalance] = useState("0");
   const [proofBalance, setProofBalance] = useState("0");
   const [trustScore, setTrustScore] = useState(null);
+  const [userAlias, setUserAlias] = useState(null);
 
   const fetchBalances = async (address) => {
       if(!address) return;
@@ -49,6 +55,18 @@ export default function Layout({ children }) {
       }
   };
 
+  const fetchUserAlias = async (address) => {
+      if(!address) return;
+      try {
+        const res = await axios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
+        setUserAlias(res.data.alias);
+         
+      } catch (error) {
+          console.error("Failed to fetch user alias:", error);
+          setUserAlias(null);
+      }
+  };
+
   useEffect(() => {
     const checkWallet = async () => {
       const address = await getConnectedAddress();
@@ -57,6 +75,7 @@ export default function Layout({ children }) {
         setWalletConnected(true);
         fetchBalances(address);
         fetchTrustScore(address);
+        fetchUserAlias(address);
       }
     };
     checkWallet();
@@ -71,6 +90,7 @@ export default function Layout({ children }) {
                   setWalletConnected(true);
                   fetchBalances(newAddress);
                   fetchTrustScore(newAddress);
+                  fetchUserAlias(newAddress);
               } else {
                   handleDisconnectWallet();
               }
@@ -91,6 +111,7 @@ export default function Layout({ children }) {
         setWalletConnected(true);
         fetchBalances(address);
         fetchTrustScore(address);
+        fetchUserAlias(address);
       }
     } catch (error) {
       console.error("Failed to connect wallet:", error);
@@ -106,6 +127,7 @@ export default function Layout({ children }) {
       setUsdcBalance("0");
       setProofBalance("0");
       setTrustScore(null);
+      setUserAlias(null);
       window.location.reload();
     } catch (error) {
       console.error("Failed to disconnect wallet:", error);
@@ -160,6 +182,12 @@ export default function Layout({ children }) {
                 </Button>
               </Link>
             )}
+
+            <Link to={createPageUrl("Statistics")}>
+              <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
+                Statistics
+              </Button>
+            </Link>
             
             <Link to={createPageUrl("Documentation")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
@@ -192,7 +220,7 @@ export default function Layout({ children }) {
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <span className="hidden sm:inline">{formatAddress(walletAddress)}</span>
+                      <span className="hidden sm:inline">{userAlias || formatAddress(walletAddress)}</span>
                       <Wallet className="w-4 h-4 sm:hidden" />
                       <ChevronDown className="w-4 h-4 ml-1" />
                     </div>
@@ -201,7 +229,14 @@ export default function Layout({ children }) {
                 <DropdownMenuContent align="end" className="bg-gray-800 border-gray-700 text-white w-64">
                   <DropdownMenuLabel className="font-normal">
                     <p className="text-xs text-gray-400">Connected wallet</p>
-                    <p className="text-sm font-mono">{formatAddress(walletAddress)}</p>
+                    {userAlias ? (
+                      <>
+                        <p className="text-sm font-semibold">{userAlias}</p>
+                        <p className="text-xs font-mono text-gray-500">{formatAddress(walletAddress)}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm font-mono">{formatAddress(walletAddress)}</p>
+                    )}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-gray-700" />
                   

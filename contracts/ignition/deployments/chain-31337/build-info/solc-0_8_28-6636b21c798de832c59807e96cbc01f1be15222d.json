@@ -1,0 +1,48 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-6636b21c798de832c59807e96cbc01f1be15222d",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/TrustScore.sol": "project/contracts/TrustScore.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": [
+        "project/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/"
+      ],
+      "viaIR": true
+    },
+    "sources": {
+      "npm/@openzeppelin/contracts@5.4.0/access/Ownable.sol": {
+        "content": "// SPDX-License-Identifier: MIT\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\n\npragma solidity ^0.8.20;\n\nimport {Context} from \"../utils/Context.sol\";\n\n/**\n * @dev Contract module which provides a basic access control mechanism, where\n * there is an account (an owner) that can be granted exclusive access to\n * specific functions.\n *\n * The initial owner is set to the address provided by the deployer. This can\n * later be changed with {transferOwnership}.\n *\n * This module is used through inheritance. It will make available the modifier\n * `onlyOwner`, which can be applied to your functions to restrict their use to\n * the owner.\n */\nabstract contract Ownable is Context {\n    address private _owner;\n\n    /**\n     * @dev The caller account is not authorized to perform an operation.\n     */\n    error OwnableUnauthorizedAccount(address account);\n\n    /**\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\n     */\n    error OwnableInvalidOwner(address owner);\n\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\n\n    /**\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\n     */\n    constructor(address initialOwner) {\n        if (initialOwner == address(0)) {\n            revert OwnableInvalidOwner(address(0));\n        }\n        _transferOwnership(initialOwner);\n    }\n\n    /**\n     * @dev Throws if called by any account other than the owner.\n     */\n    modifier onlyOwner() {\n        _checkOwner();\n        _;\n    }\n\n    /**\n     * @dev Returns the address of the current owner.\n     */\n    function owner() public view virtual returns (address) {\n        return _owner;\n    }\n\n    /**\n     * @dev Throws if the sender is not the owner.\n     */\n    function _checkOwner() internal view virtual {\n        if (owner() != _msgSender()) {\n            revert OwnableUnauthorizedAccount(_msgSender());\n        }\n    }\n\n    /**\n     * @dev Leaves the contract without owner. It will not be possible to call\n     * `onlyOwner` functions. Can only be called by the current owner.\n     *\n     * NOTE: Renouncing ownership will leave the contract without an owner,\n     * thereby disabling any functionality that is only available to the owner.\n     */\n    function renounceOwnership() public virtual onlyOwner {\n        _transferOwnership(address(0));\n    }\n\n    /**\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\n     * Can only be called by the current owner.\n     */\n    function transferOwnership(address newOwner) public virtual onlyOwner {\n        if (newOwner == address(0)) {\n            revert OwnableInvalidOwner(address(0));\n        }\n        _transferOwnership(newOwner);\n    }\n\n    /**\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\n     * Internal function without access restriction.\n     */\n    function _transferOwnership(address newOwner) internal virtual {\n        address oldOwner = _owner;\n        _owner = newOwner;\n        emit OwnershipTransferred(oldOwner, newOwner);\n    }\n}\n"
+      },
+      "npm/@openzeppelin/contracts@5.4.0/utils/Context.sol": {
+        "content": "// SPDX-License-Identifier: MIT\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\n\npragma solidity ^0.8.20;\n\n/**\n * @dev Provides information about the current execution context, including the\n * sender of the transaction and its data. While these are generally available\n * via msg.sender and msg.data, they should not be accessed in such a direct\n * manner, since when dealing with meta-transactions the account sending and\n * paying for execution may not be the actual sender (as far as an application\n * is concerned).\n *\n * This contract is only required for intermediate, library-like contracts.\n */\nabstract contract Context {\n    function _msgSender() internal view virtual returns (address) {\n        return msg.sender;\n    }\n\n    function _msgData() internal view virtual returns (bytes calldata) {\n        return msg.data;\n    }\n\n    function _contextSuffixLength() internal view virtual returns (uint256) {\n        return 0;\n    }\n}\n"
+      },
+      "project/contracts/TrustScore.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.19;\r\n\r\nimport \"@openzeppelin/contracts/access/Ownable.sol\";\r\n\r\n/**\r\n * @title TrustScore\r\n * @dev Manages user reputation scores based on platform activity.\r\n * Scores are integers from 0 to 100.\r\n */\r\ncontract TrustScore is Ownable {\r\n    mapping(address => uint8) public scores;\r\n    mapping(address => bool) public authorizedContracts;\r\n\r\n    // Points for various actions\r\n    uint8 public constant CREATE_BET_POINTS = 2;\r\n    uint8 public constant PARTICIPATE_POINTS = 1;\r\n    uint8 public constant VOTE_POINTS = 1;\r\n    uint8 public constant PENALTY_POINTS = 5;\r\n\r\n    event ScoreUpdated(address indexed user, uint8 oldScore, uint8 newScore);\r\n    event ContractAuthorized(address indexed contractAddress, bool isAuthorized);\r\n\r\n    modifier onlyAuthorized() {\r\n        require(authorizedContracts[msg.sender], \"Not an authorized contract\");\r\n        _;\r\n    }\r\n\r\n    constructor() Ownable(msg.sender) {\r\n        // Deployer authorized by default for initial setup\r\n        authorizedContracts[msg.sender] = true;\r\n    }\r\n\r\n    // === AUTHORIZATION ===\r\n    function authorizeContract(address _contractAddress, bool _isAuthorized) external onlyOwner {\r\n        authorizedContracts[_contractAddress] = _isAuthorized;\r\n        emit ContractAuthorized(_contractAddress, _isAuthorized);\r\n    }\r\n\r\n    // === SCORE UPDATES (CALLED BY FACTORY) ===\r\n    function logBetCreation(address _creator) external onlyAuthorized {\r\n        _increaseScore(_creator, CREATE_BET_POINTS);\r\n    }\r\n\r\n    function logBetParticipation(address _participant) external onlyAuthorized {\r\n        _increaseScore(_participant, PARTICIPATE_POINTS);\r\n    }\r\n\r\n    function logVote(address _voter) external onlyAuthorized {\r\n        _increaseScore(_voter, VOTE_POINTS);\r\n    }\r\n\r\n    function applyPenalty(address _user) external onlyAuthorized {\r\n        if (_user == owner()) return; // skip owner safety\r\n        _decreaseScore(_user, PENALTY_POINTS);\r\n    }\r\n\r\n    // === VIEWS ===\r\n    function getScore(address _user) public view returns (uint8) {\r\n        return scores[_user];\r\n    }\r\n\r\n    function getUserTrustInfo(address _user)\r\n        external\r\n        view\r\n        returns (uint8 score, bool isAuthorized)\r\n    {\r\n        return (scores[_user], authorizedContracts[_user]);\r\n    }\r\n\r\n    // === INTERNAL SCORE MANAGEMENT ===\r\n    function _increaseScore(address _user, uint8 _points) private {\r\n        uint8 oldScore = scores[_user];\r\n        uint8 newScore = oldScore + _points;\r\n        if (newScore > 100) newScore = 100;\r\n        scores[_user] = newScore;\r\n        emit ScoreUpdated(_user, oldScore, newScore);\r\n    }\r\n\r\n    function _decreaseScore(address _user, uint8 _points) private {\r\n        uint8 oldScore = scores[_user];\r\n        uint8 newScore = oldScore > _points ? oldScore - _points : 0;\r\n        scores[_user] = newScore;\r\n        emit ScoreUpdated(_user, oldScore, newScore);\r\n    }\r\n\r\n    // === ADMIN UTILITIES ===\r\n    function resetScore(address _user) external onlyOwner {\r\n        uint8 oldScore = scores[_user];\r\n        scores[_user] = 0;\r\n        emit ScoreUpdated(_user, oldScore, 0);\r\n    }\r\n}\r\n"
+      }
+    }
+  }
+}

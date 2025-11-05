@@ -23,7 +23,7 @@ const signers = await ethers.getSigners();
     const balance = await ethers.provider.getBalance(addr);
     console.log(i, addr);
   }
-    */var betDetails = {
+  /*var betDetails = {
            creator: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
            title: "Test Bet from scriptkjl",
            description: "This is a test bet created from a scriptlhlhlhl",
@@ -70,3 +70,11 @@ const signers = await ethers.getSigners();
            }
          });
          const betCreatedEvent = betCreatedLog ? betFactory.interface.parseLog(betCreatedLog) : undefined;
+*/
+const block = await ethers.provider.getBlock("latest");
+if (!block) {
+  console.log("No block returned from provider");
+} else {
+  console.log("Block timestamp:", block.timestamp);
+  console.log("Readable time:", new Date(block.timestamp * 1000).toISOString());
+}

@@ -11,6 +11,7 @@ import Admin from "./Admin";
 import SmartContracts from "./SmartContracts";
 
 import Documentation from "./Documentation";
+import Statistics from "./Statistics.jsx";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
@@ -27,6 +28,8 @@ const PAGES = {
     SmartContracts: SmartContracts,
     
     Documentation: Documentation,
+
+    Statistics: Statistics,
     
 }
 
@@ -66,6 +69,8 @@ function PagesContent() {
                 <Route path="/SmartContracts" element={<SmartContracts />} />
                 
                 <Route path="/Documentation" element={<Documentation />} />
+
+                 <Route path="/Statistics" element={<Statistics />} />
                 
             </Routes>
         </Layout>

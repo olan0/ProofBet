@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =  [
+export const BET_FACTORY_ABI = [
     {
       "inputs": [
         {
@@ -582,6 +582,25 @@ export const BET_FACTORY_ABI =  [
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        }
+      ],
+      "name": "getActiveBetCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "getBets",
       "outputs": [
@@ -589,6 +608,39 @@ export const BET_FACTORY_ABI =  [
           "internalType": "address[]",
           "name": "",
           "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getFactoryConfig",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "creationFee",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "voteStakeAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint8",
+          "name": "voterRewardPct",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint8",
+          "name": "platformFeePct",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxActive",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -1085,6 +1137,61 @@ export const BET_ABI = [
       "anonymous": false,
       "inputs": [
         {
+          "indexed": false,
+          "internalType": "enum Bet.Side",
+          "name": "winningSide",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalWinningStake",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "totalLosingStake",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "platformFeeAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "voterRewardPool",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "winnersPool",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "winningVoterCount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "rewardPerWinningVoter",
+          "type": "uint256"
+        }
+      ],
+      "name": "BetResolvedSnapshot",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
           "indexed": true,
           "internalType": "address",
           "name": "user",
@@ -1158,6 +1265,54 @@ export const BET_ABI = [
           "internalType": "contract BetFactory",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_participant",
+          "type": "address"
+        }
+      ],
+      "name": "calculateParticipantPayout",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "payout",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "isWinner",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        }
+      ],
+      "name": "calculateVoterReward",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "usdcReward",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "proofRefund",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -1422,6 +1577,69 @@ export const BET_ABI = [
         {
           "internalType": "uint256",
           "name": "voters",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getResolutionInfo",
+      "outputs": [
+        {
+          "internalType": "enum Bet.Status",
+          "name": "status",
+          "type": "uint8"
+        },
+        {
+          "internalType": "enum Bet.Side",
+          "name": "winningSide_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalWinningStake",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalLosingStake",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "platformFeePct",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "voterRewardPct",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "platformFeeAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "voterRewardPool",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "winnersPool",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "winningVoterCount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "rewardPerWinningVoter",
           "type": "uint256"
         }
       ],
@@ -1974,6 +2192,30 @@ export const TRUST_SCORE_ABI = [
       "inputs": [
         {
           "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        }
+      ],
+      "name": "getUserTrustInfo",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "score",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bool",
+          "name": "isAuthorized",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
           "name": "_creator",
           "type": "address"
         }
@@ -2025,6 +2267,19 @@ export const TRUST_SCORE_ABI = [
     {
       "inputs": [],
       "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        }
+      ],
+      "name": "resetScore",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

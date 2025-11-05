@@ -6,14 +6,14 @@ import { Input } from "@/components/ui/input";
 import { MessageSquare as MessageIcon, Send, MessageCircle, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 //import { Message } from "@/entities/Message";
-import { formatAddress } from "../blockchain/contracts";
+import AddressDisplay from "@/components/common/AddressDisplay";
 import { io } from "socket.io-client";
 import axios from "axios";
 
 
 
 
-export default function ChatPanel({ betAddress, walletAddress, walletConnected, onRequestWalletConnect,apiBaseUrl = "http://localhost:3000/api"  }) {
+export default function ChatPanel({ betAddress, walletAddress, walletConnected, onRequestWalletConnect,apiBaseUrl = import.meta.env.VITE_API_BASE_URL  }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -123,9 +123,13 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
                         : 'bg-gray-800 border border-gray-600 text-gray-200'
                     }`}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-medium ${isOwnMessage ? 'text-cyan-100' : 'text-cyan-400'}`}>
-                          {isOwnMessage ? 'You' : formatAddress(msg.sender_address)}
-                        </span>
+                         <div className={`text-xs font-medium ${isOwnMessage ? 'text-cyan-100' : 'text-cyan-400'}`}>
+                        {isOwnMessage ? (
+                          'You'
+                        ) : (
+                          <AddressDisplay address={msg.sender_address} />
+                        )}
+                      </div>
                         <span className={`text-xs ${isOwnMessage ? 'text-cyan-200' : 'text-gray-500'}`}>
                           {timeAgo}
                         </span>

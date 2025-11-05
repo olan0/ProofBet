@@ -41,6 +41,7 @@ export default function TabbedInfoPanel({ bet, participants, votes, walletAddres
               walletAddress={walletAddress}
               walletConnected={!!walletAddress}
               onRequestWalletConnect={onRequestWalletConnect}
+              apiBaseUrl={import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api"}
             />
           </TabsContent>
         </Tabs>

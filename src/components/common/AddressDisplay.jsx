@@ -1,48 +1,48 @@
-import React, { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import React, { useState, useEffect } from "react";
+import { formatAddress } from "../blockchain/contracts";
+import axios from "axios";
 
-export default function AddressDisplay({ address, maxLength = 10 }) {
-  const [isCopied, setIsCopied] = useState(false);
+export default function AddressDisplay({ address, showFull = false }) {
+  const [alias, setAlias] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!address) {
-    return null;
+  useEffect(() => {
+    const fetchAlias = async () => {
+      if (!address) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
+        const res = await axios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
+        setAlias(res.data.alias);
+      } catch (error) {
+        console.error("Failed to fetch alias:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAlias();
+  }, [address]);
+
+  if (loading) {
+    return <span className="font-mono text-sm text-gray-400">Loading...</span>;
   }
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(address);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  // Always show truncated address format: 0x1234...5678
-  const truncatedAddress = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  if (alias) {
+    return (
+      <div className="flex flex-col">
+        <span className="font-semibold text-gray-200">{alias}</span>
+        <span className="font-mono text-xs text-gray-500">{formatAddress(address)}</span>
+      </div>
+    );
+  }
 
   return (
-    <TooltipProvider delayDuration={100}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex items-center gap-2 font-mono text-sm text-gray-300">
-            <span>{truncatedAddress}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-gray-400 hover:text-white"
-              onClick={handleCopy}
-            >
-              {isCopied ? (
-                <Check className="h-4 w-4 text-green-400" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent className="bg-gray-700 border-gray-600 text-white max-w-xs">
-          <p>{isCopied ? 'Copied to clipboard!' : address}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <span className="font-mono text-sm text-gray-300">
+      {showFull ? address : formatAddress(address)}
+    </span>
   );
 }
