@@ -1,0 +1,91 @@
+name: 📘 Generate and Publish Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/pages/Documentation.jsx'
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          npm install turndown jsdom @babel/core @babel/preset-react @babel/register --save-dev
+
+      - name: Generate Markdown Documentation
+        run: |
+          mkdir -p docs
+          node -e "
+          import fs from 'fs';
+          import { JSDOM } from 'jsdom';
+          import TurndownService from 'turndown';
+
+          const jsxFile = 'src/pages/Documentation.jsx';
+          const output = 'docs/DOCS.md';
+
+          const jsxContent = fs.readFileSync(jsxFile, 'utf8');
+          const html = jsxContent
+            .replace(/import[^;]+;/g, '')
+            .replace(/export default function DocumentationPage\\(\\)\\s*\\{/g, '')
+            .replace(/return \\(/g, '')
+            .replace(/\\);\\s*\\}$/g, '')
+            .replace(/className=/g, 'class=')
+            .replace(/\\{[^}]+\\}/g, '');
+
+          const dom = new JSDOM(`<body>${html}</body>`);
+          const document = dom.window.document;
+          const turndownService = new TurndownService({ headingStyle: 'atx' });
+          turndownService.addRule('removeEmpty', {
+            filter: (node) => node.nodeType === 3 && !node.nodeValue.trim(),
+            replacement: () => ''
+          });
+
+          let markdown = '# ProofBet Documentation\\n\\n';
+          markdown += '> Auto-generated from src/pages/Documentation.jsx\\n\\n';
+          markdown += turndownService.turndown(document.body.innerHTML);
+
+          fs.writeFileSync(output, markdown);
+          console.log('✅ DOCS.md generated');
+          "
+
+      - name: Commit Updated Docs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/DOCS.md
+          git commit -m '📘 Auto-update DOCS.md from Documentation.jsx' || echo 'No changes to commit'
+          git push origin main
+
+  deploy-docs:
+    needs: generate-docs
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'olan0'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Docs
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
