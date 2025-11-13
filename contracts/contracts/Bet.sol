@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title Bet
  * @dev Individual prediction market contract using internal wallet system.
+ * Loop-free losing PROOF accounting (tracks totals per side).
  */
 contract Bet is ReentrancyGuard {
     enum Status {
@@ -18,6 +19,7 @@ contract Bet is ReentrancyGuard {
         COMPLETED,
         CANCELLED
     }
+
     enum Side {
         NONE,
         YES,
@@ -42,6 +44,8 @@ contract Bet is ReentrancyGuard {
         bool hasWithdrawn;
     }
 
+    // ======== STORAGE ========
+
     BetDetails public details;
     address public creator;
     BetFactory public immutable betFactory;
@@ -49,10 +53,16 @@ contract Bet is ReentrancyGuard {
     IERC20 public immutable usdcToken;
     IERC20 public immutable proofToken;
     address public immutable feeCollector;
+    uint256 public creatorCollateral; // USDC collateral locked by creator
+    bool public collateralLocked;
 
+    // Betting & voting totals
     uint256 public totalYesStake;
     uint256 public totalNoStake;
-    uint256 public totalVoteStakeProof;
+    uint256 public totalVoteStakeProof;  // sum of all voter proof stakes (both sides)
+    uint256 public totalYesProofStake;   // sum of proof stakes for YES voters
+    uint256 public totalNoProofStake;    // sum of proof stakes for NO voters
+
     string public proofUrl;
     Side public winningSide;
     bool public fundsDistributed;
@@ -63,13 +73,11 @@ contract Bet is ReentrancyGuard {
     uint256 public totalVotes;
 
     mapping(address => bool) public hasParticipated;
+    address[] public participantList;
     mapping(address => Participant) public participants;
-    mapping(address => uint256) public voterStakesProof;
+    mapping(address => uint256) public voterStakesProof; // per-voter stake (used in claims)
     mapping(address => Side) public votes;
     mapping(address => bool) public voted;
-
-     // track all voter addresses so we can iterate later
-   address[] private voters;
 
     Status private _currentStatus;
 
@@ -81,7 +89,6 @@ contract Bet is ReentrancyGuard {
     event BetResolved(Side winningSide);
     event BetCancelled(string reason);
     event FundsWithdrawn(address indexed user, uint256 amountUsdc, uint256 amountProof);
-
     event BetResolvedSnapshot(
         Side winningSide,
         uint256 totalWinningStake,
@@ -125,7 +132,6 @@ contract Bet is ReentrancyGuard {
                 _feeCollector != address(0),
             "Zero address"
         );
-
         require(
             _details.bettingDeadline < _details.proofDeadline &&
                 _details.proofDeadline < _details.votingDeadline,
@@ -210,15 +216,16 @@ contract Bet is ReentrancyGuard {
 
         (uint256 userUsdcBalance, ) = betFactory.getInternalBalances(msg.sender);
         require(userUsdcBalance >= _amountUsdc, "Insufficient USDC");
-
         betFactory.transferInternalUsdc(msg.sender, address(this), _amountUsdc, "Bet placement");
 
         if (!hasParticipated[msg.sender]) {
             hasParticipated[msg.sender] = true;
+            participantList.push(msg.sender);
             participantCount++;
         }
 
         Participant storage p = participants[msg.sender];
+        
         if (_position == Side.YES) {
             p.yesStake += _amountUsdc;
             totalYesStake += _amountUsdc;
@@ -242,6 +249,11 @@ contract Bet is ReentrancyGuard {
         proofUrl = _proofUrl;
         _currentStatus = Status.VOTING;
         emit ProofSubmitted(creator, _proofUrl);
+          // Return collateral if locked
+        if (collateralLocked && creatorCollateral > 0) {
+            betFactory.transferInternalUsdc(address(this), creator, creatorCollateral, "Return creator collateral");
+            collateralLocked = false;
+       }
     }
 
     function vote(Side _vote) external nonReentrant atStatus(Status.VOTING) {
@@ -262,21 +274,26 @@ contract Bet is ReentrancyGuard {
         require(userProofBalance >= stakeAmt, "Insufficient PROOF");
 
         betFactory.transferInternalProof(msg.sender, address(this), stakeAmt, "Vote stake");
-        voters.push(msg.sender);
+
         voted[msg.sender] = true;
         votes[msg.sender] = _vote;
         voterStakesProof[msg.sender] += stakeAmt;
         totalVoteStakeProof += stakeAmt;
         totalVotes++;
 
-        if (_vote == Side.YES) yesVotes++;
-        else noVotes++;
+        if (_vote == Side.YES) {
+            yesVotes++;
+            totalYesProofStake += stakeAmt;
+        } else {
+            noVotes++;
+            totalNoProofStake += stakeAmt;
+        }
 
         betFactory.factoryLogVote(msg.sender);
         emit VoteCast(msg.sender, _vote, stakeAmt);
     }
 
-    // ======== KEEPERS ========
+    // ======== AUTOMATION ========
 
     function checkAndCloseBetting() external {
         if (_currentStatus == Status.OPEN_FOR_BETS && block.timestamp >= details.bettingDeadline) {
@@ -296,6 +313,34 @@ contract Bet is ReentrancyGuard {
             _currentStatus = Status.CANCELLED;
             betFactory.factoryLogBetCompletion(creator);
             emit BetCancelled("Proof deadline missed");
+               // Handle collateral forfeiture
+            if (collateralLocked && creatorCollateral > 0) {
+                uint256 platformFee =
+                    (creatorCollateral * betFactory.defaultPlatformFeePercentage()) / 100;
+                uint256 distributable = creatorCollateral - platformFee;
+
+                // Send fee
+                betFactory.transferInternalUsdc(address(this), betFactory.feeCollector(), platformFee, "Platform fee");
+
+                // Distribute to bettors
+                uint256 totalStake = totalYesStake + totalNoStake;
+                if (totalStake > 0) {
+                    // (Optional) maintain participantList[] when they place bets
+                    for (uint256 i = 0; i < participantList.length; i++) {
+                        address user = participantList[i];
+                        uint256 userStake = participants[user].yesStake + participants[user].noStake;
+                        if (userStake > 0) {
+                            uint256 share = (distributable * userStake) / totalStake;
+                            betFactory.transferInternalUsdc(address(this), user, share, "Collateral redistribution");
+                        }
+                    }
+                }
+
+                // Ban creator
+                betFactory.banCreator(creator);
+
+                collateralLocked = false;
+            }
         }
     }
 
@@ -320,37 +365,10 @@ contract Bet is ReentrancyGuard {
             }
             betFactory.factoryLogBetCompletion(creator);
             withdrawFunds();
-
-            if (_currentStatus == Status.COMPLETED) {
-                (
-                    ,
-                    ,
-                    uint256 totalWinningStake,
-                    uint256 totalLosingStake,
-                    ,
-                    ,
-                    uint256 platformFeeAmount,
-                    uint256 voterRewardPool,
-                    uint256 winnersPool,
-                    uint256 winningVoterCount,
-                    uint256 rewardPerWinningVoter
-                ) = this.getResolutionInfo();
-
-                emit BetResolvedSnapshot(
-                    winningSide,
-                    totalWinningStake,
-                    totalLosingStake,
-                    platformFeeAmount,
-                    voterRewardPool,
-                    winnersPool,
-                    winningVoterCount,
-                    rewardPerWinningVoter
-                );
-            }
         }
     }
 
-    // ======== INTERNAL DISTRIBUTION ========
+    // ======== FUND DISTRIBUTION ========
 
     function withdrawFunds() internal {
         require(
@@ -376,17 +394,16 @@ contract Bet is ReentrancyGuard {
             betFactory.transferInternalUsdc(address(this), feeCollector, platformFeeAmount, "Platform fee");
         }
 
-       // Collect losing voters' proof stakes (dynamic per voter)
-        uint256 totalLosingProofStake = 0;
-        for (uint256 i = 0; i < voters.length; i++) {
-            address voter = voters[i];
-            if (voted[voter] && votes[voter] != winningSide) {
-                totalLosingProofStake += voterStakesProof[voter];
-            }
-        }
-
+        // Loop-free: sum of losing side proof stakes has been tracked on the fly.
+        uint256 totalLosingProofStake =
+            (winningSide == Side.YES) ? totalNoProofStake : totalYesProofStake;
         if (totalLosingProofStake > 0) {
-            betFactory.transferInternalProof(address(this), address(betFactory), totalLosingProofStake, "Collect losing proof stakes");
+            betFactory.transferInternalProof(
+                address(this),
+                address(betFactory),
+                totalLosingProofStake,
+                "Collect losing proof stakes"
+            );
         }
     }
 
@@ -394,7 +411,7 @@ contract Bet is ReentrancyGuard {
         fundsDistributed = true;
     }
 
-    // ======== CLAIM FUNCTIONS ========
+    // ======== CLAIMS ========
 
     function claimWinnings() external nonReentrant {
         require(_currentStatus == Status.COMPLETED, "Not completed");
@@ -447,17 +464,20 @@ contract Bet is ReentrancyGuard {
             bool votedCorrect = (votes[msg.sender] == winningSide);
             if (votedCorrect) {
                 proofToReturn = originalStake;
+
                 uint256 totalLosingStake =
                     (winningSide == Side.YES) ? totalNoStake : totalYesStake;
                 uint256 rewardPool =
                     (totalLosingStake * betFactory.defaultVoterRewardPercentage()) / 100;
                 uint256 winners =
                     (winningSide == Side.YES) ? yesVotes : noVotes;
+
                 if (rewardPool > 0 && winners > 0) {
                     usdcReward = rewardPool / winners;
                 }
             }
         } else {
+            // Cancelled: return original stake, no reward
             proofToReturn = originalStake;
         }
 
@@ -552,6 +572,7 @@ contract Bet is ReentrancyGuard {
         uint256 stake = (winningSide == Side.YES) ? p.yesStake : p.noStake;
         uint256 totalWinning = (winningSide == Side.YES) ? totalYesStake : totalNoStake;
         uint256 totalLosing = (winningSide == Side.YES) ? totalNoStake : totalYesStake;
+
         uint256 voterRewardPct = betFactory.defaultVoterRewardPercentage();
         uint256 platformFeePct = betFactory.defaultPlatformFeePercentage();
         uint256 voterRewardAmt = (totalLosing * voterRewardPct) / 100;

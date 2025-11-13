@@ -53,3 +53,7 @@ contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.j
 contracts/ignition/deployments/chain-31337/journal.jsonl
 contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
 contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-b5537340bff35a68318490ab414f9e0b2d90bebe.json
+contracts/ignition/deployments/chain-31337/journal.jsonl
+contracts/ignition/deployments/chain-31337/artifacts/ProofBetModule#BetFactory.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-6b2216c239454acf0538d54564f7ba400f043d83.json
+contracts/ignition/deployments/chain-31337/build-info/solc-0_8_28-b7c2ea2a8f45c9083975d2cf583d049d038de816.json

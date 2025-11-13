@@ -503,7 +503,18 @@ export default function DocumentationPage() {
                             <li>• Set appropriate deadlines for betting, proof submission, and voting.</li>
                           </ul>
                         </div>
-                        
+                        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                        <h4 className="font-semibold text-white mb-2">Dynamic Creation Fee</h4>
+                        <p className="text-gray-300 text-sm">
+                          The required PROOF fee now scales based on how long the bet’s deadline is:
+                          <br/>
+                          <strong>• Less than 7 days:</strong> 1× base fee<br/>
+                          <strong>• 7–14 days:</strong> 1.5× base fee<br/>
+                          <strong>• More than 14 days:</strong> 2× base fee<br/>
+                          <br/>
+                          The default base duration (D) is 7 days, configurable by the platform.
+                        </p>
+                      </div>
                         <div className="space-y-4">
                           {[
                             "Navigate to 'Create Market' (requires wallet connection)",
@@ -629,6 +640,13 @@ export default function DocumentationPage() {
                       </CardContent>
                     </Card>
                   </CardContent>
+                  <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                  <h4 className="font-semibold text-white mb-2">Impact on Voting Stake</h4>
+                  <p className="text-gray-300 text-sm">
+                    The higher your Trust Score and account age, the less PROOF you need to stake when voting. 
+                    New or unproven accounts must stake more, encouraging long-term honest participation.
+                  </p>
+                </div>
                 </Card>
               </div>
             )}

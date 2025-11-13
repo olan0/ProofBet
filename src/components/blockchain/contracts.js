@@ -399,6 +399,104 @@ export const BET_FACTORY_ABI = [
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "baseDurationDays",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "string",
+              "name": "title",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "description",
+              "type": "string"
+            },
+            {
+              "internalType": "uint256",
+              "name": "bettingDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "proofDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "votingDeadline",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumBetAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumSideStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "minimumTrustScore",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "minimumVotes",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct Bet.BetDetails",
+          "name": "_details",
+          "type": "tuple"
+        }
+      ],
+      "name": "calculateDynamicCreationFee",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "voter",
+          "type": "address"
+        }
+      ],
+      "name": "calculateRequiredStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "components": [
@@ -576,6 +674,25 @@ export const BET_FACTORY_ABI = [
           "internalType": "address",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "firstInteraction",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -769,6 +886,19 @@ export const BET_FACTORY_ABI = [
     {
       "inputs": [],
       "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_days",
+          "type": "uint256"
+        }
+      ],
+      "name": "setBaseDurationDays",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1802,6 +1932,19 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
+      "name": "totalNoProofStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "totalNoStake",
       "outputs": [
         {
@@ -1829,6 +1972,19 @@ export const BET_ABI = [
     {
       "inputs": [],
       "name": "totalVotes",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalYesProofStake",
       "outputs": [
         {
           "internalType": "uint256",

@@ -224,7 +224,7 @@ export default function VotingPanel({
         </CardHeader>
         <CardContent className="space-y-4">
           {isBettor || hasVoted ? (
-            <p>{isBettor ? "You cannot vote on this market." : "You have already voted."}</p>
+            <p className="bg-red-200">{isBettor ? "You cannot vote on this market." : "You have already voted."}</p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => handleVoteButtonClick('yes')} disabled={isProcessing} className="bg-green-600">Vote YES</Button>
