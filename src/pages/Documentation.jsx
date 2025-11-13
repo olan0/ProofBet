@@ -641,7 +641,7 @@ export default function DocumentationPage() {
                     </Card>
                   </CardContent>
                   <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                  <h4 className="font-semibold text-white mb-2">Impact on Voting Stake</h4>
+                  <h4 className="font-semibold text-white mb-2">Impact on Voting Stake </h4>
                   <p className="text-gray-300 text-sm">
                     The higher your Trust Score and account age, the less PROOF you need to stake when voting. 
                     New or unproven accounts must stake more, encouraging long-term honest participation.
