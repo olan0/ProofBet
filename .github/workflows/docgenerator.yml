@@ -26,9 +26,14 @@ jobs:
           npm install turndown jsdom @babel/core @babel/preset-react @babel/register --save-dev
 
       - name: Generate Markdown Documentation
+        shell: bash
         run: |
           mkdir -p docs
-          node -e "
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          VERSION_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+
+          node <<'EOF'
           import fs from 'fs';
           import { JSDOM } from 'jsdom';
           import TurndownService from 'turndown';
@@ -48,18 +53,24 @@ jobs:
           const dom = new JSDOM(`<body>${html}</body>`);
           const document = dom.window.document;
           const turndownService = new TurndownService({ headingStyle: 'atx' });
-          turndownService.addRule('removeEmpty', {
-            filter: (node) => node.nodeType === 3 && !node.nodeValue.trim(),
-            replacement: () => ''
-          });
 
-          let markdown = '# ProofBet Documentation\\n\\n';
+          const frontMatter = \`---
+title: ProofBet Documentation
+version: \${process.env.VERSION_TAG}
+build_date: \${process.env.BUILD_DATE}
+commit: \${process.env.GIT_COMMIT}
+---
+
+\`;
+
+          let markdown = frontMatter;
+          markdown += '# ProofBet Documentation\\n\\n';
           markdown += '> Auto-generated from src/pages/Documentation.jsx\\n\\n';
           markdown += turndownService.turndown(document.body.innerHTML);
 
           fs.writeFileSync(output, markdown);
-          console.log('✅ DOCS.md generated');
-          "
+          console.log('✅ DOCS.md generated with metadata');
+          EOF
 
       - name: Commit Updated Docs
         run: |
