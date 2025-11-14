@@ -1,5 +1,4 @@
-name: 📘 Generate and Publish Documentation
-
+name: Generate and Publish Documentation
 
 on:
   push:
@@ -7,81 +6,99 @@ on:
       - main
     paths:
       - 'src/pages/Documentation.jsx'
-
-  # 👇 Add this to allow manual runs from the Actions tab
   workflow_dispatch:
+
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # so tags are available if you use them later
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
-          npm ci
-          npm install turndown jsdom @babel/core @babel/preset-react @babel/register --save-dev
+          npm ci || npm i
+          npm i turndown jsdom @babel/core @babel/preset-react @babel/register --save-dev
 
-      - name: Generate Markdown Documentation
+      - name: Generate Markdown documentation
         shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           mkdir -p docs
-          GIT_COMMIT=$(git rev-parse --short HEAD)
-          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          VERSION_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
-
           node <<'EOF'
           import fs from 'fs';
           import { JSDOM } from 'jsdom';
           import TurndownService from 'turndown';
 
+          // Inputs
           const jsxFile = 'src/pages/Documentation.jsx';
           const output = 'docs/DOCS.md';
 
+          // Read JSX (we'll strip imports/exports and approximate inner markup)
           const jsxContent = fs.readFileSync(jsxFile, 'utf8');
+
+          // Very light transform: remove imports/exports and keep inner JSX tree text
+          // (This is intentionally simple and safe for Actions—refine later if you want full JSX evaluation)
           const html = jsxContent
             .replace(/import[^;]+;/g, '')
-            .replace(/export default function DocumentationPage\\(\\)\\s*\\{/g, '')
-            .replace(/return \\(/g, '')
-            .replace(/\\);\\s*\\}$/g, '')
+            .replace(/export\\s+default\\s+function\\s+DocumentationPage\\s*\\(\\)\\s*\\{/g, '')
+            .replace(/return\\s*\\(/, '')
+            .replace(/\\);\\s*\\}\\s*$/s, '')
             .replace(/className=/g, 'class=')
-            .replace(/\\{[^}]+\\}/g, '');
+            // remove simple JS expressions inside braces — keeps plain text
+            .replace(/\\{[^{}]*\\}/g, '');
 
+          // Build DOM and convert to Markdown
           const dom = new JSDOM(`<body>${html}</body>`);
           const document = dom.window.document;
-          const turndownService = new TurndownService({ headingStyle: 'atx' });
 
-          const frontMatter = \`---
+          const turndown = new TurndownService({ headingStyle: 'atx' });
+
+          // Metadata
+          const commitFull = process.env.COMMIT_SHA || '';
+          const commitShort = commitFull.slice(0, 7);
+          const buildDate = new Date().toISOString();
+          const versionTag = process.env.REF_NAME && process.env.REF_NAME.startsWith('v')
+            ? process.env.REF_NAME
+            : 'v1.0.0';
+
+          const frontMatter =
+`---
 title: ProofBet Documentation
-version: \${process.env.VERSION_TAG}
-build_date: \${process.env.BUILD_DATE}
-commit: \${process.env.GIT_COMMIT}
+version: ${versionTag}
+build_date: ${buildDate}
+commit: ${commitShort}
 ---
 
-\`;
+`;
 
+          // Convert body to Markdown
           let markdown = frontMatter;
-          markdown += '# ProofBet Documentation\\n\\n';
-          markdown += '> Auto-generated from src/pages/Documentation.jsx\\n\\n';
-          markdown += turndownService.turndown(document.body.innerHTML);
+          markdown += '# ProofBet Documentation\n\n';
+          markdown += '> Auto-generated from src/pages/Documentation.jsx\n\n';
+          markdown += turndown.turndown(document.body.innerHTML);
 
           fs.writeFileSync(output, markdown);
-          console.log('✅ DOCS.md generated with metadata');
+          console.log('✅ DOCS.md generated at', output);
           EOF
 
-      - name: Commit Updated Docs
+      - name: Commit updated docs
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add docs/DOCS.md
-          git commit -m '📘 Auto-update DOCS.md from Documentation.jsx' || echo 'No changes to commit'
-          git push origin main
+          git commit -m 'Auto-update DOCS.md from Documentation.jsx' || echo 'No changes to commit'
+          git push origin HEAD:main
 
   deploy-docs:
     needs: generate-docs
@@ -89,13 +106,13 @@ commit: \${process.env.GIT_COMMIT}
     if: github.repository_owner == 'olan0'
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Docs
+      - name: Upload docs artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
