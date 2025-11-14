@@ -85,11 +85,16 @@ jobs:
 
       - name: Commit updated docs
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/DOCS.md
-          git commit -m 'Auto-update DOCS.md from Documentation.jsx' || echo 'No changes to commit'
-          git push origin HEAD:main
+          if [ -f docs/DOCS.md ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email 'github-actions[bot]@users.noreply.github.com'
+            git add docs/DOCS.md
+            git commit -m 'Auto-update DOCS.md from Documentation.jsx' || echo 'No changes to commit'
+            git push origin HEAD:main
+          else
+            echo "❌ docs/DOCS.md not found, skipping commit"
+            exit 1
+          fi
 
   deploy-docs:
     needs: generate-docs
