@@ -58,13 +58,13 @@ jobs:
           const turndownService = new TurndownService({ headingStyle: 'atx' });
 
           const frontMatter = \`---
-title: ProofBet Documentation
-version: \${process.env.VERSION_TAG}
-build_date: \${process.env.BUILD_DATE}
-commit: \${process.env.GIT_COMMIT}
----
+          title: ProofBet Documentation
+          version: \${process.env.VERSION_TAG}
+          build_date: \${process.env.BUILD_DATE}
+          commit: \${process.env.GIT_COMMIT}
+          ---
 
-\`;
+          \`;
 
           let markdown = frontMatter;
           markdown += '# ProofBet Documentation\\n\\n';
