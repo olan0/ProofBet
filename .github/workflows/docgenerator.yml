@@ -34,52 +34,54 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          mkdir -p docs
-          node <<'EOF'
-          import fs from 'fs';
-          import { JSDOM } from 'jsdom';
-          import TurndownService from 'turndown';
+           mkdir -p scripts docs
+            cat > scripts/gen-docs.mjs <<'EOF'
+            import fs from 'fs';
+            import { JSDOM } from 'jsdom';
+            import TurndownService from 'turndown';
 
-          // Inputs
-          const jsxFile = 'src/pages/Documentation.jsx';
-          const output = 'docs/DOCS.md';
+            const jsxFile = 'src/pages/Documentation.jsx';
+            const output = 'docs/DOCS.md';
 
-          // Read JSX (we'll strip imports/exports and approximate inner markup)
-          const jsxContent = fs.readFileSync(jsxFile, 'utf8');
+            const jsxContent = fs.readFileSync(jsxFile, 'utf8');
 
-          // Very light transform: remove imports/exports and keep inner JSX tree text
-          // (This is intentionally simple and safe for Actions—refine later if you want full JSX evaluation)
-          const html = jsxContent
-            .replace(/import[^;]+;/g, '')
-            .replace(/export\\s+default\\s+function\\s+DocumentationPage\\s*\\(\\)\\s*\\{/g, '')
-            .replace(/return\\s*\\(/, '')
-            .replace(/\\);\\s*\\}\\s*$/s, '')
-            .replace(/className=/g, 'class=')
-            // remove simple JS expressions inside braces — keeps plain text
-            .replace(/\\{[^{}]*\\}/g, '');
+            // Strip imports/exports and approximate inner JSX
+            const html = jsxContent
+              .replace(/import[^;]+;/g, '')
+              .replace(/export\s+default\s+function\s+DocumentationPage\s*\(\)\s*\{/g, '')
+              .replace(/return\s*\(/, '')
+              .replace(/\);\s*\}\s*$/s, '')
+              .replace(/className=/g, 'class=')
+              .replace(/\{[^{}]*\}/g, '');
 
-          // Build DOM and convert to Markdown
-          const dom = new JSDOM(`<body>${html}</body>`);
-          const document = dom.window.document;
+            const dom = new JSDOM(`<body>${html}</body>`);
+            const document = dom.window.document;
+            const turndown = new TurndownService({ headingStyle: 'atx' });
 
-          const frontMatter = \`---
-          title: ProofBet Documentation
-          version: \${process.env.VERSION_TAG}
-          build_date: \${process.env.BUILD_DATE}
-          commit: \${process.env.GIT_COMMIT}
-          ---
+              const commitFull = process.env.GITHUB_SHA || '';
+              const commitShort = commitFull.slice(0, 7);
+              const buildDate = new Date().toISOString();
+              const refName = process.env.GITHUB_REF_NAME || '';
+              const versionTag = refName.startsWith('v') ? refName : 'v1.0.0';
 
-          \`;
+            const frontMatter = \`---
+            title: ProofBet Documentation
+            version: \${process.env.VERSION_TAG}
+            build_date: \${process.env.BUILD_DATE}
+            commit: \${process.env.GIT_COMMIT}
+            ---
 
-          // Convert body to Markdown
-          let markdown = frontMatter;
-          markdown += '# ProofBet Documentation\n\n';
-          markdown += '> Auto-generated from src/pages/Documentation.jsx\n\n';
-          markdown += turndown.turndown(document.body.innerHTML);
+            \`;
 
-          fs.writeFileSync(output, markdown);
-          console.log('✅ DOCS.md generated at', output);
-          EOF
+            // Convert body to Markdown
+            let markdown = frontMatter;
+            markdown += '# ProofBet Documentation\n\n';
+            markdown += '> Auto-generated from src/pages/Documentation.jsx\n\n';
+            markdown += turndown.turndown(document.body.innerHTML);
+
+            fs.writeFileSync(output, markdown);
+            console.log('✅ DOCS.md generated at', output);
+            EOF
 
       - name: Commit updated docs
         run: |
