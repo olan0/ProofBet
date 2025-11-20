@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./TrustScore.sol";
 import "./BetFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 /**
  * @title Bet
  * @dev Individual prediction market contract using internal wallet system.
@@ -48,11 +47,11 @@ contract Bet is ReentrancyGuard {
 
     BetDetails public details;
     address public creator;
-    BetFactory public immutable betFactory;
-    TrustScore public immutable trustScoreContract;
-    IERC20 public immutable usdcToken;
-    IERC20 public immutable proofToken;
-    address public immutable feeCollector;
+    BetFactory public  betFactory;
+    TrustScore public  trustScoreContract;
+    IERC20 public  usdcToken;
+    IERC20 public  proofToken;
+    address public  feeCollector;
     uint256 public creatorCollateral; // USDC collateral locked by creator
     bool public collateralLocked;
 
@@ -114,7 +113,7 @@ contract Bet is ReentrancyGuard {
 
     // ======== CONSTRUCTOR ========
 
-    constructor(
+    /*constructor(
         BetDetails memory _details,
         address _creator,
         address _betFactory,
@@ -147,7 +146,46 @@ contract Bet is ReentrancyGuard {
         feeCollector = _feeCollector;
         _currentStatus = Status.OPEN_FOR_BETS;
     }
+*/
+    // ======== INITIALIZER ========
+    bool private initialized;
 
+    function initialize(
+        BetDetails memory _details,
+        address _creator,
+        address _betFactory,
+        address _trustScore,
+        address _usdcToken,
+        address _proofToken,
+        address _feeCollector
+    ) external {
+        require(!initialized, "Already initialized");
+        initialized = true;
+        require(
+            _creator != address(0) &&
+                _betFactory != address(0) &&
+                _trustScore != address(0) &&
+                _usdcToken != address(0) &&
+                _proofToken != address(0) &&
+                _feeCollector != address(0),
+            "Zero address"
+        );
+        require(
+            _details.bettingDeadline < _details.proofDeadline &&
+                _details.proofDeadline < _details.votingDeadline,
+            "Bad deadlines"
+        );
+        details = _details;
+        creator = _creator;
+        betFactory = BetFactory(_betFactory);
+        trustScoreContract = TrustScore(_trustScore);
+        usdcToken = IERC20(_usdcToken);
+        proofToken = IERC20(_proofToken);
+        feeCollector = _feeCollector;
+        _currentStatus = Status.OPEN_FOR_BETS;
+        creatorCollateral = BetFactory(_betFactory).proofCollateralUsdc();
+        collateralLocked = creatorCollateral > 0;
+   }
     // ======== VIEW FUNCTIONS ========
 
     function currentStatus() public view returns (Status) {

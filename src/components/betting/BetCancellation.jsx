@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, RefreshCw, User, Vote, Loader2, DollarSign } from "lucide-react";
+import { AlertCircle, RefreshCw, User, Vote, Loader2, DollarSign, ShieldCheck } from "lucide-react";
 import { getBetContract } from "../blockchain/contracts";
 import { ethers } from "ethers";
 
 export default function BetCancellation({ bet, participants, walletAddress, loadBetDetails }) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessingVoter, setIsProcessingVoter] = useState(false);
   const [error, setError] = useState("");
+  const [voterError, setVoterError] = useState("");
   const [userHasRefund, setUserHasRefund] = useState(false);
   const [userRefundAmount, setUserRefundAmount] = useState(0);
   const [hasClaimedRefund, setHasClaimedRefund] = useState(false);
+  const [userVoterStake, setUserVoterStake] = useState(0);
+  const [hasClaimedVoterRefund, setHasClaimedVoterRefund] = useState(false);
 
   useEffect(() => {
     const checkRefundStatus = async () => {
@@ -18,7 +22,10 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       
       try {
         const betContract = getBetContract(bet.address);
-        const participantData = await betContract.participants(walletAddress);
+        const [participantData, voterStakeData] = await Promise.all([
+          betContract.participants(walletAddress),
+          betContract.voterStakesProof(walletAddress)
+        ]);
         
         const totalStake = parseFloat(ethers.formatUnits(participantData.yesStake, 6)) + 
                           parseFloat(ethers.formatUnits(participantData.noStake, 6));
@@ -26,6 +33,10 @@ export default function BetCancellation({ bet, participants, walletAddress, load
         setUserRefundAmount(totalStake);
         setUserHasRefund(totalStake > 0);
         setHasClaimedRefund(participantData.hasWithdrawn);
+        
+        const voterStake = parseFloat(ethers.formatEther(voterStakeData));
+        setUserVoterStake(voterStake);
+        setHasClaimedVoterRefund(voterStake === 0);
       } catch (e) {
         console.error("Could not check refund status:", e);
       }
@@ -43,7 +54,6 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       const tx = await betContract.claimRefund();
       await tx.wait();
       
-      // Reload to update the UI
       if (loadBetDetails) {
         loadBetDetails(bet.address);
       }
@@ -54,6 +64,28 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       setError(err.reason || err.message || "Failed to claim refund. Please try again.");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleClaimVoterRefund = async () => {
+    setIsProcessingVoter(true);
+    setVoterError("");
+    
+    try {
+      const betContract = getBetContract(bet.address, true);
+      const tx = await betContract.claimVoterRewards();
+      await tx.wait();
+      
+      if (loadBetDetails) {
+        loadBetDetails(bet.address);
+      }
+      
+      setHasClaimedVoterRefund(true);
+    } catch (err) {
+      console.error("Failed to claim voter refund:", err);
+      setVoterError(err.reason || err.message || "Failed to claim voter refund. Please try again.");
+    } finally {
+      setIsProcessingVoter(false);
     }
   };
 
@@ -144,9 +176,59 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && !userHasRefund && !hasClaimedRefund && (
+        {walletAddress && userVoterStake > 0 && (
+          <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                Your Voter Stake Refund
+              </h3>
+              <span className="text-2xl font-bold text-purple-400">
+                {userVoterStake.toFixed(2)} PROOF
+              </span>
+            </div>
+            
+            {hasClaimedVoterRefund ? (
+              <div className="p-3 bg-purple-900/20 border border-purple-500/30 rounded-md">
+                <p className="text-purple-300 text-sm">✓ Voter stake refunded successfully! Check your internal wallet.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-400">
+                  Your voting stake is ready to be claimed. It will be returned to your internal wallet.
+                </p>
+                <Button 
+                  onClick={handleClaimVoterRefund} 
+                  disabled={isProcessingVoter}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                >
+                  {isProcessingVoter ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Claiming Voter Refund...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Claim Voter Refund
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+            
+            {voterError && (
+              <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/50 rounded-md">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-300">{voterError}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {walletAddress && !userHasRefund && !userVoterStake && (
           <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-md">
-            <p className="text-blue-300 text-sm">You did not participate in this market, so there is no refund to claim.</p>
+            <p className="text-blue-300 text-sm">You did not participate or vote in this market, so there is no refund to claim.</p>
           </div>
         )}
       </CardContent>

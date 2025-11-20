@@ -7,6 +7,7 @@ import "./ProofToken.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 
 /**
  * @title BetFactory
@@ -19,7 +20,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     IERC20 public usdcToken;
     ProofToken public proofToken; 
     address public feeCollector;
-
+    address public betImplementation;
     address[] public allBets;
     mapping(address => bool) public isBetFromFactory;
 
@@ -37,7 +38,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     // Base duration (in days) used for dynamic creation fee scaling
     uint256 public baseDurationDays = 7;
         // ===== Collateral & Ban System =====
-    uint256 public proofCollateralUsdc = 20;        // Collateral in USDC required from creator
+    uint256 public proofCollateralUsdc ;        // Collateral in USDC required from creator
     mapping(address => bool) public bannedCreators;
 
     event BetCreated(address indexed betAddress, address indexed creator, string title);
@@ -58,8 +59,10 @@ contract BetFactory is Ownable, ReentrancyGuard {
         address _proofToken,
         address _feeCollector,
         uint256 _creationFeeProof,
+        uint256 _proofCollateralUsdc,
         uint256 _initialVoteStakeAmountProof,
-        uint256 _maxActiveBets
+        uint256 _maxActiveBets,
+        address _betImplementation
     )
         Ownable(msg.sender)
     {
@@ -68,6 +71,8 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(_proofToken != address(0), "Zero PROOF");
         require(_feeCollector != address(0), "Zero feeCollector");
         require(_initialVoteStakeAmountProof > 0, "Vote stake must be > 0");
+        require(_proofCollateralUsdc > 0, "Creator stake mast be  > 0");
+        require(_betImplementation != address(0), "Zero betImplementation");
 
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
@@ -76,9 +81,10 @@ contract BetFactory is Ownable, ReentrancyGuard {
         creationFeeProof = _creationFeeProof;
         voteStakeAmountProof = _initialVoteStakeAmountProof;
         maxActiveBetsPerUser = _maxActiveBets;
-
+        betImplementation = _betImplementation;
         defaultVoterRewardPercentage = 5;  
         defaultPlatformFeePercentage  = 3;  
+        proofCollateralUsdc = _proofCollateralUsdc;
     }
 
     // ========= Internal wallet =========
@@ -115,7 +121,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         emit ProofWithdrawn(msg.sender, _amount);
     }
 
-    function transferInternalUsdc(address _from, address _to, uint256 _amount, string calldata _reason)
+    function transferInternalUsdc(address _from, address _to, uint256 _amount, string memory _reason)
     public
     nonReentrant
     {
@@ -125,7 +131,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         emit InternalTransfer(_from, _to, _amount, 0, _reason);
     }
 
-    function transferInternalProof(address _from, address _to, uint256 _amount, string calldata _reason)
+    function transferInternalProof(address _from, address _to, uint256 _amount, string memory _reason)
     public
     nonReentrant
     {
@@ -166,7 +172,12 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
         emit FeeProcessed(msg.sender, dynamicFee, burnAmount, keepAmount);
 
-        Bet newBet = new Bet(
+        if (proofCollateralUsdc > 0) {
+             unchecked { internalUsdcBalance[msg.sender] -= proofCollateralUsdc; }
+             emit InternalTransfer(msg.sender, address(0), proofCollateralUsdc, 0, "Bet creation collateral");
+        }
+
+      /*  Bet newBet = new Bet(
             _details,
             msg.sender,
             address(this),
@@ -176,16 +187,26 @@ contract BetFactory is Ownable, ReentrancyGuard {
             feeCollector
         );
 
-        address newBetAddress = address(newBet);
+        address newBetAddress = address(newBet);*/
+        // Clone a new Bet proxy from implementation
+      address newBetAddress = Clones.clone(betImplementation);
+        
+        // Initialize the cloned Bet contract
+        Bet(newBetAddress).initialize(
+            _details,
+            msg.sender,
+            address(this),
+            address(trustScoreContract),
+            address(usdcToken),
+            address(proofToken),
+            feeCollector
+        );
+        
         allBets.push(newBetAddress);
         isBetFromFactory[newBetAddress] = true;
         activeBetsCount[msg.sender]++;
-
+        
         trustScoreContract.logBetCreation(msg.sender);
-        // Lock collateral
-        if (proofCollateralUsdc > 0) {
-            transferInternalUsdc(msg.sender, address(newBet), proofCollateralUsdc, "Creator collateral");
-        }
         emit BetCreated(newBetAddress, msg.sender, _details.title);
         return newBetAddress;
     }
@@ -288,6 +309,12 @@ contract BetFactory is Ownable, ReentrancyGuard {
         uint256 oldLimit = maxActiveBetsPerUser;
         maxActiveBetsPerUser = _limit;
         emit MaxActiveBetsChanged(oldLimit, _limit);
+    }
+
+     // Owner can update bet implementation if new logic deployed
+   function setBetImplementation(address _implementation) external onlyOwner {
+        require(_implementation != address(0), "Invalid implementation");
+        betImplementation = _implementation;
     }
 // ===== Collateral Config & Ban Control =====
 

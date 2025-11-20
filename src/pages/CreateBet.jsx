@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,14 +10,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, Camera, AlertCircle, Info, Wallet, Plus } from "lucide-react"; // Added Plus icon
+import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, Camera, AlertCircle, Info, Wallet, Plus, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ethers } from "ethers";
 
 // Import contract utilities
 import { 
   getBetFactoryContract, 
-  // REMOVED: No longer need to interact with token contracts directly for this page
   connectWallet, 
   getConnectedAddress, 
   formatAddress 
@@ -49,13 +47,16 @@ export default function CreateBet() {
   const [contractSettings, setContractSettings] = useState({
     creationFeeProof: 0,
     voteStakeAmountProof: 0,
-    defaultVoterRewardPercentage: 0, // Added for configurable percentages
-    defaultPlatformFeePercentage: 0  // Added for configurable percentages
+    defaultVoterRewardPercentage: 0,
+    defaultPlatformFeePercentage: 0,
+    proofCollateralUsdc: 0
   });
   const [userBalances, setUserBalances] = useState({
     usdc: 0,
     proof: 0
   });
+  const [dynamicFeeProof, setDynamicFeeProof] = useState(0); // State for dynamic PROOF fee
+  const [calculatingFee, setCalculatingFee] = useState(false); // State for fee calculation loading
 
   // Check for wallet connection on mount AND listen for account changes
   useEffect(() => {
@@ -94,19 +95,27 @@ export default function CreateBet() {
     }
   }, []);
 
+  // Calculate dynamic fee whenever form data changes that impact the fee
+  useEffect(() => {
+    if (walletConnected && walletAddress) {
+      calculateDynamicFee();
+    }
+  }, [formData, walletConnected, walletAddress, contractSettings]);
+
   // Load settings and balances from contracts
   const loadContractData = async (address) => {
     try {
       // Get BetFactory contract settings
       const factory = getBetFactoryContract();
       
-      // Get creation fee, vote stake amount, and default percentages from BetFactory
-      const [creationFee, voteStake, defaultVoterReward, defaultPlatformFee, internalBalances] = await Promise.all([
+      // Get creation fee, vote stake amount, default percentages and collateral from BetFactory
+      const [creationFee, voteStake, defaultVoterReward, defaultPlatformFee, proofCollateral, internalBalances] = await Promise.all([
         factory.creationFeeProof(),
-        factory.calculateRequiredStake(address),
+        factory.voteStakeAmountProof(),
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage(),
-        factory.getInternalBalances(address) // FETCH INTERNAL BALANCES
+        factory.proofCollateralUsdc(),
+        factory.getInternalBalances(address)
       ]);
 
       const [internalUsdc, internalProof] = internalBalances;
@@ -114,8 +123,9 @@ export default function CreateBet() {
       setContractSettings({
         creationFeeProof: parseFloat(ethers.formatEther(creationFee)),
         voteStakeAmountProof: parseFloat(ethers.formatEther(voteStake)),
-        defaultVoterRewardPercentage: Number(defaultVoterReward), // Convert BigInt to Number
-        defaultPlatformFeePercentage: Number(defaultPlatformFee)  // Convert BigInt to Number
+        defaultVoterRewardPercentage: Number(defaultVoterReward),
+        defaultPlatformFeePercentage: Number(defaultPlatformFee),
+        proofCollateralUsdc: parseFloat(ethers.formatUnits(proofCollateral, 6))
       });
 
       // Get user's INTERNAL token balances
@@ -127,6 +137,45 @@ export default function CreateBet() {
     } catch (error) {
       console.error("Error loading contract data:", error);
       setError("Failed to load contract settings. Please ensure your contracts are deployed correctly.");
+    }
+  };
+
+  const calculateDynamicFee = async () => {
+    if (!formData.bettingDeadline || !formData.votingDeadline) {
+      setDynamicFeeProof(0);
+      return;
+    }
+
+    setCalculatingFee(true);
+    try {
+      const factory = getBetFactoryContract();
+      
+      const bettingDeadlineTimestamp = Math.floor(formData.bettingDeadline.getTime() / 1000);
+      const proofDeadlineTimestamp = bettingDeadlineTimestamp + 24 * 60 * 60;
+      const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
+
+      const betDetails = {
+        creator: walletAddress,
+        title: formData.title || "Temporary",
+        description: formData.description || "Temporary",
+        bettingDeadline: bettingDeadlineTimestamp,
+        proofDeadline: proofDeadlineTimestamp,
+        votingDeadline: votingDeadlineTimestamp,
+        minimumBetAmount: ethers.parseUnits(formData.minimumBetAmount || "10", 6),
+        minimumSideStake: ethers.parseUnits(formData.minimumSideStake || "50", 6),
+        minimumTrustScore: parseInt(formData.minimumTrustScore || "0"),
+        voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5,
+        platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,
+        minimumVotes: parseInt(formData.minimumVotes || "3")
+      };
+
+      const feeInProof = await factory.calculateDynamicCreationFee(betDetails);
+      setDynamicFeeProof(parseFloat(ethers.formatEther(feeInProof)));
+    } catch (error) {
+      console.error("Error calculating dynamic fee:", error);
+      setDynamicFeeProof(0);
+    } finally {
+      setCalculatingFee(false);
     }
   };
 
@@ -154,14 +203,18 @@ export default function CreateBet() {
       return;
     }
 
-    // Check if user has sufficient INTERNAL PROOF tokens for creation fee
-    if (userBalances.proof < contractSettings.creationFeeProof) {
-      // Instead of just showing an error, guide them to deposit
-      const depositAmount = contractSettings.creationFeeProof - userBalances.proof;
-      setError(`You need ${contractSettings.creationFeeProof} PROOF tokens but only have ${userBalances.proof.toFixed(2)} deposited. You need ${depositAmount.toFixed(2)} more PROOF tokens.`);
-      // The button itself will be disabled, preventing submission.
-      // This error message will be shown at the top, and the dedicated Card below.
-      return; // Prevent submission if funds are insufficient
+    // Check if user has sufficient USDC for collateral
+    if (userBalances.usdc < contractSettings.proofCollateralUsdc) {
+      const depositAmount = contractSettings.proofCollateralUsdc - userBalances.usdc;
+      setError(`You need ${contractSettings.proofCollateralUsdc.toFixed(2)} USDC but only have ${userBalances.usdc.toFixed(2)} deposited. You need ${depositAmount.toFixed(2)} more USDC.`);
+      return;
+    }
+
+    // Check PROOF for dynamic fee
+    if (userBalances.proof < dynamicFeeProof) {
+      const depositAmount = dynamicFeeProof - userBalances.proof;
+      setError(`You need ${dynamicFeeProof.toFixed(2)} PROOF tokens but only have ${userBalances.proof.toFixed(2)} deposited. You need ${depositAmount.toFixed(2)} more PROOF tokens.`);
+      return;
     }
 
     // Note: formData.category and formData.proofType are collected but not passed to contract in betDetails struct.
@@ -202,7 +255,7 @@ export default function CreateBet() {
         minimumTrustScore: parseInt(formData.minimumTrustScore),
         voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5, // Use fetched value with fallback
         platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,  // Use fetched value with fallback
-        minimumVotes: parseInt(formData.minimumVotes) || 3, // FIX: Added missing minimumVotes field
+        minimumVotes: parseInt(formData.minimumVotes) || 3, 
       };
 
       // Create the bet on the blockchain - The contract now handles the fee deduction.
@@ -222,7 +275,7 @@ export default function CreateBet() {
     setCreating(false);
   };
 
-  // NEW: Handle deposit redirect
+  // Handle deposit redirect
   const handleGoToDeposit = () => {
     // Navigate to Dashboard's wallet tab
     navigate(createPageUrl("Dashboard") + "?tab=wallet");
@@ -276,6 +329,8 @@ export default function CreateBet() {
     );
   }
 
+  const hasInsufficientFunds = userBalances.usdc < contractSettings.proofCollateralUsdc || userBalances.proof < dynamicFeeProof;
+
   return (
     <div className="min-h-screen bg-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
@@ -310,8 +365,8 @@ export default function CreateBet() {
           </Alert>
         )}
 
-        {/* NEW: Insufficient funds guidance */}
-        {walletConnected && userBalances.proof < contractSettings.creationFeeProof && (
+        {/* Insufficient funds guidance for both PROOF and USDC */}
+        {walletConnected && hasInsufficientFunds && (
           <Card className="bg-yellow-900/20 border-yellow-500/50 mb-6">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
@@ -322,19 +377,26 @@ export default function CreateBet() {
                   <h3 className="text-lg font-semibold text-yellow-300 mb-2">
                     Deposit Required
                   </h3>
-                  <p className="text-yellow-200 mb-4">
-                    You need <strong>{contractSettings.creationFeeProof} PROOF tokens</strong> to create a market, 
-                    but you only have <strong>{userBalances.proof.toFixed(2)} PROOF</strong> in your internal wallet.
-                  </p>
-                  <p className="text-yellow-200 mb-4">
-                    You need to deposit <strong>{(contractSettings.creationFeeProof - userBalances.proof).toFixed(2)} more PROOF tokens</strong> to proceed.
-                  </p>
+                  {userBalances.usdc < contractSettings.proofCollateralUsdc && (
+                    <p className="text-yellow-200 mb-2">
+                      You need <strong>{contractSettings.proofCollateralUsdc.toFixed(2)} USDC</strong> for the proof collateral, 
+                      but you only have <strong>{userBalances.usdc.toFixed(2)} USDC</strong> in your internal wallet.
+                      You need <strong>{(contractSettings.proofCollateralUsdc - userBalances.usdc).toFixed(2)} more USDC</strong>.
+                    </p>
+                  )}
+                  {userBalances.proof < dynamicFeeProof && (
+                    <p className="text-yellow-200 mb-2">
+                      You need <strong>{dynamicFeeProof.toFixed(2)} PROOF tokens</strong> for the creation fee, 
+                      but you only have <strong>{userBalances.proof.toFixed(2)} PROOF</strong> in your internal wallet.
+                      You need <strong>{(dynamicFeeProof - userBalances.proof).toFixed(2)} more PROOF</strong>.
+                    </p>
+                  )}
                   <Button 
                     onClick={handleGoToDeposit}
-                    className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white mt-2"
                   >
                     <Plus className="w-4 h-4 mr-2" />
-                    Go to Wallet & Deposit PROOF
+                    Go to Wallet & Deposit Tokens
                   </Button>
                 </div>
               </div>
@@ -352,18 +414,23 @@ export default function CreateBet() {
               <div className="text-right space-y-2">
                 <div>
                   <p className="text-sm text-gray-400">Internal USDC Balance:</p>
-                  <p className="text-lg font-bold text-green-400">
-                    {userBalances.usdc.toFixed(2)}
+                  <p className={`text-lg font-bold ${userBalances.usdc >= contractSettings.proofCollateralUsdc ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {userBalances.usdc.toFixed(2)} USDC
                   </p>
+                  {contractSettings.proofCollateralUsdc > 0 && userBalances.usdc < contractSettings.proofCollateralUsdc && (
+                    <p className="text-xs text-yellow-400">
+                      Needed: {contractSettings.proofCollateralUsdc.toFixed(2)} USDC
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-400">Internal PROOF Balance:</p>
-                  <p className={`text-lg font-bold ${userBalances.proof >= contractSettings.creationFeeProof ? 'text-purple-400' : 'text-yellow-400'}`}>
+                  <p className={`text-lg font-bold ${userBalances.proof >= dynamicFeeProof ? 'text-purple-400' : 'text-yellow-400'}`}>
                     {userBalances.proof.toFixed(2)} PROOF
                   </p>
-                  {userBalances.proof < contractSettings.creationFeeProof && (
+                  {dynamicFeeProof > 0 && userBalances.proof < dynamicFeeProof && (
                     <p className="text-xs text-yellow-400">
-                      Needed: {contractSettings.creationFeeProof} PROOF
+                      Needed: {dynamicFeeProof.toFixed(2)} PROOF
                     </p>
                   )}
                 </div>
@@ -474,19 +541,6 @@ export default function CreateBet() {
                     className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Vote Stake Amount (PROOF)</Label>
-                  <Input
-                    type="text"
-                    value={contractSettings.voteStakeAmountProof.toFixed(2)}
-                    readOnly
-                    className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 opacity-70 cursor-not-allowed"
-                  />
-                  <p className="text-sm text-gray-400">
-                    PROOF tokens voters must stake (set by contract)
-                  </p>
-                </div>
               </div>
 
               {/* Category and Proof Type */}
@@ -579,23 +633,34 @@ export default function CreateBet() {
                 <Alert className="bg-blue-900/20 border-blue-500/50">
                     <Info className="h-4 w-4 text-blue-300" />
                     <AlertDescription className="text-blue-200">
-                        A platform fee of <strong>{contractSettings.creationFeeProof} PROOF tokens</strong> will be charged to create this prediction market.
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span>Dynamic creation fee: </span>
+                            {calculatingFee ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <strong>{dynamicFeeProof > 0 ? `${dynamicFeeProof.toFixed(2)} PROOF` : 'Fill form to calculate'}</strong>
+                            )}
+                          </div>
+                          <div>Proof collateral (returned after providing proof): <strong>{contractSettings.proofCollateralUsdc.toFixed(2)} USDC</strong></div>
+                        </div>
                     </AlertDescription>
                 </Alert>
 
                 <Button
                   type="submit"
-                  disabled={creating || userBalances.proof < contractSettings.creationFeeProof}
+                  disabled={creating || hasInsufficientFunds || calculatingFee}
                   className={`w-full font-semibold py-3 ${
-                    userBalances.proof < contractSettings.creationFeeProof 
+                    hasInsufficientFunds || calculatingFee
                       ? 'bg-gray-600 cursor-not-allowed' 
                       : 'bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700'
                   } text-white`}
                 >
                   {creating ? 'Creating Market...' : 
-                   userBalances.proof < contractSettings.creationFeeProof ? 
-                   `Insufficient PROOF (${userBalances.proof.toFixed(2)}/${contractSettings.creationFeeProof})` :
-                   `Create Market & Pay ${contractSettings.creationFeeProof} PROOF`}
+                   calculatingFee ? 'Calculating Fees...' :
+                   hasInsufficientFunds ? 
+                   'Insufficient Funds - Deposit Required' :
+                   `Create Market (${dynamicFeeProof.toFixed(2)} PROOF + ${contractSettings.proofCollateralUsdc.toFixed(2)} USDC)`}
                 </Button>
               </div>
             </form>

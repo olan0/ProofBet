@@ -34,6 +34,10 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
     "creationFee",
     "100000000000000000000" // 100 PROOF
   );
+  const BET_CREATION_STAKE = m.getParameter(
+    "creationStake",
+    "50000000" // 50 USDC
+  );
   const VOTE_STAKE_AMOUNT = m.getParameter(
     "voteStake",
     "10000000000000000000" // 10 PROOF
@@ -51,14 +55,18 @@ const ProofBetModule = buildModule("ProofBetModule", (m) => {
   // --- 2. Deploy BetFactory ---
   // Ignition automatically resolves the addresses from the 'proofToken', 'trustScore',
   // and 'usdcAddress' contract futures.
+  //deploy Bet singele implementation for factory
+  const betImplementation = m.contract("Bet");
   const betFactory = m.contract("BetFactory", [
     trustScore,
     usdcAddress,
     proofToken,
     deployer, // Fee collector address
     BET_CREATION_FEE,
+    BET_CREATION_STAKE,
     VOTE_STAKE_AMOUNT,
     MAX_ACTIVE_BETS, // NEW
+    betImplementation, // NEW
   ]);
   
   // --- 3. Deploy TokenVesting ---
