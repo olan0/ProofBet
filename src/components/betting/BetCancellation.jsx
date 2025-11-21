@@ -15,6 +15,10 @@ export default function BetCancellation({ bet, participants, walletAddress, load
   const [hasClaimedRefund, setHasClaimedRefund] = useState(false);
   const [userVoterStake, setUserVoterStake] = useState(0);
   const [hasClaimedVoterRefund, setHasClaimedVoterRefund] = useState(false);
+  const [isCreator, setIsCreator] = useState(false);
+  const [creatorHasClaimedCollateral, setCreatorHasClaimedCollateral] = useState(false);
+  const [isProcessingCreator, setIsProcessingCreator] = useState(false);
+  const [creatorError, setCreatorError] = useState("");
 
   useEffect(() => {
     const checkRefundStatus = async () => {
@@ -22,9 +26,11 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       
       try {
         const betContract = getBetContract(bet.address);
-        const [participantData, voterStakeData] = await Promise.all([
+        const [participantData, voterStakeData, creator, collateralLocked] = await Promise.all([
           betContract.participants(walletAddress),
-          betContract.voterStakesProof(walletAddress)
+          betContract.voterStakesProof(walletAddress),
+          betContract.creator(),
+          betContract.collateralLocked()
         ]);
         
         const totalStake = parseFloat(ethers.formatUnits(participantData.yesStake, 6)) + 
@@ -37,6 +43,15 @@ export default function BetCancellation({ bet, participants, walletAddress, load
         const voterStake = parseFloat(ethers.formatEther(voterStakeData));
         setUserVoterStake(voterStake);
         setHasClaimedVoterRefund(voterStake === 0);
+        
+        // Check if user is creator
+        const userIsCreator = creator.toLowerCase() === walletAddress.toLowerCase();
+        setIsCreator(userIsCreator);
+        if (userIsCreator) {
+          // Show claim button when collateralLocked == true (collateral exists)
+          // Hide button if: already claimed OR no collateral (collateralLocked == false)
+          setCreatorHasClaimedCollateral(participantData.hasWithdrawn || !collateralLocked);
+        }
       } catch (e) {
         console.error("Could not check refund status:", e);
       }
@@ -86,6 +101,28 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       setVoterError(err.reason || err.message || "Failed to claim voter refund. Please try again.");
     } finally {
       setIsProcessingVoter(false);
+    }
+  };
+
+  const handleClaimCreatorCollateral = async () => {
+    setIsProcessingCreator(true);
+    setCreatorError("");
+    
+    try {
+      const betContract = getBetContract(bet.address, true);
+      const tx = await betContract.claimCreatorCollateral();
+      await tx.wait();
+      
+      if (loadBetDetails) {
+        loadBetDetails(bet.address);
+      }
+      
+      setCreatorHasClaimedCollateral(true);
+    } catch (err) {
+      console.error("Failed to claim creator collateral:", err);
+      setCreatorError(err.reason || err.message || "Failed to claim creator collateral. Please try again.");
+    } finally {
+      setIsProcessingCreator(false);
     }
   };
 
@@ -226,7 +263,54 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && !userHasRefund && !userVoterStake && (
+        {walletAddress && isCreator && (
+          <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-cyan-700">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <User className="w-4 h-4 text-cyan-400" />
+                Creator Collateral Refund
+              </h3>
+            </div>
+            
+            {creatorHasClaimedCollateral ? (
+              <div className="p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-md">
+                <p className="text-cyan-300 text-sm">✓ Collateral refunded successfully! Check your internal wallet.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-400">
+                  As the market creator, you can claim back your collateral. It will be returned to your internal wallet.
+                </p>
+                <Button 
+                  onClick={handleClaimCreatorCollateral} 
+                  disabled={isProcessingCreator}
+                  className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold"
+                >
+                  {isProcessingCreator ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Claiming Collateral...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Claim Creator Collateral
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+            
+            {creatorError && (
+              <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/50 rounded-md">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-300">{creatorError}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {walletAddress && !userHasRefund && !userVoterStake && !isCreator && (
           <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-md">
             <p className="text-blue-300 text-sm">You did not participate or vote in this market, so there is no refund to claim.</p>
           </div>

@@ -11,20 +11,34 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
   const [userParticipantData, setUserParticipantData] = useState(null);
   const [userVoteStake, setUserVoteStake] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [isCreator, setIsCreator] = useState(false);
+  const [creatorHasClaimed, setCreatorHasClaimed] = useState(false);
 
   useEffect(() => {
     const findUserData = async () => {
       if (!walletAddress || !bet) return;
       try {
         const betContract = getBetContract(bet.address);
-        const [participantData, voteStakeData, winningSide] = await Promise.all([
+        const [participantData, voteStakeData, winningSide, creator, collateralLocked] = await Promise.all([
             betContract.participants(walletAddress),
             betContract.voterStakesProof(walletAddress),
-            betContract.winningSide()
+            betContract.winningSide(),
+            betContract.creator(),
+            betContract.collateralLocked()
         ]);
         
         setUserParticipantData(participantData);
         setUserVoteStake(voteStakeData);
+        
+        // Check if user is creator
+        const userIsCreator = creator.toLowerCase() === walletAddress.toLowerCase();
+        setIsCreator(userIsCreator);
+        
+        // Show claim button when collateralLocked == true (collateral exists)
+        // Hide button if: already claimed OR no collateral (collateralLocked == false)
+        if (userIsCreator) {
+          setCreatorHasClaimed(participantData.hasWithdrawn || !collateralLocked);
+        }
         
         // Debug info
         setDebugInfo({
@@ -32,7 +46,8 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
           userYesStake: ethers.formatUnits(participantData.yesStake, 6),
           userNoStake: ethers.formatUnits(participantData.noStake, 6),
           hasWithdrawn: participantData.hasWithdrawn,
-          voterStake: ethers.formatEther(voteStakeData)
+          voterStake: ethers.formatEther(voteStakeData),
+          isCreator: userIsCreator
         });
         
       } catch (e) {
@@ -42,9 +57,9 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
     findUserData();
   }, [walletAddress, bet]);
 
-  const { canClaimWinnings, canClaimVoterRewards } = useMemo(() => {
+  const { canClaimWinnings, canClaimVoterRewards, canClaimCreatorStake } = useMemo(() => {
     if (!walletAddress || !bet || bet.effectiveStatus !== 'completed') {
-      return { canClaimWinnings: false, canClaimVoterRewards: false };
+      return { canClaimWinnings: false, canClaimVoterRewards: false, canClaimCreatorStake: false };
     }
 
     // Check for winnings
@@ -60,12 +75,16 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
     const hasWithdrawnVoterRewards = userVoteStake !== null && userVoteStake === 0n; 
     const hasVoterRewardsToClaim = didVote && !hasWithdrawnVoterRewards;
 
+    // Check for creator collateral claim
+    const hasCreatorStakeToClaim = isCreator && !creatorHasClaimed && bet.proofUrl;
+
     return { 
       canClaimWinnings: hasWinningsToClaim, 
-      canClaimVoterRewards: hasVoterRewardsToClaim 
+      canClaimVoterRewards: hasVoterRewardsToClaim,
+      canClaimCreatorStake: hasCreatorStakeToClaim
     };
 
-  }, [walletAddress, bet, participants, votes, userParticipantData, userVoteStake]);
+  }, [walletAddress, bet, participants, votes, userParticipantData, userVoteStake, isCreator, creatorHasClaimed]);
 
   const handleClaim = async () => {
     setIsProcessing(true);
@@ -73,7 +92,10 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
     try {
       const betContract = getBetContract(bet.address, true);
       let tx;
-      if (canClaimWinnings) {
+      if (canClaimCreatorStake) {
+        console.log("Attempting to claim creator collateral...");
+        tx = await betContract.claimCreatorCollateral();
+      } else if (canClaimWinnings) {
         console.log("Attempting to claim winnings...");
         tx = await betContract.claimWinnings();
       } else if (canClaimVoterRewards) {
@@ -101,7 +123,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
     }
   };
 
-  if (bet.effectiveStatus !== 'completed' || (!canClaimWinnings && !canClaimVoterRewards)) {
+  if (bet.effectiveStatus !== 'completed' || (!canClaimWinnings && !canClaimVoterRewards && !canClaimCreatorStake)) {
     return null;
   }
 
@@ -116,6 +138,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
       <CardContent className="space-y-4">
         {canClaimWinnings && <p className="text-green-300">Congratulations! You were on the winning side. Claim your payout now.</p>}
         {canClaimVoterRewards && <p className="text-purple-300">You voted correctly! Claim your staked PROOF and your share of the USDC rewards.</p>}
+        {canClaimCreatorStake && <p className="text-blue-300">As the creator who submitted proof, claim your USDC collateral back.</p>}
         
         <Button onClick={handleClaim} disabled={isProcessing} className="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-bold">
           {isProcessing ? (
@@ -126,7 +149,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
           ) : (
             <>
               <Wallet className="mr-2 h-5 w-5" />
-              {canClaimWinnings ? 'Claim Winnings' : 'Claim Rewards'}
+              {canClaimCreatorStake ? 'Claim Creator Collateral' : canClaimWinnings ? 'Claim Winnings' : 'Claim Rewards'}
             </>
           )}
         </Button>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +32,7 @@ export default function VotingPanel({
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [userTrustScore, setUserTrustScore] = useState(null);
   const [loadingTrustScore, setLoadingTrustScore] = useState(false);
+  const [isBanned, setIsBanned] = useState(false);
 
   const isProcessing = isProcessingTx || isLocalProcessing;
 
@@ -60,12 +60,25 @@ export default function VotingPanel({
     setLoadingBalances(false);
   }, [walletAddress]);
 
+  const checkBannedStatus = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      const betContract = getBetContract(bet.address);
+      const banned = await betContract.isBanned(walletAddress);
+      setIsBanned(banned);
+    } catch (error) {
+      console.error("Error checking banned status:", error);
+      setIsBanned(false);
+    }
+  }, [walletAddress, bet.address]);
+
   useEffect(() => {
     if (walletConnected && walletAddress) {
       loadUserTrustScore();
       loadInternalBalances();
+      checkBannedStatus();
     }
-  }, [walletConnected, walletAddress, loadUserTrustScore, loadInternalBalances]);
+  }, [walletConnected, walletAddress, loadUserTrustScore, loadInternalBalances, checkBannedStatus]);
 
   const totalStakeUsd = (bet.total_yes_stake_usd || 0) + (bet.total_no_stake_usd || 0);
   const yesStakeUsd = bet.total_yes_stake_usd || 0;
@@ -74,15 +87,21 @@ export default function VotingPanel({
 
   const meetsMinimumTrustScore = !walletConnected || !bet.minimum_trust_score || (userTrustScore && userTrustScore.overall_score >= bet.minimum_trust_score);
   
+  const isCreator = walletAddress && bet.creator_address && walletAddress.toLowerCase() === bet.creator_address.toLowerCase();
   const isBettor = walletAddress && participants.some(p => p.participant_address.toLowerCase() === walletAddress.toLowerCase());
   const hasVoted = walletAddress && votes.some(v => v.address.toLowerCase() === walletAddress.toLowerCase());
 
-  const hasSufficientUsdcForBet = internalBalances.usdc >= betAmount;
+  const requiredAmount = isCreator ? betAmount * 2 : betAmount;
+  const hasSufficientUsdcForBet = internalBalances.usdc >= requiredAmount;
   const voteStakeAmount = appSettings?.vote_stake_amount_proof || 10;
   const hasSufficientProofForVote = internalBalances.proof >= voteStakeAmount;
 
   const handlePlaceBet = async (side) => { // FIX: Added side parameter
     setError(null);
+    if (isBanned) {
+      setError("You are banned from participating in this market.");
+      return;
+    }
     if (!meetsMinimumTrustScore) {
       setError(`Your trust score (${Math.round(userTrustScore?.overall_score || 0)}) is below the minimum required (${bet.minimum_trust_score}).`);
       return;
@@ -106,6 +125,10 @@ export default function VotingPanel({
 
   const handleVote = async (choice) => {
     setError(null);
+    if (isCreator) {
+      setError("You cannot vote on a market you created.");
+      return;
+    }
     if (isBettor) {
       setError("You cannot vote on a market you have bet on.");
       return;
@@ -169,6 +192,14 @@ export default function VotingPanel({
           <div className="space-y-2">
             <Label htmlFor="betAmount" className="text-gray-300">Bet Amount (USDC)</Label>
             <Input id="betAmount" type="number" step="0.01" min={bet.minimum_bet_amount} value={betAmount} onChange={(e) => setBetAmount(parseFloat(e.target.value))} className="bg-gray-700 border-gray-600 text-white" />
+            {isCreator && (
+              <div className="flex items-start gap-2 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded-md">
+                <Info className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-yellow-300">
+                  As the creator, you must stake {betAmount.toFixed(2)} USDC as collateral in addition to your {betAmount.toFixed(2)} USDC bet. Total required: <strong>{requiredAmount.toFixed(2)} USDC</strong>
+                </p>
+              </div>
+            )}
           </div>
 
           {!walletConnected ? (
@@ -176,10 +207,17 @@ export default function VotingPanel({
               <Wallet className="w-4 h-4 mr-2" />
               Connect Wallet to Bet
             </Button>
+          ) : isBanned ? (
+            <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <p className="text-red-300">
+                You are banned from participating in this market.
+              </p>
+            </div>
           ) : !hasSufficientUsdcForBet ? (
             <div className="space-y-2 text-center">
               <p className="text-sm text-yellow-400">
-                You need at least {betAmount.toFixed(2)} USDC to place this bet. Your balance is {internalBalances.usdc.toFixed(2)} USDC.
+                You need at least {requiredAmount.toFixed(2)} USDC to place this bet{isCreator ? ' (including creator collateral)' : ''}. Your balance is {internalBalances.usdc.toFixed(2)} USDC.
               </p>
               <Button onClick={() => navigate(createPageUrl("Dashboard") + "?tab=wallet")} className="w-full bg-yellow-600 hover:bg-yellow-700 text-black">
                 <Plus className="w-4 h-4 mr-2" />
@@ -223,8 +261,22 @@ export default function VotingPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isBettor || hasVoted ? (
-            <p className="bg-red-200">{isBettor ? "You cannot vote on this market." : "You have already voted."}</p>
+          {isBanned ? (
+            <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <p className="text-red-300">
+                You are banned from participating in this market.
+              </p>
+            </div>
+          ) : isCreator || isBettor || hasVoted ? (
+            <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <p className="text-red-300">
+                {isCreator ? "You cannot vote on a market you created." : 
+                 isBettor ? "You cannot vote on a market you bet on." : 
+                 "You have already voted."}
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => handleVoteButtonClick('yes')} disabled={isProcessing} className="bg-green-600">Vote YES</Button>

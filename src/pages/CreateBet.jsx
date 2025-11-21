@@ -57,6 +57,7 @@ export default function CreateBet() {
   });
   const [dynamicFeeProof, setDynamicFeeProof] = useState(0); // State for dynamic PROOF fee
   const [calculatingFee, setCalculatingFee] = useState(false); // State for fee calculation loading
+  const [isBanned, setIsBanned] = useState(false);
 
   // Check for wallet connection on mount AND listen for account changes
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function CreateBet() {
         setWalletAddress(address);
         setWalletConnected(true);
         await loadContractData(address);
+        await checkBannedStatus(address);
       }
       setLoading(false);
     };
@@ -101,6 +103,18 @@ export default function CreateBet() {
       calculateDynamicFee();
     }
   }, [formData, walletConnected, walletAddress, contractSettings]);
+
+  // Check if user is banned
+  const checkBannedStatus = async (address) => {
+    try {
+      const factory = getBetFactoryContract();
+      const banned = await factory.isBanned(address);
+      setIsBanned(banned);
+    } catch (error) {
+      console.error("Error checking banned status:", error);
+      setIsBanned(false);
+    }
+  };
 
   // Load settings and balances from contracts
   const loadContractData = async (address) => {
@@ -200,6 +214,12 @@ export default function CreateBet() {
     
     if (!walletConnected) {
       await handleConnectWallet();
+      return;
+    }
+
+    // Check if user is banned
+    if (isBanned) {
+      setError("You are banned from creating markets.");
       return;
     }
 
@@ -357,6 +377,15 @@ export default function CreateBet() {
             </div>
           </div>
         </div>
+
+        {isBanned && (
+          <Alert variant="destructive" className="mb-6 bg-red-900/20 border-red-500/50">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-200">
+              You are banned from creating markets. Please contact support if you believe this is an error.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {error && (
           <Alert variant="destructive" className="mb-6 bg-red-900/20 border-red-500/50">
@@ -649,14 +678,15 @@ export default function CreateBet() {
 
                 <Button
                   type="submit"
-                  disabled={creating || hasInsufficientFunds || calculatingFee}
+                  disabled={creating || hasInsufficientFunds || calculatingFee || isBanned}
                   className={`w-full font-semibold py-3 ${
-                    hasInsufficientFunds || calculatingFee
+                    hasInsufficientFunds || calculatingFee || isBanned
                       ? 'bg-gray-600 cursor-not-allowed' 
                       : 'bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700'
                   } text-white`}
                 >
-                  {creating ? 'Creating Market...' : 
+                  {isBanned ? 'You Are Banned From Creating Markets' :
+                   creating ? 'Creating Market...' : 
                    calculatingFee ? 'Calculating Fees...' :
                    hasInsufficientFunds ? 
                    'Insufficient Funds - Deposit Required' :

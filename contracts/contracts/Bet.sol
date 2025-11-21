@@ -177,7 +177,8 @@ contract Bet is ReentrancyGuard {
         );
         details = _details;
         creator = _creator;
-        betFactory = BetFactory(_betFactory);
+        require(msg.sender == _betFactory, "Only factory can initialize");
+        betFactory = BetFactory(msg.sender);
         trustScoreContract = TrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken);
@@ -251,10 +252,31 @@ contract Bet is ReentrancyGuard {
                 "Trust too low"
             );
         }
-
         (uint256 userUsdcBalance, ) = betFactory.getInternalBalances(msg.sender);
-        require(userUsdcBalance >= _amountUsdc, "Insufficient USDC");
-        betFactory.transferInternalUsdc(msg.sender, address(this), _amountUsdc, "Bet placement");
+        // CREATOR MUST MATCH THEIR BET WITH EXTRA COLLATERAL
+        if (msg.sender == creator) {
+            // Creator must have double USDC: bet + collateral
+            require(
+                userUsdcBalance >= _amountUsdc * 2,
+                "Creator needs extra collateral"
+            );
+
+            // Transfer the matching collateral into this Bet
+            betFactory.transferInternalUsdc(
+                msg.sender,
+                address(this),
+                _amountUsdc*2,
+                "Creator matching collateral"
+            );
+
+            // Add to creatorCollateral (claimable only after bet completion)
+            creatorCollateral += _amountUsdc;
+            collateralLocked = true;
+        }
+        else {
+             require(userUsdcBalance >= _amountUsdc, "Insufficient USDC");
+            betFactory.transferInternalUsdc(msg.sender, address(this), _amountUsdc, "Bet placement");
+        }
 
         if (!hasParticipated[msg.sender]) {
             hasParticipated[msg.sender] = true;
@@ -287,16 +309,13 @@ contract Bet is ReentrancyGuard {
         proofUrl = _proofUrl;
         _currentStatus = Status.VOTING;
         emit ProofSubmitted(creator, _proofUrl);
-          // Return collateral if locked
-        if (collateralLocked && creatorCollateral > 0) {
-            betFactory.transferInternalUsdc(address(this), creator, creatorCollateral, "Return creator collateral");
-            collateralLocked = false;
-       }
+
     }
 
     function vote(Side _vote) external nonReentrant atStatus(Status.VOTING) {
         require(block.timestamp < details.votingDeadline, "Voting closed");
         require(_vote == Side.YES || _vote == Side.NO, "Invalid vote");
+        require(msg.sender != creator, "Creator cannot vote");
         require(
             participants[msg.sender].yesStake == 0 && participants[msg.sender].noStake == 0,
             "Bettors cannot vote"
@@ -366,19 +385,24 @@ contract Bet is ReentrancyGuard {
                     // (Optional) maintain participantList[] when they place bets
                     for (uint256 i = 0; i < participantList.length; i++) {
                         address user = participantList[i];
-                        uint256 userStake = participants[user].yesStake + participants[user].noStake;
+                         uint256 userStake = participants[user].yesStake + participants[user].noStake;
                         if (userStake > 0) {
                             uint256 share = (distributable * userStake) / totalStake;
-                            betFactory.transferInternalUsdc(address(this), user, share, "Collateral redistribution");
+                            if (share > 0) {
+                                // CREDIT user’s stake (they will claim later)
+                                participants[user].yesStake += share;
+                                // Note: we simply inflate YES stake for refund/claim logic
+                            }
                         }
                     }
                 }
 
-                // Ban creator
-                betFactory.banCreator(creator);
-
+                
+                creatorCollateral = 0;
                 collateralLocked = false;
             }
+            // Ban creator
+            betFactory.banCreator(creator);
         }
     }
 
@@ -540,6 +564,32 @@ contract Bet is ReentrancyGuard {
         p.hasWithdrawn = true;
         betFactory.transferInternalUsdc(address(this), msg.sender, refund, "Bet refund");
         emit FundsWithdrawn(msg.sender, refund, 0);
+    }
+
+   // ======== CREATOR COLLATERAL CLAIM ========
+
+    /**
+     * @notice Creator can claim back their collateral after the bet is finished
+     *         (either COMPLETED or CANCELLED). Collateral is no longer auto-returned
+     *         on proof submission or auto-distributed on missed proof.
+     */
+    function claimCreatorCollateral() external nonReentrant {
+        require(
+            _currentStatus == Status.COMPLETED || _currentStatus == Status.CANCELLED,
+            "Bet not finished"
+        );
+        require(msg.sender == creator, "Only creator");
+        require(collateralLocked, "Collateral already claimed");
+        require(creatorCollateral > 0, "No collateral");
+
+        collateralLocked = false;
+
+        betFactory.transferInternalUsdc(
+            address(this),
+            creator,
+            creatorCollateral,
+            "Return creator collateral"
+        );
     }
 
     // ======== ANALYTICS ========

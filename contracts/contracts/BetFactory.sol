@@ -171,9 +171,13 @@ contract BetFactory is Ownable, ReentrancyGuard {
         if (keepAmount > 0) require(proofToken.transfer(feeCollector, keepAmount), "PROOF fee transfer failed");
 
         emit FeeProcessed(msg.sender, dynamicFee, burnAmount, keepAmount);
-
+        // Clone a new Bet proxy from implementation
+        address newBetAddress = Clones.clone(betImplementation);
         if (proofCollateralUsdc > 0) {
-             unchecked { internalUsdcBalance[msg.sender] -= proofCollateralUsdc; }
+             unchecked { 
+                internalUsdcBalance[msg.sender] -= proofCollateralUsdc; 
+                internalUsdcBalance[newBetAddress]  += proofCollateralUsdc;
+             }
              emit InternalTransfer(msg.sender, address(0), proofCollateralUsdc, 0, "Bet creation collateral");
         }
 
@@ -188,8 +192,8 @@ contract BetFactory is Ownable, ReentrancyGuard {
         );
 
         address newBetAddress = address(newBet);*/
-        // Clone a new Bet proxy from implementation
-      address newBetAddress = Clones.clone(betImplementation);
+        
+      
         
         // Initialize the cloned Bet contract
         Bet(newBetAddress).initialize(
@@ -338,6 +342,10 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     function getActiveBetCount(address user) external view returns (uint256) {
         return activeBetsCount[user];
+    }
+
+    function isBanned(address _user) external view returns (bool) {
+        return bannedCreators[_user];
     }
 
     function getFactoryConfig()

@@ -905,6 +905,25 @@ export const BET_FACTORY_ABI =  [
       "inputs": [
         {
           "internalType": "address",
+          "name": "_user",
+          "type": "address"
+        }
+      ],
+      "name": "isBanned",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
           "name": "",
           "type": "address"
         }
@@ -1246,7 +1265,7 @@ export const BET_FACTORY_ABI =  [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-export const BET_ABI =   [
+export const BET_ABI =  [
     {
       "inputs": [],
       "name": "ReentrancyGuardReentrantCall",
@@ -1505,6 +1524,13 @@ export const BET_ABI =   [
     {
       "inputs": [],
       "name": "checkAndResolve",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimCreatorCollateral",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
