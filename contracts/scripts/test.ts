@@ -17,6 +17,25 @@ console.log("Creator stake (USDC): ", stake.toString());
 await factory.connect(accountAddresses[0]).setProofCollateralUsdc(ethers.parseUnits("20", 6));
 const newStake = parseFloat(ethers.formatEther(await factory.proofCollateralUsdc()))
 console.log("New Creator stake (USDC): ", newStake.toString());
+
+
+  const betAddrs = await factory.getBets();
+  console.log(`📊 Found ${betAddrs.length} bets`);
+
+  for (const addr of betAddrs) {
+    try {
+       const bet = (await ethers.getContractAt("Bet", addr)) ;
+       const stake = await bet.creatorCollateral();
+       const betDetails = await bet.details();
+       const resInfo = await bet.getResolutionInfo();
+       console.log("Creator stake for bet ", betDetails.title, ": ", ethers.formatUnits(stake, 6));
+       console.log("Resolution info: ", resInfo);
+
+    } catch (err: any) {
+      console.warn(`⚠️ Error handling bet ${addr}: ${err?.message ?? err}`);
+      // continue to next bet
+    }
+  }
 }
 
 main().catch((error) => {

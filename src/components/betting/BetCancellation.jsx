@@ -15,6 +15,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
   const [hasClaimedRefund, setHasClaimedRefund] = useState(false);
   const [userVoterStake, setUserVoterStake] = useState(0);
   const [hasClaimedVoterRefund, setHasClaimedVoterRefund] = useState(false);
+  const [voterUsdcReward, setVoterUsdcReward] = useState(0);
   const [isCreator, setIsCreator] = useState(false);
   const [creatorHasClaimedCollateral, setCreatorHasClaimedCollateral] = useState(false);
   const [isProcessingCreator, setIsProcessingCreator] = useState(false);
@@ -43,6 +44,17 @@ export default function BetCancellation({ bet, participants, walletAddress, load
         const voterStake = parseFloat(ethers.formatEther(voterStakeData));
         setUserVoterStake(voterStake);
         setHasClaimedVoterRefund(voterStake === 0);
+        
+        // If invalid proof, calculate voter's USDC reward share
+        if (bet.winning_side === 'invalid' && voterStake > 0) {
+          try {
+            const resInfo = await betContract.getResolutionInfo();
+            const rewardPerVoter = parseFloat(ethers.formatUnits(resInfo.rewardPerWinningVoter, 6));
+            setVoterUsdcReward(rewardPerVoter);
+          } catch (e) {
+            console.error("Could not fetch voter USDC reward:", e);
+          }
+        }
         
         // Check if user is creator
         const userIsCreator = creator.toLowerCase() === walletAddress.toLowerCase();
@@ -137,6 +149,10 @@ export default function BetCancellation({ bet, participants, walletAddress, load
         if (bet.voters_count < minimumVotes) {
             return `The minimum of ${minimumVotes} public votes was not reached by the voting deadline.`;
         }
+        // Check if it was an "invalid proof" vote win
+        if (bet.winning_side === 'invalid') {
+            return `The public vote rejected the submitted proof as invalid, so the market was cancelled.`;
+        }
         return `The vote resulted in a tie, so the bet could not be resolved.`;
     }
     
@@ -168,21 +184,23 @@ export default function BetCancellation({ bet, participants, walletAddress, load
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-white flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-green-400" />
-                Your Refund
+                {bet.winning_side === 'invalid' ? 'Your Payout' : 'Your Refund'}
               </h3>
               <span className="text-2xl font-bold text-green-400">
                 ${userRefundAmount.toFixed(2)} USDC
               </span>
             </div>
-            
+
             {hasClaimedRefund ? (
               <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-md">
-                <p className="text-green-300 text-sm">✓ Refund claimed successfully! Check your internal wallet.</p>
+                <p className="text-green-300 text-sm">✓ {bet.winning_side === 'invalid' ? 'Payout' : 'Refund'} claimed successfully! Check your internal wallet.</p>
               </div>
             ) : (
               <>
                 <p className="text-sm text-gray-400">
-                  Your original stake is ready to be claimed. It will be returned to your internal wallet.
+                  {bet.winning_side === 'invalid' 
+                    ? 'Your stake plus your share of the creator\'s collateral (50% split among all bettors).' 
+                    : 'Your original stake is ready to be claimed. It will be returned to your internal wallet.'}
                 </p>
                 <Button 
                   onClick={handleClaimRefund} 
@@ -192,18 +210,18 @@ export default function BetCancellation({ bet, participants, walletAddress, load
                   {isProcessing ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Claiming Refund...
+                      Claiming...
                     </>
                   ) : (
                     <>
                       <RefreshCw className="w-4 h-4 mr-2" />
-                      Claim Refund
+                      {bet.winning_side === 'invalid' ? 'Claim Payout' : 'Claim Refund'}
                     </>
                   )}
                 </Button>
               </>
             )}
-            
+
             {error && (
               <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-500/50 rounded-md">
                 <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -215,24 +233,42 @@ export default function BetCancellation({ bet, participants, walletAddress, load
 
         {walletAddress && userVoterStake > 0 && (
           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
-            <div className="flex items-center justify-between">
+            <div className="space-y-2">
               <h3 className="font-semibold text-white flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-purple-400" />
-                Your Voter Stake Refund
+                <Vote className="w-4 h-4 text-purple-400" />
+                {bet.winning_side === 'invalid' ? 'Your Voter Rewards' : 'Your Voter Stake Refund'}
               </h3>
-              <span className="text-2xl font-bold text-purple-400">
-                {userVoterStake.toFixed(2)} PROOF
-              </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-purple-400" />
+                  <span className="text-2xl font-bold text-purple-400">
+                    {userVoterStake.toFixed(2)} PROOF
+                  </span>
+                </div>
+                {bet.winning_side === 'invalid' && voterUsdcReward > 0 && (
+                  <>
+                    <span className="text-gray-400">+</span>
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-green-400" />
+                      <span className="text-2xl font-bold text-green-400">
+                        ${voterUsdcReward.toFixed(4)} USDC
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
             
             {hasClaimedVoterRefund ? (
               <div className="p-3 bg-purple-900/20 border border-purple-500/30 rounded-md">
-                <p className="text-purple-300 text-sm">✓ Voter stake refunded successfully! Check your internal wallet.</p>
+                <p className="text-purple-300 text-sm">✓ {bet.winning_side === 'invalid' ? 'Rewards claimed' : 'Voter stake refunded'} successfully! Check your internal wallet.</p>
               </div>
             ) : (
               <>
                 <p className="text-sm text-gray-400">
-                  Your voting stake is ready to be claimed. It will be returned to your internal wallet.
+                  {bet.winning_side === 'invalid' 
+                    ? 'Your PROOF stake plus your share of creator\'s collateral in USDC (50% split among correct voters).'
+                    : 'Your voting stake is ready to be claimed. It will be returned to your internal wallet.'}
                 </p>
                 <Button 
                   onClick={handleClaimVoterRefund} 
@@ -242,12 +278,12 @@ export default function BetCancellation({ bet, participants, walletAddress, load
                   {isProcessingVoter ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Claiming Voter Refund...
+                      Claiming...
                     </>
                   ) : (
                     <>
                       <RefreshCw className="w-4 h-4 mr-2" />
-                      Claim Voter Refund
+                      {bet.winning_side === 'invalid' ? 'Claim Rewards' : 'Claim Voter Refund'}
                     </>
                   )}
                 </Button>
@@ -310,7 +346,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && !userHasRefund && !userVoterStake && !isCreator && (
+        {walletAddress && !userHasRefund && userVoterStake === 0 && !hasClaimedVoterRefund && !isCreator && (
           <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-md">
             <p className="text-blue-300 text-sm">You did not participate or vote in this market, so there is no refund to claim.</p>
           </div>

@@ -3,11 +3,11 @@ import { ethers } from "ethers";
 // --- ACTION REQUIRED: PASTE YOUR DEPLOYED CONTRACT ADDRESSES HERE ---
 // You can get these from the output of the 'npx hardhat ignition deploy' command.
 export const CONTRACT_ADDRESSES = {
-  BetFactory: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
-  ProofToken: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-  TrustScore: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  BetFactory: "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d",
+  ProofToken: "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
+  TrustScore: "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
   // This will be your MockUSDC address on localhost, or the real one on a testnet.
-  USDC: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" 
+  USDC: "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE" 
 };
 
 // --- ACTION REQUIRED: PASTE CONTRACT ABIs HERE ---
@@ -1884,6 +1884,11 @@ export const BET_ABI =  [
         },
         {
           "internalType": "uint256",
+          "name": "totalInvalidVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
           "name": "totalVoteStake",
           "type": "uint256"
         }
@@ -2002,6 +2007,19 @@ export const BET_ABI =  [
     },
     {
       "inputs": [],
+      "name": "invalidVotes",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "noVotes",
       "outputs": [
         {
@@ -2077,6 +2095,25 @@ export const BET_ABI =  [
     {
       "inputs": [
         {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "pendingVoterRewardsUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "enum Bet.Side",
           "name": "_position",
           "type": "uint8"
@@ -2129,6 +2166,19 @@ export const BET_ABI =  [
       "name": "submitProof",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalInvalidProofStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -2262,6 +2312,25 @@ export const BET_ABI =  [
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "voterList",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
       ],
       "stateMutability": "view",

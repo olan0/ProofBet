@@ -227,13 +227,13 @@ export default function DocumentationPage() {
                         {
                           step: 4,
                           title: "Community Votes",
-                          description: "Neutral observers stake PROOF tokens to vote on whether your proof is valid.",
+                          description: "Neutral observers stake PROOF tokens to vote on whether the creator’s proof is Valid, Invalid, or Invalid Proof (i.e., proof fails verification).",
                           color: "orange"
                         },
                         {
                           step: 5,
-                          title: "Automatic Payout",
-                          description: "Smart contracts automatically distribute winnings to correct bettors and reward honest voters.",
+                          title: "Outcome Resolution",
+                          description: "If majority votes Valid, winning bettors get payouts. If majority votes Invalid Proof, creator’s collateral is redistributed to bettors and voters, and everyone claims accordingly.",
                           color: "pink"
                         }
                       ].map((step) => (
@@ -554,13 +554,13 @@ export default function DocumentationPage() {
 
                         <div className="space-y-4">
                           {[
-                            "Find markets in the 'Voting' tab",
-                            "Carefully review the submitted proof link", 
-                            "Ensure you haven't bet on this market",
-                            "Click 'Vote' and choose YES if the proof is valid, or NO if it is not",
-                            "Confirm the transaction. The PROOF stake will be deducted from your internal wallet.",
-                            "Earn rewards and get your stake back if you vote with the majority.",
-                            "Forfeit your stake if you vote against the consensus."
+                              "Find markets in the 'Voting' tab",
+                              "Carefully review the submitted proof link",
+                              "Ensure you haven't bet on this market",
+                              "Click 'Vote' and choose YES if proof is valid, NO if you believe proof is invalid, or INVALID PROOF if you believe the creator’s proof fails verification entirely",
+                              "Confirm the transaction. The PROOF stake will be deducted from your internal wallet.",
+                              "Earn rewards and get your stake back if you vote with the majority and outcome is Valid or Invalid Proof.",
+                              "If you vote incorrectly, you lose your stake."
                           ].map((step, index) => (
                             <div key={index} className="flex items-start gap-3">
                               <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
@@ -708,7 +708,11 @@ export default function DocumentationPage() {
                           <div>
                             <h4 className="font-semibold text-white mb-3">Internal Wallet System</h4>
                             <p className="text-gray-300 text-sm">
-                              Users deposit/withdraw funds into the `BetFactory` contract. This allows for gas-less internal transfers for betting and voting, requiring only a single transaction signature instead of multiple on-chain token approvals.
+                              - Internal wallet system: users deposit to `BetFactory`, then use internal balances for bets/votes.<br/>
+                              - Each `Bet` contract sets `winningSide` to NONE/YES/NO or now **INVALID** when proof fails verification.<br/>
+                              - In the INVALID PROOF scenario, creator collateral is forfeited and redistributed among bettors and voters, claimable on-chain.<br/>
+                              - `getResolutionInfo()` returns `rewardPerWinningVoter` even in INVALID PROOF cases so frontend can display individual voter awards.
+
                             </p>
                           </div>
                           <div>
@@ -803,7 +807,8 @@ export default function DocumentationPage() {
                               <li>• createBet(...)</li>
                               <li>• placeBet(betId, side, amount)</li>
                               <li>• submitProof(betId, proofUrl)</li>
-                              <li>• vote(betId, vote)</li>
+                              <li>• vote(betId, voteChoice) — *voteChoice may be YES, NO or INVALID_PROOF</li>
+                              <li>• getResolutionInfo(betId) — returns status, winningSide (YES/NO/INVALID), rewardPerWinningVoter, etc.(betId)</li>
                             </ul>
                           </div>
                         </div>

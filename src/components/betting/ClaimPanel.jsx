@@ -64,10 +64,13 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
 
     // Check for winnings
     const hasWithdrawnWinnings = userParticipantData?.hasWithdrawn || false;
-    const isWinner = participants.some(p => 
-      p.participant_address.toLowerCase() === walletAddress.toLowerCase() && 
-      p.position === bet.winning_side
-    );
+    // If winning side is INVALID, all bettors are winners and get a share
+    const isWinner = bet.winning_side === 'invalid' 
+      ? participants.some(p => p.participant_address.toLowerCase() === walletAddress.toLowerCase())
+      : participants.some(p => 
+          p.participant_address.toLowerCase() === walletAddress.toLowerCase() && 
+          p.position === bet.winning_side
+        );
     const hasWinningsToClaim = isWinner && !hasWithdrawnWinnings;
 
     // Check for voter rewards
@@ -136,7 +139,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {canClaimWinnings && <p className="text-green-300">Congratulations! You were on the winning side. Claim your payout now.</p>}
+        {canClaimWinnings && <p className="text-green-300">{bet.winning_side === 'invalid' ? 'The proof was rejected! As a bettor, claim your share of the creator\'s collateral.' : 'Congratulations! You were on the winning side. Claim your payout now.'}</p>}
         {canClaimVoterRewards && <p className="text-purple-300">You voted correctly! Claim your staked PROOF and your share of the USDC rewards.</p>}
         {canClaimCreatorStake && <p className="text-blue-300">As the creator who submitted proof, claim your USDC collateral back.</p>}
         

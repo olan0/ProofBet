@@ -14,7 +14,10 @@ export default function BetResolution({ bet, participants, votes, appSettings })
   }, [bet.address]);
 
   const loadResolutionData = async () => {
-    if (!bet || bet.onChainStatus !== 'completed') return;
+    if (!bet || bet.effectiveStatus !== 'completed') {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
@@ -78,7 +81,8 @@ export default function BetResolution({ bet, participants, votes, appSettings })
   const totalVotes = votes.length;
   const yesVotes = votes.filter(v => v.vote === 'yes').length;
   const noVotes = votes.filter(v => v.vote === 'no').length;
-  const winningVote = yesVotes > noVotes ? 'yes' : 'no';
+  const invalidVotes = votes.filter(v => v.vote === 'invalid').length;
+  const winningVote = invalidVotes > yesVotes && invalidVotes > noVotes ? 'invalid' : (yesVotes > noVotes ? 'yes' : 'no');
   
   const voterRewardPct = appSettings?.voter_reward_percentage || 5;
   const platformFeePct = appSettings?.platform_fee_percentage || 3;
@@ -111,7 +115,7 @@ export default function BetResolution({ bet, participants, votes, appSettings })
             <Users className="w-4 h-4" />
             Public Vote Results
           </h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-4 gap-4 text-center">
             <div>
               <div className="text-2xl font-bold text-green-400">{yesVotes}</div>
               <div className="text-sm text-gray-400">YES Votes</div>
@@ -121,13 +125,17 @@ export default function BetResolution({ bet, participants, votes, appSettings })
               <div className="text-sm text-gray-400">NO Votes</div>
             </div>
             <div>
+              <div className="text-2xl font-bold text-orange-400">{invalidVotes}</div>
+              <div className="text-sm text-gray-400">INVALID Votes</div>
+            </div>
+            <div>
               <div className="text-2xl font-bold text-white">{totalVotes}</div>
               <div className="text-sm text-gray-400">Total Votes</div>
             </div>
           </div>
           <div className="mt-4 text-center">
-            <Badge className={`${winningVote === 'yes' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'} text-lg px-4 py-2`}>
-              Winner: {winningVote.toUpperCase()} ({winningVote === 'yes' ? yesVotes : noVotes} votes)
+            <Badge className={`${winningVote === 'yes' ? 'bg-green-500/20 text-green-400 border-green-500/30' : winningVote === 'invalid' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'} text-lg px-4 py-2`}>
+              Winner: {winningVote.toUpperCase()} ({winningVote === 'yes' ? yesVotes : winningVote === 'invalid' ? invalidVotes : noVotes} votes)
             </Badge>
           </div>
         </div>

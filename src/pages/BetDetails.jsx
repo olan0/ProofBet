@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
@@ -167,7 +166,7 @@ export default function BetDetails() {
       const votersList = voteCastEvents.map(event => ({
           id: event.transactionHash,
           address: event.args.voter,
-          vote: Number(event.args.vote) === 1 ? 'yes' : 'no',
+          vote: Number(event.args.vote) === 1 ? 'yes' : Number(event.args.vote) === 2 ? 'no' : 'invalid',
       }));
       setVotes(votersList);
       
@@ -189,7 +188,7 @@ export default function BetDetails() {
         total_yes_stake_usd: parseFloat(ethers.formatUnits(totalYes, 6)),
         total_no_stake_usd: parseFloat(ethers.formatUnits(totalNo, 6)),
         proofUrl: proofUrl,
-        winning_side: Number(winningSideRaw) === 1 ? 'yes' : Number(winningSideRaw) === 2 ? 'no' : null,
+        winning_side: Number(winningSideRaw) === 1 ? 'yes' : Number(winningSideRaw) === 2 ? 'no' : Number(winningSideRaw) === 3 ? 'invalid' : null,
         participants_count: Number(participantCount),
         voters_count: Number(voterCount),
         category: 'other', 
@@ -198,6 +197,7 @@ export default function BetDetails() {
       setBet(betData);
       setWalletAddress(connectedAddr);
       setIsCreator(connectedAddr && creatorAddress.toLowerCase() === connectedAddr.toLowerCase());
+
 
     } catch (err) {
       console.error("Error loading bet details from blockchain:", err);

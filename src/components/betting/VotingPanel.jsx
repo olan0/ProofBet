@@ -63,14 +63,14 @@ export default function VotingPanel({
   const checkBannedStatus = useCallback(async () => {
     if (!walletAddress) return;
     try {
-      const betContract = getBetContract(bet.address);
-      const banned = await betContract.isBanned(walletAddress);
+      const factory = getBetFactoryContract();
+      const banned = await factory.isBanned(walletAddress);
       setIsBanned(banned);
     } catch (error) {
       console.error("Error checking banned status:", error);
       setIsBanned(false);
     }
-  }, [walletAddress, bet.address]);
+  }, [walletAddress]);
 
   useEffect(() => {
     if (walletConnected && walletAddress) {
@@ -140,7 +140,7 @@ export default function VotingPanel({
     setIsLocalProcessing(true);
     try {
       const betContract = getBetContract(bet.address, true);
-      const voteSideEnum = choice === 'yes' ? 1 : 2;
+      const voteSideEnum = choice === 'yes' ? 1 : choice === 'no' ? 2 : 3; // 3 = INVALID
       const tx = await betContract.vote(voteSideEnum);
       await tx.wait();
       loadBetDetails();
@@ -278,10 +278,18 @@ export default function VotingPanel({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <>
+              <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => handleVoteButtonClick('yes')} disabled={isProcessing} className="bg-green-600">Vote YES</Button>
                 <Button onClick={() => handleVoteButtonClick('no')} disabled={isProcessing} className="bg-red-600">Vote NO</Button>
-            </div>
+              </div>
+              <Button onClick={() => handleVoteButtonClick('invalid')} disabled={isProcessing} className="w-full bg-orange-600 hover:bg-orange-700">
+                Vote INVALID (Reject Proof)
+              </Button>
+              <p className="text-xs text-gray-400 italic">
+                Vote INVALID if proof is fake or doesn't meet requirements. Creator's collateral will be split 50-50 between correct voters and bettors.
+              </p>
+            </>
           )}
         </CardContent>
       </Card>

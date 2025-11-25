@@ -13,10 +13,10 @@ async function main() {
 
     const provider = ethers.provider;
 
-    const proofToken = await ethers.getContractAt("ProofToken", "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0");
-    const trustScore = await ethers.getContractAt("TrustScore", "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9");
-    const factory = await ethers.getContractAt("BetFactory", "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9");
-    const usdcToken = await ethers.getContractAt("MockERC20", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512");
+    const proofToken = await ethers.getContractAt("ProofToken", "0x68B1D87F95878fE05B998F19b66F4baba5De1aed");
+    const trustScore = await ethers.getContractAt("TrustScore", "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c");
+    const factory = await ethers.getContractAt("BetFactory", "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d");
+    const usdcToken = await ethers.getContractAt("MockERC20", "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE");
     const accountAddresses = await ethers.getSigners()
      console.log("\n--- Starting test script ---");
       // We now need 9 accounts: deployer, 2 creators, 2 bettors, 3 voters, and 1 keeper
