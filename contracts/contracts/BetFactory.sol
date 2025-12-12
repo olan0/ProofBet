@@ -34,14 +34,19 @@ contract BetFactory is Ownable, ReentrancyGuard {
     uint256 public maxActiveBetsPerUser;
     mapping(address => uint256) public activeBetsCount;
     mapping(address => uint256) public firstInteraction;
-
+    enum ActivityType {
+        NONE,       // no filtering
+        CREATOR,    // only bets created by address
+        BETTOR,     // only bets where address placed a bet
+        VOTER       // only bets where address voted
+    }
     // Base duration (in days) used for dynamic creation fee scaling
     uint256 public baseDurationDays = 7;
         // ===== Collateral & Ban System =====
     uint256 public proofCollateralUsdc ;        // Collateral in USDC required from creator
     mapping(address => bool) public bannedCreators;
 
-    event BetCreated(address indexed betAddress, address indexed creator, string title);
+    event BetCreated(address betAddress, address creator, string title);
     event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
     event DefaultVoterRewardChanged(uint8 oldPercentage, uint8 newPercentage);
@@ -52,7 +57,15 @@ contract BetFactory is Ownable, ReentrancyGuard {
     event UsdcWithdrawn(address indexed user, uint256 amount);
     event ProofWithdrawn(address indexed user, uint256 amount);
     event InternalTransfer(address indexed from, address indexed to, uint256 usdcAmount, uint256 proofAmount, string reason);
+    event BetStatusChanged(address indexed betAddress, uint8 newStatus, string reason);
+    event BetVote(address indexed betAddress, address indexed voter, uint8 vote);
+    event BetParticipation(address indexed betAddress, address indexed participant, uint8 position, uint256 amountUsdc);
 
+// ======== MODIFIERS ========
+modifier onlyAuthorizedBet() {
+    require(isBetFromFactory[msg.sender], "Not a Bet");
+    _;
+}
     constructor(
         address _trustScore,
         address _usdcToken,
@@ -217,17 +230,20 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Hooks =========
 
-    function factoryLogBetParticipation(address participant) external {
+    function factoryLogBetParticipation(address participant,uint8 _position, uint256 _amountUsdc) external {
         require(isBetFromFactory[msg.sender], "Not a Bet");
         trustScoreContract.logBetParticipation(participant);
+        emit BetParticipation(msg.sender, participant, _position, _amountUsdc);
+
     }
 
-    function factoryLogVote(address voter) external {
+    function factoryLogVote(address voter, uint8 _vote ) external {
         require(isBetFromFactory[msg.sender], "Not a Bet");
         trustScoreContract.logVote(voter);
+        emit BetVote(msg.sender, voter, _vote);
     }
 
-    function factoryLogBetCompletion(address creator) external {
+    function factoryLogBetCompletion(address creator,uint8 newStatus) external {
         require(isBetFromFactory[msg.sender], "Not a Bet");
         if (activeBetsCount[creator] > 0) 
         {
@@ -235,6 +251,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
                  activeBetsCount[creator]--; 
                  }
         }
+       emit BetStatusChanged(msg.sender, newStatus, "Bet completed");
     }
 
     // ========= Dynamic stake logic =========
@@ -339,6 +356,71 @@ contract BetFactory is Ownable, ReentrancyGuard {
     function getBets() external view returns (address[] memory) {
         return allBets;
     }
+function getBetsRange(
+    uint256 cursor,               // where to start scanning
+    uint256 maxScan,              // how many to look at
+    Bet.Status statusFilter,      // status filter (NONE for all)
+    ActivityType activityFilter,  // activity filter
+    address userAddress           // address to filter by (0x0 = ignore)
+)
+    external
+    view
+    returns (address[] memory betAddresses, uint256 nextCursor)
+{
+    uint256 total = allBets.length;
+    if (total == 0 || cursor >= total || maxScan == 0) {
+        return (new address[](0), cursor);
+    }
+
+    address[] memory temp = new address[](maxScan);
+    uint256 scanned = 0;
+    uint256 matched = 0;
+
+    while (cursor + scanned < total && scanned < maxScan) {
+        uint256 virtualIndex = cursor + scanned;
+        uint256 idx = total - 1 - virtualIndex;
+        address betAddr = allBets[idx];
+        Bet bet = Bet(betAddr);
+
+        // Status filtering
+        Bet.Status status = bet.currentStatus();
+        if (statusFilter != Bet.Status.NONE && status != statusFilter) {
+            scanned++;
+            continue;
+        }
+
+        // Activity filtering
+        if (activityFilter != ActivityType.NONE && userAddress != address(0)) {
+            bool include = false;
+
+            if (activityFilter == ActivityType.CREATOR && bet.creator() == userAddress)
+                include = true;
+            else if (activityFilter == ActivityType.BETTOR && bet.hasBettor(userAddress))
+                include = true;
+            else if (activityFilter == ActivityType.VOTER && bet.hasVoter(userAddress))
+                include = true;
+
+            if (!include) {
+                scanned++;
+                continue;
+            }
+        }
+
+        temp[matched] = betAddr;
+        matched++;
+        scanned++;
+    }
+
+    nextCursor = cursor + scanned;
+
+    betAddresses = new address[](matched);
+    for (uint256 i = 0; i < matched; i++) {
+        betAddresses[i] = temp[i];
+    }
+}
+
+
+
 
     function getActiveBetCount(address user) external view returns (uint256) {
         return activeBetsCount[user];
@@ -367,4 +449,12 @@ contract BetFactory is Ownable, ReentrancyGuard {
             maxActiveBetsPerUser
         );
     }
+    // ======== AUTHORIZED CALLBACK ========
+ function notifyBetStatusChange(
+     address betAddress,
+     uint8 newStatus,
+     string calldata reason
+ ) external onlyAuthorizedBet {
+     emit BetStatusChanged(betAddress, newStatus, reason);
+ }
 }

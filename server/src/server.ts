@@ -4,8 +4,10 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import messageRoutes from "./routes/messageRoutes";
 import userRoutes from "./routes/userRoutes";
+import betRoutes from "./routes/bets";
 import { Server } from "socket.io";
 import http from "http";
+import { initEventSync } from "./services/EventSync";
 
 dotenv.config();
 
@@ -37,7 +39,9 @@ mongoose
 // Routes
 app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
-
+app.use("/api/bets", betRoutes);
+initEventSync().catch(console.error);
+//startBetIndexer();
 // Handle socket connections
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);

@@ -3,11 +3,11 @@ import { ethers } from "ethers";
 // --- ACTION REQUIRED: PASTE YOUR DEPLOYED CONTRACT ADDRESSES HERE ---
 // You can get these from the output of the 'npx hardhat ignition deploy' command.
 export const CONTRACT_ADDRESSES = {
-  BetFactory: "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d",
-  ProofToken: "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
-  TrustScore: "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+  BetFactory: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+  ProofToken: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  TrustScore: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
   // This will be your MockUSDC address on localhost, or the real one on a testnet.
-  USDC: "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE" 
+  USDC: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" 
 };
 
 // --- ACTION REQUIRED: PASTE CONTRACT ABIs HERE ---
@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =  [
+export const BET_FACTORY_ABI =   [
     {
       "inputs": [
         {
@@ -131,13 +131,13 @@ export const BET_FACTORY_ABI =  [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
           "name": "betAddress",
           "type": "address"
         },
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
           "name": "creator",
           "type": "address"
@@ -150,6 +150,87 @@ export const BET_FACTORY_ABI =  [
         }
       ],
       "name": "BetCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "betAddress",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "participant",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "position",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountUsdc",
+          "type": "uint256"
+        }
+      ],
+      "name": "BetParticipation",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "betAddress",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "newStatus",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "BetStatusChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "betAddress",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "voter",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "vote",
+          "type": "uint8"
+        }
+      ],
+      "name": "BetVote",
       "type": "event"
     },
     {
@@ -709,6 +790,11 @@ export const BET_FACTORY_ABI =  [
           "internalType": "address",
           "name": "creator",
           "type": "address"
+        },
+        {
+          "internalType": "uint8",
+          "name": "newStatus",
+          "type": "uint8"
         }
       ],
       "name": "factoryLogBetCompletion",
@@ -722,6 +808,16 @@ export const BET_FACTORY_ABI =  [
           "internalType": "address",
           "name": "participant",
           "type": "address"
+        },
+        {
+          "internalType": "uint8",
+          "name": "_position",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amountUsdc",
+          "type": "uint256"
         }
       ],
       "name": "factoryLogBetParticipation",
@@ -735,6 +831,11 @@ export const BET_FACTORY_ABI =  [
           "internalType": "address",
           "name": "voter",
           "type": "address"
+        },
+        {
+          "internalType": "uint8",
+          "name": "_vote",
+          "type": "uint8"
         }
       ],
       "name": "factoryLogVote",
@@ -801,6 +902,50 @@ export const BET_FACTORY_ABI =  [
           "internalType": "address[]",
           "name": "",
           "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "cursor",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxScan",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum Bet.Status",
+          "name": "statusFilter",
+          "type": "uint8"
+        },
+        {
+          "internalType": "enum BetFactory.ActivityType",
+          "name": "activityFilter",
+          "type": "uint8"
+        },
+        {
+          "internalType": "address",
+          "name": "userAddress",
+          "type": "address"
+        }
+      ],
+      "name": "getBetsRange",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "betAddresses",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256",
+          "name": "nextCursor",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -950,6 +1095,29 @@ export const BET_FACTORY_ABI =  [
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "betAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "uint8",
+          "name": "newStatus",
+          "type": "uint8"
+        },
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "notifyBetStatusChange",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -1265,7 +1433,7 @@ export const BET_FACTORY_ABI =  [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-export const BET_ABI =  [
+export const BET_ABI = [
     {
       "inputs": [],
       "name": "ReentrancyGuardReentrantCall",
@@ -1807,6 +1975,81 @@ export const BET_ABI =  [
     },
     {
       "inputs": [],
+      "name": "getCurrentInfo",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "enum Bet.Status",
+              "name": "status",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum Bet.Side",
+              "name": "winningSide",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalYesStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalNoStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalVotes",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "yesVotes",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "noVotes",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalYesProofStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalNoProofStake",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalVoteStakeProof",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "creatorCollateral",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "collateralLocked",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct Bet.CurrentInfo",
+          "name": "info",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "getResolutionInfo",
       "outputs": [
         {
@@ -1900,11 +2143,49 @@ export const BET_ABI =  [
       "inputs": [
         {
           "internalType": "address",
+          "name": "user",
+          "type": "address"
+        }
+      ],
+      "name": "hasBettor",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
           "name": "",
           "type": "address"
         }
       ],
       "name": "hasParticipated",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        }
+      ],
+      "name": "hasVoter",
       "outputs": [
         {
           "internalType": "bool",

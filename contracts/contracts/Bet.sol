@@ -12,12 +12,14 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * Loop-free losing PROOF accounting (tracks totals per side).
  */
 contract Bet is ReentrancyGuard {
-    enum Status {
+    enum Status {    
         OPEN_FOR_BETS,
         AWAITING_PROOF,
         VOTING,
         COMPLETED,
-        CANCELLED
+        CANCELLED,
+        NONE
+        
     }
 
     enum Side {
@@ -26,6 +28,20 @@ contract Bet is ReentrancyGuard {
         NO,
         INVALID // new option for rejecting bad proof
     }
+struct CurrentInfo {
+    Status status;
+    Side winningSide;
+    uint256 totalYesStake;
+    uint256 totalNoStake;
+    uint256 totalVotes;
+    uint256 yesVotes;
+    uint256 noVotes;
+    uint256 totalYesProofStake;
+    uint256 totalNoProofStake;
+    uint256 totalVoteStakeProof;
+    uint256 creatorCollateral;
+    bool collateralLocked;
+}
 
     struct BetDetails {
         string title;
@@ -288,7 +304,7 @@ contract Bet is ReentrancyGuard {
             totalNoStake += _amountUsdc;
         }
 
-        betFactory.factoryLogBetParticipation(msg.sender);
+        betFactory.factoryLogBetParticipation(msg.sender, uint8(_position), _amountUsdc);
         emit BetPlaced(msg.sender, _position, _amountUsdc);
     }
 
@@ -353,7 +369,7 @@ contract Bet is ReentrancyGuard {
             totalInvalidProofStake += stakeAmt;
         }
 
-        betFactory.factoryLogVote(msg.sender);
+        betFactory.factoryLogVote(msg.sender, uint8(_vote));
         emit VoteCast(msg.sender, _vote, stakeAmt);
     }
 
@@ -371,8 +387,9 @@ contract Bet is ReentrancyGuard {
                 _currentStatus = Status.AWAITING_PROOF;
             } else {
                 _currentStatus = Status.CANCELLED;
-                betFactory.factoryLogBetCompletion(creator);
+                betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
                 emit BetCancelled("Minimum side stake not met");
+            
             }
         }
     }
@@ -383,7 +400,7 @@ contract Bet is ReentrancyGuard {
             block.timestamp >= details.proofDeadline
         ) {
             _currentStatus = Status.CANCELLED;
-            betFactory.factoryLogBetCompletion(creator);
+            betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
             emit BetCancelled("Proof deadline missed");
 
             // Handle collateral forfeiture for missed proof
@@ -514,7 +531,7 @@ contract Bet is ReentrancyGuard {
                 }
             }
 
-            betFactory.factoryLogBetCompletion(creator);
+            betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
             withdrawFunds();
         }
     }
@@ -731,6 +748,22 @@ contract Bet is ReentrancyGuard {
     }
 
     // ======== ANALYTICS ========
+    function getCurrentInfo() external view returns (CurrentInfo memory info) {
+        info = CurrentInfo({
+            status: _currentStatus,
+            winningSide: winningSide,
+            totalYesStake: totalYesStake,
+            totalNoStake: totalNoStake,
+            totalVotes: totalVotes,
+            yesVotes: yesVotes,
+            noVotes: noVotes,
+            totalYesProofStake: totalYesProofStake,
+            totalNoProofStake: totalNoProofStake,
+            totalVoteStakeProof: totalVoteStakeProof,
+            creatorCollateral: creatorCollateral,
+            collateralLocked: collateralLocked
+        });
+    }
 
     function getResolutionInfo()
         external
@@ -889,4 +922,13 @@ contract Bet is ReentrancyGuard {
             usdcReward = totalVoterRewardPool / winningVoterCount;
         }
     }
+    function hasBettor(address user) external view returns (bool) {
+        Participant storage p = participants[user];
+        return (p.yesStake > 0 || p.noStake > 0);
+    }
+
+    function hasVoter(address user) external view returns (bool) {
+        return voted[user]; // or your equivalent
+    }
+
 }
