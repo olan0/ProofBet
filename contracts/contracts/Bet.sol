@@ -108,6 +108,7 @@ struct CurrentInfo {
     mapping(address => uint256) public pendingVoterRewardsUsdc;
 
     Status private _currentStatus;
+    uint256 private _collateralSnapshot; // snapshot for analytics/events
 
     // ======== EVENTS ========
 
@@ -248,7 +249,9 @@ struct CurrentInfo {
         require(block.timestamp < details.bettingDeadline, "Betting closed");
         require(_position == Side.YES || _position == Side.NO, "Invalid side");
         require(_amountUsdc >= details.minimumBetAmount, "Stake too low");
-
+        if (msg.sender == creator) {
+            require(_position != Side.NO, "Creator cannot bet NO on own market");
+    }
         if (details.minimumTrustScore > 0) {
             require(
                 trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore,
@@ -400,6 +403,7 @@ struct CurrentInfo {
             block.timestamp >= details.proofDeadline
         ) {
             _currentStatus = Status.CANCELLED;
+             winningSide = Side.INVALID;
             betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
             emit BetCancelled("Proof deadline missed");
 
@@ -436,8 +440,8 @@ struct CurrentInfo {
                         }
                     }
                 }
-
-                //creatorCollateral = 0;
+                _collateralSnapshot = creatorCollateral;
+                creatorCollateral = 0;
                 collateralLocked = false;
             }
 
@@ -511,7 +515,8 @@ struct CurrentInfo {
                     }
 
                     // Clean collateral
-                   // creatorCollateral = 0;
+                    _collateralSnapshot = creatorCollateral;
+                    creatorCollateral = 0;
                     collateralLocked = false;
 
                     // Ban creator — bad actor
@@ -784,41 +789,68 @@ struct CurrentInfo {
     {
         status = _currentStatus;
         winningSide_ = winningSide;
-        // === Handle INVALID proof case ===
-    if (winningSide == Side.INVALID) {
-        totalWinningStake = 0;
-        totalLosingStake = 0;
-        voterRewardPool = creatorCollateral/2; // optional: if you distribute from collateral
-        platformFeeAmount = (creatorCollateral * betFactory.defaultPlatformFeePercentage()) / 100;
-        platformFeePct = betFactory.defaultPlatformFeePercentage();
-        winnersPool = 0;
-        winningVoterCount = invalidVotes; // voters who voted INVALID
-        rewardPerWinningVoter = (winningVoterCount > 0)
-            ? (voterRewardPool / winningVoterCount)* (100-platformFeePct)
-            : 0;
-        return (
-            status,
-            winningSide_,
-            totalWinningStake,
-            totalLosingStake,
-            platformFeePct,
-            voterRewardPct,
-            platformFeeAmount,
-            voterRewardPool,
-            winnersPool,
-            winningVoterCount,
-            rewardPerWinningVoter
-        );
-    }
 
+        platformFeePct = betFactory.defaultPlatformFeePercentage();
+        voterRewardPct = betFactory.defaultVoterRewardPercentage();
+
+        // =========================
+        // INVALID (proof failed)
+        // =========================
+        if (winningSide == Side.INVALID) {
+            uint256 collateral =
+                creatorCollateral == 0
+                    ? _collateralSnapshot
+                    : creatorCollateral;
+
+            platformFeeAmount = (collateral * platformFeePct) / 100;
+            uint256 distributable = collateral - platformFeeAmount;
+
+            // ---- NO PROOF (no voters) ----
+            if (totalVotes == 0) {
+                voterRewardPool = 0;
+                winnersPool = distributable;
+
+                winningVoterCount = 0;
+                rewardPerWinningVoter = 0;
+            }
+            // ---- VOTED INVALID ----
+            else {
+                voterRewardPool = distributable / 2;
+                winnersPool = distributable - voterRewardPool;
+
+                winningVoterCount = invalidVotes;
+                rewardPerWinningVoter =
+                    winningVoterCount > 0
+                        ? voterRewardPool / winningVoterCount
+                        : 0;
+            }
+
+            return (
+                status,
+                winningSide_,
+                0,
+                0,
+                platformFeePct,
+                voterRewardPct,
+                platformFeeAmount,
+                voterRewardPool,
+                winnersPool,
+                winningVoterCount,
+                rewardPerWinningVoter
+            );
+        }
+
+        // =========================
+        // NOT COMPLETED
+        // =========================
         if (_currentStatus != Status.COMPLETED) {
             return (
                 status,
                 winningSide_,
                 0,
                 0,
-                betFactory.defaultPlatformFeePercentage(),
-                betFactory.defaultVoterRewardPercentage(),
+                platformFeePct,
+                voterRewardPct,
                 0,
                 0,
                 0,
@@ -827,24 +859,27 @@ struct CurrentInfo {
             );
         }
 
-        totalWinningStake =
-            (winningSide == Side.YES) ? totalYesStake : totalNoStake;
-        totalLosingStake =
-            (winningSide == Side.YES) ? totalNoStake : totalYesStake;
+    // =========================
+    // COMPLETED (YES / NO)
+    // =========================
+    totalWinningStake =
+        (winningSide == Side.YES) ? totalYesStake : totalNoStake;
+    totalLosingStake =
+        (winningSide == Side.YES) ? totalNoStake : totalYesStake;
 
-        platformFeePct = betFactory.defaultPlatformFeePercentage();
-        voterRewardPct = betFactory.defaultVoterRewardPercentage();
+    platformFeeAmount = (totalLosingStake * platformFeePct) / 100;
+    voterRewardPool = (totalLosingStake * voterRewardPct) / 100;
+    winnersPool = totalLosingStake - platformFeeAmount - voterRewardPool;
 
-        platformFeeAmount = (totalLosingStake * platformFeePct) / 100;
-        voterRewardPool = (totalLosingStake * voterRewardPct) / 100;
-        winnersPool = totalLosingStake - platformFeeAmount - voterRewardPool;
-        winningVoterCount =
-            (winningSide == Side.YES) ? yesVotes : noVotes;
-        rewardPerWinningVoter =
-            (winningVoterCount > 0)
-                ? voterRewardPool / winningVoterCount
-                : 0;
-    }
+    winningVoterCount =
+        (winningSide == Side.YES) ? yesVotes : noVotes;
+
+    rewardPerWinningVoter =
+        winningVoterCount > 0
+            ? voterRewardPool / winningVoterCount
+            : 0;
+}
+
 
     function calculateParticipantPayout(address _participant)
         public
@@ -929,6 +964,10 @@ struct CurrentInfo {
 
     function hasVoter(address user) external view returns (bool) {
         return voted[user]; // or your equivalent
+    }
+    function getCreatorCollateral() external view returns (uint256) {
+    // If collateral has been cleared, return the stored snapshot instead.
+        return creatorCollateral == 0 ? _collateralSnapshot : creatorCollateral;
     }
 
 }

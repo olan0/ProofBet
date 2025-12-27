@@ -98,6 +98,10 @@ export default function VotingPanel({
 
   const handlePlaceBet = async (side) => { // FIX: Added side parameter
     setError(null);
+    if (isCreator && side === 'no') {
+      setError("You cannot bet NO on your own market.");
+      return;
+    }
     if (isBanned) {
       setError("You are banned from participating in this market.");
       return;
@@ -192,14 +196,6 @@ export default function VotingPanel({
           <div className="space-y-2">
             <Label htmlFor="betAmount" className="text-gray-300">Bet Amount (USDC)</Label>
             <Input id="betAmount" type="number" step="0.01" min={bet.minimum_bet_amount} value={betAmount} onChange={(e) => setBetAmount(parseFloat(e.target.value))} className="bg-gray-700 border-gray-600 text-white" />
-            {isCreator && (
-              <div className="flex items-start gap-2 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded-md">
-                <Info className="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-yellow-300">
-                  As the creator, you must stake {betAmount.toFixed(2)} USDC as collateral in addition to your {betAmount.toFixed(2)} USDC bet. Total required: <strong>{requiredAmount.toFixed(2)} USDC</strong>
-                </p>
-              </div>
-            )}
           </div>
 
           {!walletConnected ? (
@@ -229,8 +225,8 @@ export default function VotingPanel({
               <Button onClick={() => handlePlaceBet('yes')} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
                 {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "Bet YES"}
               </Button>
-              <Button onClick={() => handlePlaceBet('no')} disabled={isProcessing} className="bg-red-600 hover:bg-red-700">
-                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "Bet NO"}
+              <Button onClick={() => handlePlaceBet('no')} disabled={isProcessing || isCreator} className="bg-red-600 hover:bg-red-700">
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : isCreator ? "Creator Cannot Bet NO" : "Bet NO"}
               </Button>
             </div>
           )}

@@ -39,6 +39,7 @@ export default function CreateBet() {
     proofType: "", // This field is collected but not sent to the contract in the current betDetails struct.
     category: "", // This field is collected but not sent to the contract in the current betDetails struct.
     bettingDeadline: null,
+    proofDeadline: null,
     votingDeadline: null,
   });
 
@@ -155,7 +156,7 @@ export default function CreateBet() {
   };
 
   const calculateDynamicFee = async () => {
-    if (!formData.bettingDeadline || !formData.votingDeadline) {
+    if (!formData.bettingDeadline || !formData.proofDeadline || !formData.votingDeadline) {
       setDynamicFeeProof(0);
       return;
     }
@@ -165,7 +166,7 @@ export default function CreateBet() {
       const factory = getBetFactoryContract();
       
       const bettingDeadlineTimestamp = Math.floor(formData.bettingDeadline.getTime() / 1000);
-      const proofDeadlineTimestamp = bettingDeadlineTimestamp + 24 * 60 * 60;
+      const proofDeadlineTimestamp = Math.floor(formData.proofDeadline.getTime() / 1000);
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
       const betDetails = {
@@ -239,7 +240,7 @@ export default function CreateBet() {
 
     // Note: formData.category and formData.proofType are collected but not passed to contract in betDetails struct.
     // However, they are kept in validation as required fields for UI/future use.
-    if (!formData.title || !formData.description || !formData.category || !formData.proofType || !formData.bettingDeadline || !formData.votingDeadline) {
+    if (!formData.title || !formData.description || !formData.category || !formData.proofType || !formData.bettingDeadline || !formData.proofDeadline || !formData.votingDeadline) {
       setError("Please fill out all required fields.");
       return;
     }
@@ -257,9 +258,8 @@ export default function CreateBet() {
       // const approveTx = await proofToken.approve(await factory.getAddress(), creationFeeWei);
       // await approveTx.wait();
 
-      // Calculate proof deadline as 24 hours after betting deadline
       const bettingDeadlineTimestamp = Math.floor(formData.bettingDeadline.getTime() / 1000);
-      const proofDeadlineTimestamp = bettingDeadlineTimestamp + 24 * 60 * 60; // 24 hours later
+      const proofDeadlineTimestamp = Math.floor(formData.proofDeadline.getTime() / 1000);
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
       // Create the bet details struct with ALL required fields
@@ -607,7 +607,7 @@ export default function CreateBet() {
               </div>
 
               {/* Deadlines */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <Label className="text-gray-300">Betting Closes *</Label>
                   <Popover>
@@ -625,6 +625,30 @@ export default function CreateBet() {
                         mode="single"
                         selected={formData.bettingDeadline}
                         onSelect={(date) => handleInputChange('bettingDeadline', date)}
+                        disabled={(date) => date < new Date()}
+                        className="text-white"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-gray-300">Proof Deadline *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.proofDeadline ? format(formData.proofDeadline, 'PPP') : 'Select deadline'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.proofDeadline}
+                        onSelect={(date) => handleInputChange('proofDeadline', date)}
                         disabled={(date) => date < new Date()}
                         className="text-white"
                       />

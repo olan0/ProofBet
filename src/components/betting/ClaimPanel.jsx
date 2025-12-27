@@ -13,6 +13,9 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
   const [debugInfo, setDebugInfo] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
   const [creatorHasClaimed, setCreatorHasClaimed] = useState(false);
+  const [winningsAmount, setWinningsAmount] = useState(0);
+  const [voterRewardAmounts, setVoterRewardAmounts] = useState({ usdc: 0, proof: 0 });
+  const [creatorCollateralAmount, setCreatorCollateralAmount] = useState(0);
 
   useEffect(() => {
     const findUserData = async () => {
@@ -40,6 +43,32 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
           setCreatorHasClaimed(participantData.hasWithdrawn || !collateralLocked);
         }
         
+        // Calculate payout amounts
+        try {
+          const [payoutInfo, voterRewardInfo] = await Promise.all([
+            betContract.calculateParticipantPayout(walletAddress),
+            betContract.calculateVoterReward(walletAddress)
+          ]);
+          
+          setWinningsAmount(parseFloat(ethers.formatUnits(payoutInfo.payout, 6)));
+          setVoterRewardAmounts({
+            usdc: parseFloat(ethers.formatUnits(voterRewardInfo.usdcReward, 6)),
+            proof: parseFloat(ethers.formatEther(voterRewardInfo.proofRefund))
+          });
+        } catch (e) {
+          console.error("Could not calculate payout amounts:", e);
+        }
+        
+        // Fetch creator collateral amount if user is creator
+        if (userIsCreator) {
+          try {
+            const collateralAmount = await betContract.getCreatorCollateral();
+            setCreatorCollateralAmount(parseFloat(ethers.formatUnits(collateralAmount, 6)));
+          } catch (e) {
+            console.error("Could not fetch creator collateral:", e);
+          }
+        }
+        
         // Debug info
         setDebugInfo({
           winningSide: Number(winningSide),
@@ -47,7 +76,8 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
           userNoStake: ethers.formatUnits(participantData.noStake, 6),
           hasWithdrawn: participantData.hasWithdrawn,
           voterStake: ethers.formatEther(voteStakeData),
-          isCreator: userIsCreator
+          isCreator: userIsCreator,
+          creatorCollateralAmount: creatorCollateralAmount
         });
         
       } catch (e) {
@@ -139,9 +169,41 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {canClaimWinnings && <p className="text-green-300">{bet.winning_side === 'invalid' ? 'The proof was rejected! As a bettor, claim your share of the creator\'s collateral.' : 'Congratulations! You were on the winning side. Claim your payout now.'}</p>}
-        {canClaimVoterRewards && <p className="text-purple-300">You voted correctly! Claim your staked PROOF and your share of the USDC rewards.</p>}
-        {canClaimCreatorStake && <p className="text-blue-300">As the creator who submitted proof, claim your USDC collateral back.</p>}
+        {canClaimWinnings && (
+          <div className="space-y-2">
+            <p className="text-green-300">{bet.winning_side === 'invalid' ? 'The proof was rejected! As a bettor, claim your share of the creator\'s collateral.' : 'Congratulations! You were on the winning side. Claim your payout now.'}</p>
+            {winningsAmount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-green-400">${winningsAmount.toFixed(2)} USDC</span>
+              </div>
+            )}
+          </div>
+        )}
+        {canClaimVoterRewards && (
+          <div className="space-y-2">
+            <p className="text-purple-300">You voted correctly! Claim your staked PROOF and your share of the USDC rewards.</p>
+            {(voterRewardAmounts.usdc > 0 || voterRewardAmounts.proof > 0) && (
+              <div className="flex items-center gap-4">
+                {voterRewardAmounts.proof > 0 && (
+                  <span className="text-xl font-bold text-purple-400">{voterRewardAmounts.proof.toFixed(2)} PROOF</span>
+                )}
+                {voterRewardAmounts.usdc > 0 && (
+                  <span className="text-xl font-bold text-green-400">${voterRewardAmounts.usdc.toFixed(4)} USDC</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {canClaimCreatorStake && (
+          <div className="space-y-2">
+            <p className="text-blue-300">As the creator who submitted proof, claim your USDC collateral back.</p>
+            {creatorCollateralAmount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-cyan-400">${creatorCollateralAmount.toFixed(2)} USDC</span>
+              </div>
+            )}
+          </div>
+        )}
         
         <Button onClick={handleClaim} disabled={isProcessing} className="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-bold">
           {isProcessing ? (

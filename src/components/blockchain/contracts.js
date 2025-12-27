@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =   [
+export const BET_FACTORY_ABI =  [
     {
       "inputs": [
         {
@@ -1967,6 +1967,19 @@ export const BET_ABI = [
         {
           "internalType": "uint256",
           "name": "voters",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getCreatorCollateral",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
           "type": "uint256"
         }
       ],

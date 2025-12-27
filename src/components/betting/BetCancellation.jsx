@@ -20,6 +20,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
   const [creatorHasClaimedCollateral, setCreatorHasClaimedCollateral] = useState(false);
   const [isProcessingCreator, setIsProcessingCreator] = useState(false);
   const [creatorError, setCreatorError] = useState("");
+  const [creatorCollateralAmount, setCreatorCollateralAmount] = useState(0);
 
   useEffect(() => {
     const checkRefundStatus = async () => {
@@ -63,6 +64,14 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           // Show claim button when collateralLocked == true (collateral exists)
           // Hide button if: already claimed OR no collateral (collateralLocked == false)
           setCreatorHasClaimedCollateral(participantData.hasWithdrawn || !collateralLocked);
+          
+          // Fetch collateral amount
+          try {
+            const collateralAmount = await betContract.getCreatorCollateral();
+            setCreatorCollateralAmount(parseFloat(ethers.formatUnits(collateralAmount, 6)));
+          } catch (e) {
+            console.error("Could not fetch creator collateral:", e);
+          }
         }
       } catch (e) {
         console.error("Could not check refund status:", e);
@@ -299,13 +308,18 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && isCreator && (
+        {walletAddress && isCreator && bet.winning_side !== 'invalid' && (
           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-cyan-700">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-cyan-400" />
                 Creator Collateral Refund
               </h3>
+              {creatorCollateralAmount > 0 && (
+                <span className="text-2xl font-bold text-cyan-400">
+                  ${creatorCollateralAmount.toFixed(2)} USDC
+                </span>
+              )}
             </div>
             
             {creatorHasClaimedCollateral ? (
@@ -343,6 +357,12 @@ export default function BetCancellation({ bet, participants, walletAddress, load
                 <p className="text-sm text-red-300">{creatorError}</p>
               </div>
             )}
+          </div>
+        )}
+
+        {walletAddress && isCreator && bet.winning_side === 'invalid' && (
+          <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+            <p className="text-red-300 text-sm">Your collateral was forfeited and distributed to voters and bettors due to invalid proof.</p>
           </div>
         )}
 

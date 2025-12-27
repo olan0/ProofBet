@@ -32,7 +32,7 @@ export default function BetResolution({ bet, participants, votes, appSettings })
         platformFeeAmount: parseFloat(ethers.formatUnits(resInfo.platformFeeAmount, 6)),
         winnersPool: parseFloat(ethers.formatUnits(resInfo.winnersPool, 6)),
         totalVoters: Number(resInfo.totalVoters),
-        rewardPerVoter: parseFloat(ethers.formatUnits(resInfo.rewardPerVoter, 6))
+        rewardPerVoter: parseFloat(ethers.formatUnits(resInfo.rewardPerWinningVoter, 6))
       });
     } catch (error) {
       console.error("Failed to load resolution data from blockchain:", error);

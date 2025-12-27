@@ -417,11 +417,12 @@ export default function DocumentationPage() {
                 </Card>
 
                 <Tabs defaultValue="wallet" className="space-y-6">
-                  <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-4">
+                  <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-5">
                     <TabsTrigger value="wallet">Internal Wallet</TabsTrigger>
                     <TabsTrigger value="betting">Placing Bets</TabsTrigger>
                     <TabsTrigger value="creating">Creating Markets</TabsTrigger>
                     <TabsTrigger value="voting">Voting</TabsTrigger>
+                    <TabsTrigger value="resolution">Resolution</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="wallet">
@@ -573,6 +574,106 @@ export default function DocumentationPage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
+
+                  <TabsContent value="resolution">
+                  <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                      <CardTitle className="text-white text-xl">
+                        Final Resolution Rules
+                      </CardTitle>
+                      <p className="text-gray-300 text-sm">
+                        How bets, voters, and creators are rewarded or penalized based on outcome.
+                      </p>
+                    </CardHeader>
+
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse rounded-lg overflow-hidden">
+                          <thead className="bg-gray-200">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                                Scenario
+                              </th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                                Bettors
+                              </th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                                Voters
+                              </th>
+                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
+                                Creator
+                              </th>
+                            </tr>
+                          </thead>
+
+                          <tbody className="bg-gray-100 divide-y divide-gray-300">
+                            <tr>
+                              <td className="px-4 py-3 font-medium text-gray-900">
+                                ✅ Valid Proof (YES / NO)
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Winners receive stake + share of losing side
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Correct voters get PROOF back + USDC reward
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Collateral returned
+                              </td>
+                            </tr>
+
+                            <tr>
+                              <td className="px-4 py-3 font-medium text-gray-900">
+                                ❌ Invalid Proof (Voted INVALID)
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Original bets refunded
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                INVALID voters share creator collateral
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Collateral slashed
+                              </td>
+                            </tr>
+
+                            <tr>
+                              <td className="px-4 py-3 font-medium text-gray-900">
+                                ⏱ No Proof Submitted
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Bettors receive share of creator collateral
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                No voting rewards
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Creator banned & collateral forfeited
+                              </td>
+                            </tr>
+
+                            <tr>
+                              <td className="px-4 py-3 font-medium text-gray-900">
+                                ⚖ Vote Tie / Insufficient Votes
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Bets refunded
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                PROOF stakes refunded
+                              </td>
+                              <td className="px-4 py-3 text-gray-800">
+                                Collateral returned
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+
+                    </TabsContent>
                 </Tabs>
               </div>
             )}
