@@ -84,7 +84,7 @@ Use the Wallet tab to deposit USDC and PROOF tokens from your personal wallet in
 
 Browse markets, place bets, create markets, and vote on outcomes using your internal balances.
 
-Internal Wallet Placing Bets Creating Markets Voting The Internal Wallet System
+Internal Wallet Placing Bets Creating Markets Voting Resolution The Internal Wallet System
 
 To save on gas fees and improve user experience, ProofBet uses an internal wallet system. Instead of approving every single transaction, you deposit funds once into the platform's smart contract, and all subsequent actions (betting, creating, voting) use this internal balance.
 
@@ -136,6 +136,50 @@ Community Voting System
 {\[ "Find markets in the 'Voting' tab", "Carefully review the submitted proof link", "Ensure you haven't bet on this market", "Click 'Vote' and choose YES if proof is valid, NO if you believe proof is invalid, or INVALID PROOF if you believe the creator’s proof fails verification entirely", "Confirm the transaction. The PROOF stake will be deducted from your internal wallet.", "Earn rewards and get your stake back if you vote with the majority and outcome is Valid or Invalid Proof.", "If you vote incorrectly, you lose your stake." \].map((step, index) => (
 
 ))}
+
+Final Resolution Rules
+
+How bets, voters, and creators are rewarded or penalized based on outcome.
+
+Scenario
+
+Bettors
+
+Voters
+
+Creator
+
+✅ Valid Proof (YES / NO)
+
+Winners receive stake + share of losing side
+
+Correct voters get PROOF back + USDC reward
+
+Collateral returned
+
+❌ Invalid Proof (Voted INVALID)
+
+Original bets refunded
+
+INVALID voters share creator collateral
+
+Collateral slashed
+
+⏱ No Proof Submitted
+
+Bettors receive share of creator collateral
+
+No voting rewards
+
+Creator banned & collateral forfeited
+
+⚖ Vote Tie / Insufficient Votes
+
+Bets refunded
+
+PROOF stakes refunded
+
+Collateral returned
 
 )} {activeSection === "trust-score" && (
 
