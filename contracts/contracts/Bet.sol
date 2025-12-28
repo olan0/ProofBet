@@ -656,23 +656,31 @@ struct CurrentInfo {
         uint256 originalStake = voterStakesProof[msg.sender];
         voterStakesProof[msg.sender] = 0;
 
-        if (_currentStatus == Status.COMPLETED) {
+        if (_currentStatus == Status.COMPLETED || winningSide == Side.INVALID) {
             bool votedCorrect = (votes[msg.sender] == winningSide);
             if (votedCorrect) {
                 proofToReturn = originalStake;
+                uint256 rewardPool;
+                uint256 winners;
 
-                uint256 totalLosingStake =
-                    (winningSide == Side.YES)
-                        ? totalNoStake
-                        : totalYesStake;
-                uint256 rewardPool =
-                    (totalLosingStake *
-                        betFactory.defaultVoterRewardPercentage()) / 100;
-                uint256 winners =
-                    (winningSide == Side.YES) ? yesVotes : noVotes;
-
+                if (winningSide == Side.YES) {
+                    rewardPool = totalNoProofStake + totalInvalidProofStake;
+                    winners = yesVotes;
+                } else if (winningSide == Side.NO) {
+                    rewardPool = totalYesProofStake + totalInvalidProofStake;
+                    winners = noVotes;
+                } else {
+                // INVALID voted
+                    rewardPool = totalYesProofStake + totalNoProofStake;
+                    winners = invalidVotes;
+                }
                 if (rewardPool > 0 && winners > 0) {
                     usdcReward = rewardPool / winners;
+                }
+                uint256 extraReward = pendingVoterRewardsUsdc[msg.sender];
+                if (extraReward > 0) {
+                    usdcReward = extraReward;
+                    pendingVoterRewardsUsdc[msg.sender] = 0;
                 }
             }
         } else {
@@ -680,11 +688,7 @@ struct CurrentInfo {
             // - For normal cancellations, voters just get their proof back
             // - For INVALID-proof cancellations, INVALID voters may have pending USDC rewards
             proofToReturn = originalStake;
-            uint256 extraReward = pendingVoterRewardsUsdc[msg.sender];
-            if (extraReward > 0) {
-                usdcReward = extraReward;
-                pendingVoterRewardsUsdc[msg.sender] = 0;
-            }
+            
         }
 
         if (proofToReturn > 0) {
