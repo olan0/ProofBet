@@ -64,7 +64,7 @@ async function handleBet(betAddr: string) {
 
   if (status === Status.AWAITING_PROOF && now >= proofDeadline) {
     console.log(`🚫 Cancelling for missing proof at ${betAddr}`);
-    const tx = await bet.checkAndCancelForProof({ gasLimit: GAS_LIMIT });
+    const tx = await bet.checkAndCancelForNoProof({ gasLimit: GAS_LIMIT });
     await tx.wait();
     return;
   }

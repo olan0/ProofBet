@@ -23,16 +23,45 @@ export default function BetResolution({ bet, participants, votes, appSettings })
     try {
       const betContract = getBetContract(bet.address);
       const resInfo = await betContract.getResolutionInfo();
+
+      const outcomeNum = Number(resInfo.outcome); // 0=NONE, 1=YES, 2=NO, 3=INVALID
+      const totalWinningStake = outcomeNum === 1 ? parseFloat(ethers.formatUnits(resInfo.yesStake, 6)) : 
+                                outcomeNum === 2 ? parseFloat(ethers.formatUnits(resInfo.noStake, 6)) : 0;
+      const totalLosingStake = outcomeNum === 1 ? parseFloat(ethers.formatUnits(resInfo.noStake, 6)) :
+                               outcomeNum === 2 ? parseFloat(ethers.formatUnits(resInfo.yesStake, 6)) : 0;
+
+      const voterRewardPool = parseFloat(ethers.formatUnits(resInfo.voterRewardPoolUsdc, 6));
+      const platformFeeAmount = parseFloat(ethers.formatUnits(resInfo.platformFeeUsdc, 6));
+      const bettorBonusPool = parseFloat(ethers.formatUnits(resInfo.bettorBonusPoolUsdc, 6));
+
+      // Calculate winners pool (what's left for winning bettors after fees)
+      const winnersPool = outcomeNum === 3 ? bettorBonusPool : (totalLosingStake - voterRewardPool - platformFeeAmount);
+
+      // Calculate voter counts
+      const totalYesVotes = Number(resInfo.yesVotes);
+      const totalNoVotes = Number(resInfo.noVotes);
+      const totalInvalidVotes = Number(resInfo.invalidVotes);
+      const totalVoters = outcomeNum === 1 ? totalYesVotes :
+                         outcomeNum === 2 ? totalNoVotes :
+                         outcomeNum === 3 ? totalInvalidVotes : 0;
+
+      const rewardPerVoter = totalVoters > 0 ? voterRewardPool / totalVoters : 0;
+      const forfeitedProof = parseFloat(ethers.formatEther(resInfo.forfeitProof));
+      const proofBonusPerVoter = totalVoters > 0 ? forfeitedProof / totalVoters : 0;
       
-      // Convert BigInt to regular numbers
       setResolutionData({
-        totalWinningStake: parseFloat(ethers.formatUnits(resInfo.totalWinningStake, 6)),
-        totalLosingStake: parseFloat(ethers.formatUnits(resInfo.totalLosingStake, 6)),
-        voterRewardPool: parseFloat(ethers.formatUnits(resInfo.voterRewardPool, 6)),
-        platformFeeAmount: parseFloat(ethers.formatUnits(resInfo.platformFeeAmount, 6)),
-        winnersPool: parseFloat(ethers.formatUnits(resInfo.winnersPool, 6)),
-        totalVoters: Number(resInfo.totalVoters),
-        rewardPerVoter: parseFloat(ethers.formatUnits(resInfo.rewardPerWinningVoter, 6))
+        totalWinningStake,
+        totalLosingStake,
+        voterRewardPool,
+        platformFeeAmount,
+        winnersPool,
+        totalVoters,
+        rewardPerVoter,
+        forfeitedProof,
+        proofBonusPerVoter,
+        yesVotes: totalYesVotes,
+        noVotes: totalNoVotes,
+        invalidVotes: totalInvalidVotes
       });
     } catch (error) {
       console.error("Failed to load resolution data from blockchain:", error);
@@ -78,10 +107,10 @@ export default function BetResolution({ bet, participants, votes, appSettings })
 
   if (!resolutionData) return null;
 
-  const totalVotes = votes.length;
-  const yesVotes = votes.filter(v => v.vote === 'yes').length;
-  const noVotes = votes.filter(v => v.vote === 'no').length;
-  const invalidVotes = votes.filter(v => v.vote === 'invalid').length;
+  const totalVotes = (resolutionData.yesVotes || 0) + (resolutionData.noVotes || 0) + (resolutionData.invalidVotes || 0);
+  const yesVotes = resolutionData.yesVotes || 0;
+  const noVotes = resolutionData.noVotes || 0;
+  const invalidVotes = resolutionData.invalidVotes || 0;
   const winningVote = invalidVotes > yesVotes && invalidVotes > noVotes ? 'invalid' : (yesVotes > noVotes ? 'yes' : 'no');
   
   const voterRewardPct = appSettings?.voter_reward_percentage || 5;
@@ -161,7 +190,10 @@ export default function BetResolution({ bet, participants, votes, appSettings })
               <Vote className="w-6 h-6 text-purple-400 mx-auto mb-2" />
               <div className="text-lg font-bold text-purple-400">${resolutionData.voterRewardPool.toFixed(2)}</div>
               <div className="text-xs text-gray-400">Voter Rewards ({voterRewardPct}%)</div>
-              <div className="text-xs text-purple-300">${resolutionData.rewardPerVoter.toFixed(4)} per voter</div>
+              <div className="text-xs text-purple-300">${resolutionData.rewardPerVoter.toFixed(4)} USDC per voter</div>
+              {resolutionData.forfeitedProof > 0 && (
+                <div className="text-xs text-purple-300">+ {resolutionData.proofBonusPerVoter.toFixed(4)} PROOF bonus</div>
+              )}
             </div>
             <div className="text-center p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
               <Building className="w-6 h-6 text-orange-400 mx-auto mb-2" />
@@ -199,6 +231,9 @@ export default function BetResolution({ bet, participants, votes, appSettings })
                     </span>
                     <div className="text-right">
                       <div className="text-purple-400 font-semibold text-sm">+{resolutionData.rewardPerVoter.toFixed(4)} USDC</div>
+                      {resolutionData.proofBonusPerVoter > 0 && (
+                        <div className="text-purple-400 font-semibold text-sm">+{resolutionData.proofBonusPerVoter.toFixed(4)} PROOF</div>
+                      )}
                       <div className="text-xs text-gray-400">Voting reward</div>
                     </div>
                   </div>

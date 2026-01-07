@@ -2,46 +2,48 @@
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./TrustScore.sol";
-import "./BetFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+//import "./TrustScore.sol";
+//import "./BetFactory.sol";
+import "hardhat/console.sol";
+
+
+interface ITrustScore {
+    function getScore(address user) external view returns (uint256);
+}
+
+interface IBetFactory {
+    // Internal wallets
+    function getInternalBalances(address user) external view returns (uint256 usdc, uint256 proof);
+    function transferInternalUsdc(address _from, address _to, uint256 _amount, string memory _reason) external;
+    function transferInternalProof(address _from, address _to, uint256 _amount, string memory _reason) external;
+
+    // Config
+    function defaultPlatformFeePercentage() external view returns (uint256);
+    function defaultVoterRewardPercentage() external view returns (uint256); // % of losing bettor pool paid to correct voters
+    function feeCollector() external view returns (address);
+    function calculateRequiredStake(address voter) external view returns (uint256);
+
+    // Optional logs / moderation 
+    function factoryLogBetParticipation(address participant,uint8 _position, uint256 _amountUsdc) external;
+    function factoryLogVote(address voter, uint8 _vote ) external;
+    function factoryLogBetCompletion(address creator,uint8 newStatus) external;
+    function banCreator(address creator) external;
+
+    // Creator collateral baseline (USDC)
+    function proofCollateralUsdc() external view returns (uint256);
+}
 
 /**
- * @title Bet
- * @dev Individual prediction market contract using internal wallet system.
- * Loop-free losing PROOF accounting (tracks totals per side).
+ * Bet v2 (rebuilt)
+ * - INVALID proof => Status.CANCELLED with CancelReason.VOTE_INVALID
+ * - No proof => Status.CANCELLED with CancelReason.NO_PROOF
+ * - Claim-based payouts (no loops)
  */
 contract Bet is ReentrancyGuard {
-    enum Status {    
-        OPEN_FOR_BETS,
-        AWAITING_PROOF,
-        VOTING,
-        COMPLETED,
-        CANCELLED,
-        NONE
-        
-    }
-
-    enum Side {
-        NONE,
-        YES,
-        NO,
-        INVALID // new option for rejecting bad proof
-    }
-struct CurrentInfo {
-    Status status;
-    Side winningSide;
-    uint256 totalYesStake;
-    uint256 totalNoStake;
-    uint256 totalVotes;
-    uint256 yesVotes;
-    uint256 noVotes;
-    uint256 totalYesProofStake;
-    uint256 totalNoProofStake;
-    uint256 totalVoteStakeProof;
-    uint256 creatorCollateral;
-    bool collateralLocked;
-}
+    enum Status { OPEN_FOR_BETS, AWAITING_PROOF, VOTING, COMPLETED, CANCELLED , NONE}
+    enum Side { NONE, YES, NO, INVALID } // INVALID is for voters only
+    enum CancelReason { NONE, MIN_SIDE_STAKE, NO_PROOF, INSUFFICIENT_VOTES, TIE, VOTE_INVALID }
 
     struct BetDetails {
         string title;
@@ -58,90 +60,116 @@ struct CurrentInfo {
     struct Participant {
         uint256 yesStake;
         uint256 noStake;
-        bool hasWithdrawn;
+        bool claimed;
     }
 
+    struct VoterInfo {
+        Side vote;
+        uint256 stakeProof;
+        bool claimed;
+    }
+
+    struct ResolutionInfo {
+        Status status;
+        CancelReason reason;
+        Side outcome;
+
+        uint256 yesStake;
+        uint256 noStake;
+
+        uint256 yesVotes;
+        uint256 noVotes;
+        uint256 invalidVotes;
+
+        uint256 creatorCollateralSnap;
+
+        uint256 platformFeeUsdc;
+        uint256 voterRewardPoolUsdc;
+        uint256 bettorBonusPoolUsdc;
+
+        uint256 forfeitProof;
+        uint256 totalWinnerProof;
+    }
     // ======== STORAGE ========
 
     BetDetails public details;
     address public creator;
-    BetFactory public betFactory;
-    TrustScore public trustScoreContract;
-    IERC20 public usdcToken;
-    IERC20 public proofToken;
-    address public feeCollector;
 
-    uint256 public creatorCollateral; // USDC collateral conceptually locked by creator
-    bool public collateralLocked;
+    IBetFactory public betFactory;
+    ITrustScore public trustScoreContract;
+    IERC20 public usdcToken;   // informational
+    IERC20 public proofToken;  // informational
 
-    // Betting & voting totals
+    Status private _status;
+    CancelReason public cancelReason;
+
+    // Totals (live)
     uint256 public totalYesStake;
     uint256 public totalNoStake;
-
-    uint256 public totalVoteStakeProof;   // sum of all voter proof stakes (all sides)
-    uint256 public totalYesProofStake;    // sum of proof stakes for YES voters
-    uint256 public totalNoProofStake;     // sum of proof stakes for NO voters
-    uint256 public totalInvalidProofStake; // sum of proof stakes for INVALID voters
-
-    string public proofUrl;
-    Side public winningSide;
-    bool public fundsDistributed;
+    uint256 public participantsCount;
 
     uint256 public yesVotes;
     uint256 public noVotes;
     uint256 public invalidVotes;
-    uint256 public participantCount;
     uint256 public totalVotes;
 
-    mapping(address => bool) public hasParticipated;
-    address[] public participantList;
+    // total PROOF staked by voters per option
+    uint256 public totalYesProofStake;
+    uint256 public totalNoProofStake;
+    uint256 public totalInvalidProofStake;
 
+    string public proofUrl;
+
+    // Outcome only meaningful when COMPLETED (YES/NO) OR CANCELLED(VOTE_INVALID)
+    Side public outcomeSide; // YES/NO for completed, INVALID for vote-invalid cancellation, NONE otherwise
+
+    // Creator collateral (USDC)
+    uint256 public creatorCollateral;
+
+    // Claims
     mapping(address => Participant) public participants;
+    mapping(address => VoterInfo) public voters;
 
-    // Voting
-    mapping(address => uint256) public voterStakesProof; // per-voter stake (used in claims)
-    mapping(address => Side) public votes;
-    mapping(address => bool) public voted;
-    address[] public voterList; // track voters for INVALID collateral reward distribution
+    // ======== SNAPSHOTS ========
+    // Captured once when finalized (COMPLETED or CANCELLED)
+    bool public snapshotted;
 
-    // Extra USDC rewards for voters (e.g. INVALID proof penalty)
-    mapping(address => uint256) public pendingVoterRewardsUsdc;
+    uint256 public snapTotalYesStake;
+    uint256 public snapTotalNoStake;
 
-    Status private _currentStatus;
-    uint256 private _collateralSnapshot; // snapshot for analytics/events
+    uint256 public snapTotalYesProofStake;
+    uint256 public snapTotalNoProofStake;
+    uint256 public snapTotalInvalidProofStake;
+
+    uint256 public snapCreatorCollateral;
+
+    // Pools computed at snapshot time
+    // COMPLETED:
+    uint256 public snapPlatformFeeUsdc;
+    uint256 public snapVoterRewardPoolUsdc; // from losing bettors pool (USDC)
+    
+    uint256 public snapNetLosingPoolUsdc;   // remaining losing pool distributed to winning bettors (USDC)
+    uint256 public snapWinningBettorTotalStake;
+
+    // CANCELLED NO_PROOF:
+    uint256 public snapBettorRefundBonusPoolUsdc; // from collateral (optional)
+    // CANCELLED VOTE_INVALID:
+   
+    uint256 public snapInvalidVoterBonusPoolUsdc;  // from collateral portion going to correct voters
+    uint256 public snapInvalidWinningVoterTotalStakeProof; // sum stakeProof for INVALID voters (for proportional distribution)
+    uint256 public snapInvalidLosingVoterTotalStakeProof;  // forfeited PROOF pool from non-INVALID voters
+    uint256 public snaptotalWinnerProof;
 
     // ======== EVENTS ========
 
     event BetPlaced(address indexed user, Side position, uint256 amountUsdc);
     event ProofSubmitted(address indexed creator, string proofUrl);
     event VoteCast(address indexed voter, Side vote, uint256 amountProof);
-    event BetResolved(Side winningSide);
-    event BetCancelled(string reason);
-    event FundsWithdrawn(address indexed user, uint256 amountUsdc, uint256 amountProof);
-    event BetResolvedSnapshot(
-        Side winningSide,
-        uint256 totalWinningStake,
-        uint256 totalLosingStake,
-        uint256 platformFeeAmount,
-        uint256 voterRewardPool,
-        uint256 winnersPool,
-        uint256 winningVoterCount,
-        uint256 rewardPerWinningVoter
-    );
+    event StatusChanged(Status newStatus, CancelReason reason, Side outcomeSide);
+    event BettorClaimed(address indexed user, uint256 usdcAmount);
+    event VoterClaimed(address indexed user, uint256 usdcAmount, uint256 proofAmount);
 
-    // ======== MODIFIERS ========
-
-    modifier onlyCreator() {
-        require(msg.sender == creator, "Not creator");
-        _;
-    }
-
-    modifier atStatus(Status _status) {
-        require(_currentStatus == _status, "Invalid status");
-        _;
-    }
-
-    // ======== INITIALIZER (for clones) ========
+    // ======== INIT ========
 
     bool private initialized;
 
@@ -151,45 +179,42 @@ struct CurrentInfo {
         address _betFactory,
         address _trustScore,
         address _usdcToken,
-        address _proofToken,
-        address _feeCollector
+        address _proofToken
     ) external {
         require(!initialized, "Already initialized");
         initialized = true;
-        require(
-            _creator != address(0) &&
-                _betFactory != address(0) &&
-                _trustScore != address(0) &&
-                _usdcToken != address(0) &&
-                _proofToken != address(0) &&
-                _feeCollector != address(0),
-            "Zero address"
-        );
-        require(
-            _details.bettingDeadline < _details.proofDeadline &&
-                _details.proofDeadline < _details.votingDeadline,
-            "Bad deadlines"
-        );
-
+        console.log("Bet initialized with creator:", _creator);
+        require(_creator != address(0) && _betFactory != address(0) && _trustScore != address(0), "Zero address");
+        require(_details.bettingDeadline < _details.proofDeadline && _details.proofDeadline < _details.votingDeadline, "Bad deadlines");
+        require(msg.sender == _betFactory, "Only factory can initialize");
+        console.log("Bet details title:", _details.title);
         details = _details;
         creator = _creator;
-        require(msg.sender == _betFactory, "Only factory can initialize");
-        betFactory = BetFactory(msg.sender);
-        trustScoreContract = TrustScore(_trustScore);
+        betFactory = IBetFactory(_betFactory);
+        trustScoreContract = ITrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken);
-        feeCollector = _feeCollector;
-        _currentStatus = Status.OPEN_FOR_BETS;
 
-        // Factory-level collateral configuration (conceptual amount)
-        creatorCollateral = BetFactory(_betFactory).proofCollateralUsdc();
-        collateralLocked = creatorCollateral > 0;
+        _status = Status.OPEN_FOR_BETS;
+        cancelReason = CancelReason.NONE;
+        outcomeSide = Side.NONE;
+        console.log("Bet status set to OPEN_FOR_BETS");
+        // baseline collateral(creator must have funded internal balance beforehand)
+        creatorCollateral = betFactory.proofCollateralUsdc();
+         console.log("Bet creator collateral set to:", creatorCollateral);
+        if (creatorCollateral > 0) {
+            // lock collateral from creator into this Bet (internal transfer)
+            console.log("Transferring creator collateral to Bet contract");
+            betFactory.transferInternalUsdc(_creator, address(this), creatorCollateral, "Creator collateral");
+        }
+        console.log("Bet creator collateral transferred to Bet contract");
+        emit StatusChanged(_status, cancelReason, outcomeSide);
     }
 
-    // ======== VIEW FUNCTIONS ========
+     // ======== VIEW FUNCTIONS ========
 
     function currentStatus() public view returns (Status) {
-        return _currentStatus;
+        return _status;
     }
 
     function getBetDetails() external view returns (BetDetails memory) {
@@ -208,8 +233,8 @@ struct CurrentInfo {
             uint256 proofDeadline,
             uint256 votingDeadline,
             string memory proof,
-            uint256 participantsCount,
-            uint256 voters
+            uint256 participantsC,
+            uint256 votersC
         )
     {
         return (
@@ -221,7 +246,7 @@ struct CurrentInfo {
             details.proofDeadline,
             details.votingDeadline,
             proofUrl,
-            participantCount,
+            participantsCount,
             totalVotes
         );
     }
@@ -236,36 +261,28 @@ struct CurrentInfo {
             uint256 totalVoteStake
         )
     {
-        return (yesVotes, noVotes, invalidVotes, totalVoteStakeProof);
+        return (yesVotes, noVotes, invalidVotes, totalYesProofStake + totalNoProofStake + totalInvalidProofStake);
     }
 
-    // ======== CORE ========
+    // ======== BETTING ========
 
-    function placeBet(Side _position, uint256 _amountUsdc)
-        external
-        nonReentrant
-        atStatus(Status.OPEN_FOR_BETS)
-    {
+    function placeBet(Side position, uint256 amountUsdc) external nonReentrant {
+        require(_status == Status.OPEN_FOR_BETS, "Invalid status");
         require(block.timestamp < details.bettingDeadline, "Betting closed");
-        require(_position == Side.YES || _position == Side.NO, "Invalid side");
-        require(_amountUsdc >= details.minimumBetAmount, "Stake too low");
-        if (msg.sender == creator) {
-            require(_position != Side.NO, "Creator cannot bet NO on own market");
-    }
+        require(position == Side.YES || position == Side.NO, "Bad side");
+        require(amountUsdc >= details.minimumBetAmount, "Stake too low");
+
+        // Trust gate
         if (details.minimumTrustScore > 0) {
-            require(
-                trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore,
-                "Trust too low"
-            );
+            require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust too low");
         }
 
-        (uint256 userUsdcBalance, ) = betFactory.getInternalBalances(msg.sender);
-
-        // CREATOR MUST MATCH THEIR BET WITH EXTRA COLLATERAL
-        if (msg.sender == creator) {
+        // Creator cannot bet NO (your rule)
+        (uint256 uUsdc, ) = betFactory.getInternalBalances(msg.sender);
+         if (msg.sender == creator) {
             // Creator must have double USDC: bet + extra stake/penalty
             require(
-                userUsdcBalance >= _amountUsdc * 2,
+                uUsdc >= amountUsdc * 2,
                 "Creator needs extra collateral"
             );
 
@@ -273,693 +290,447 @@ struct CurrentInfo {
             betFactory.transferInternalUsdc(
                 msg.sender,
                 address(this),
-                _amountUsdc * 2,
+                amountUsdc * 2,
                 "Creator matching collateral"
             );
 
             // Of that, one bet-size counts as "creatorCollateral" (claimable/penalized),
             // and one bet-size counts as actual bet stake.
-            creatorCollateral += _amountUsdc;
-            collateralLocked = true;
+            creatorCollateral += amountUsdc;
         } else {
-            require(userUsdcBalance >= _amountUsdc, "Insufficient USDC");
+            require(uUsdc >= amountUsdc, "Insufficient USDC");
             betFactory.transferInternalUsdc(
                 msg.sender,
                 address(this),
-                _amountUsdc,
+                amountUsdc,
                 "Bet placement"
             );
         }
 
-        if (!hasParticipated[msg.sender]) {
-            hasParticipated[msg.sender] = true;
-            participantList.push(msg.sender);
-            participantCount++;
-        }
-
         Participant storage p = participants[msg.sender];
-
-        if (_position == Side.YES) {
-            p.yesStake += _amountUsdc;
-            totalYesStake += _amountUsdc;
-        } else {
-            p.noStake += _amountUsdc;
-            totalNoStake += _amountUsdc;
+        if (p.yesStake == 0 && p.noStake == 0) {
+            participantsCount++;
         }
 
-        betFactory.factoryLogBetParticipation(msg.sender, uint8(_position), _amountUsdc);
-        emit BetPlaced(msg.sender, _position, _amountUsdc);
+        if (position == Side.YES) {
+            p.yesStake += amountUsdc;
+            totalYesStake += amountUsdc;
+        } else {
+            p.noStake += amountUsdc;
+            totalNoStake += amountUsdc;
+        }
+
+    
+         betFactory.factoryLogBetParticipation(msg.sender, uint8(position), amountUsdc);
+        emit BetPlaced(msg.sender, position, amountUsdc);
     }
 
-    function submitProof(string memory _proofUrl)
-        external
-        onlyCreator
-        atStatus(Status.AWAITING_PROOF)
-    {
+    function checkAndCloseBetting() external {
+        if (_status != Status.OPEN_FOR_BETS) return;
+        if (block.timestamp < details.bettingDeadline) return;
+
+        if (totalYesStake >= details.minimumSideStake && totalNoStake >= details.minimumSideStake) {
+            _status = Status.AWAITING_PROOF;
+            emit StatusChanged(_status, CancelReason.NONE, Side.NONE);
+        } else {
+            _cancel(CancelReason.MIN_SIDE_STAKE, Side.NONE);
+        }
+    }
+
+    // ======== PROOF ========
+
+    function submitProof(string calldata _proofUrl) external {
+        require(msg.sender == creator, "Not creator");
+        require(_status == Status.AWAITING_PROOF, "Invalid status");
         require(block.timestamp >= details.bettingDeadline, "Betting still open");
         require(block.timestamp < details.proofDeadline, "Proof deadline passed");
         require(bytes(_proofUrl).length > 0, "Empty proof");
 
         proofUrl = _proofUrl;
-        _currentStatus = Status.VOTING;
-        emit ProofSubmitted(creator, _proofUrl);
+        _status = Status.VOTING;
+
+        emit ProofSubmitted(msg.sender, _proofUrl);
+        emit StatusChanged(_status, CancelReason.NONE, Side.NONE);
     }
 
-    function vote(Side _vote) external nonReentrant atStatus(Status.VOTING) {
+    function checkAndCancelForNoProof() external {
+        if (_status != Status.AWAITING_PROOF) return;
+        if (block.timestamp < details.proofDeadline) return;
+
+        // NO_PROOF is a cancellation. Bettors get refunds.
+        // If there are no voters (true here), you can choose how to treat collateral:
+        // - distribute collateral to bettors (bonus) OR
+        // - send fee then distribute rest to bettors OR
+        // - burn/fee/return to bettors only. This implementation: fee + all remainder => bettors bonus pool.
+        _cancel(CancelReason.NO_PROOF, Side.NONE);
+
+        // Optional moderation
+        betFactory.banCreator(creator);
+    }
+
+    // ======== VOTING ========
+
+    function vote(Side v) external nonReentrant {
+        require(_status == Status.VOTING, "Invalid status");
         require(block.timestamp < details.votingDeadline, "Voting closed");
-        require(
-            _vote == Side.YES || _vote == Side.NO || _vote == Side.INVALID,
-            "Invalid vote"
-        );
+        require(v == Side.YES || v == Side.NO || v == Side.INVALID, "Bad vote");
         require(msg.sender != creator, "Creator cannot vote");
-        require(
-            participants[msg.sender].yesStake == 0 &&
-                participants[msg.sender].noStake == 0,
-            "Bettors cannot vote"
-        );
-        require(!voted[msg.sender], "Already voted");
-        require(
-            trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore,
-            "Trust too low"
-        );
+
+        // voters must not be bettors
+        Participant memory p = participants[msg.sender];
+        require(p.yesStake == 0 && p.noStake == 0, "Bettors cannot vote");
+
+        VoterInfo storage info = voters[msg.sender];
+        require(info.vote == Side.NONE, "Already voted");
+
+        require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust too low");
 
         uint256 stakeAmt = betFactory.calculateRequiredStake(msg.sender);
-        (, uint256 userProofBalance) = betFactory.getInternalBalances(msg.sender);
-        require(userProofBalance >= stakeAmt, "Insufficient PROOF");
+        (, uint256 uProof) = betFactory.getInternalBalances(msg.sender);
+        require(uProof >= stakeAmt, "Insufficient PROOF");
 
-        betFactory.transferInternalProof(
-            msg.sender,
-            address(this),
-            stakeAmt,
-            "Vote stake"
-        );
+        betFactory.transferInternalProof(msg.sender, address(this), stakeAmt, "Vote stake");
 
-        voted[msg.sender] = true;
-        votes[msg.sender] = _vote;
-        voterStakesProof[msg.sender] += stakeAmt;
-        totalVoteStakeProof += stakeAmt;
-        totalVotes++;
-        voterList.push(msg.sender);
+        info.vote = v;
+        info.stakeProof = stakeAmt;
 
-        if (_vote == Side.YES) {
+        if (v == Side.YES) {
             yesVotes++;
             totalYesProofStake += stakeAmt;
-        } else if (_vote == Side.NO) {
+        } else if (v == Side.NO) {
             noVotes++;
             totalNoProofStake += stakeAmt;
         } else {
             invalidVotes++;
             totalInvalidProofStake += stakeAmt;
         }
-
-        betFactory.factoryLogVote(msg.sender, uint8(_vote));
-        emit VoteCast(msg.sender, _vote, stakeAmt);
+        totalVotes++;
+        betFactory.factoryLogVote(msg.sender, uint8(v));
+        emit VoteCast(msg.sender, v, stakeAmt);
     }
 
-    // ======== AUTOMATION ========
+    function checkAndResolve() external {
+        if (_status != Status.VOTING) return;
+        if (block.timestamp < details.votingDeadline) return;
 
-    function checkAndCloseBetting() external {
-        if (
-            _currentStatus == Status.OPEN_FOR_BETS &&
-            block.timestamp >= details.bettingDeadline
-        ) {
-            if (
-                totalYesStake >= details.minimumSideStake &&
-                totalNoStake >= details.minimumSideStake
-            ) {
-                _currentStatus = Status.AWAITING_PROOF;
-            } else {
-                _currentStatus = Status.CANCELLED;
-                betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
-                emit BetCancelled("Minimum side stake not met");
-            
-            }
+        // Minimum votes gate
+        //uint256 totalVotes = yesVotes + noVotes + invalidVotes;
+        if (totalVotes < details.minimumVotes) {
+            _cancel(CancelReason.INSUFFICIENT_VOTES, Side.NONE);
+            betFactory.factoryLogBetCompletion(creator,uint8(_status));
+            return;
         }
-    }
 
-    function checkAndCancelForProof() external {
-        if (
-            _currentStatus == Status.AWAITING_PROOF &&
-            block.timestamp >= details.proofDeadline
-        ) {
-            _currentStatus = Status.CANCELLED;
-             winningSide = Side.INVALID;
-            betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
-            emit BetCancelled("Proof deadline missed");
-
-            // Handle collateral forfeiture for missed proof
-            if (collateralLocked && creatorCollateral > 0) {
-                uint256 platformFee =
-                    (creatorCollateral *
-                        betFactory.defaultPlatformFeePercentage()) / 100;
-                uint256 distributable = creatorCollateral - platformFee;
-
-                // Platform fee (immediate internal transfer)
-                betFactory.transferInternalUsdc(
-                    address(this),
-                    betFactory.feeCollector(),
-                    platformFee,
-                    "Platform fee (missed proof)"
-                );
-
-                // Distribute to bettors via internal accounting
-                uint256 totalStake = totalYesStake + totalNoStake;
-                if (totalStake > 0) {
-                    for (uint256 i = 0; i < participantList.length; i++) {
-                        address user = participantList[i];
-                        uint256 userStake =
-                            participants[user].yesStake +
-                            participants[user].noStake;
-                        if (userStake > 0) {
-                            uint256 share =
-                                (distributable * userStake) / totalStake;
-                            if (share > 0) {
-                                // Credit extra stake (they will claim via claimRefund/claimWinnings)
-                                participants[user].yesStake += share;
-                            }
-                        }
-                    }
-                }
-                _collateralSnapshot = creatorCollateral;
-                creatorCollateral = 0;
-                collateralLocked = false;
-            }
-
-            // Ban creator for not providing proof at all
-            betFactory.banCreator(creator);
+        // If INVALID wins (strict plurality), we CANCEL with reason VOTE_INVALID
+        if (invalidVotes > yesVotes && invalidVotes > noVotes) {
+            _cancel(CancelReason.VOTE_INVALID, Side.INVALID);
+            betFactory.factoryLogBetCompletion(creator,uint8(_status));
+            return;
         }
-    }
 
-    function checkAndResolve() external nonReentrant {
-        if (
-            _currentStatus == Status.VOTING &&
-            block.timestamp >= details.votingDeadline
-        ) {
-            if (totalVotes < details.minimumVotes) {
-                _currentStatus = Status.CANCELLED;
-                emit BetCancelled("Insufficient public votes");
-            } else {
-                // INVALID majority => treat proof as rejected
-            if (invalidVotes > yesVotes && invalidVotes > noVotes) {
-                _currentStatus = Status.CANCELLED;
-                 winningSide = Side.INVALID;
-                emit BetCancelled("Proof rejected by voters");
-
-                if (collateralLocked && creatorCollateral > 0) {
-
-                    uint256 platformFeePct = betFactory.defaultPlatformFeePercentage();
-                    uint256 platformFee = (creatorCollateral * platformFeePct) / 100;
-
-                    uint256 remaining = creatorCollateral - platformFee;
-
-                    // 50% to bettors, 50% to invalid voters
-                    uint256 bettorPool = remaining / 2;
-                    uint256 invalidPool = remaining - bettorPool;
-
-                    // ===== PLATFORM FEE =====
-                    betFactory.transferInternalUsdc(
-                        address(this),
-                        feeCollector,
-                        platformFee,
-                        "Platform fee (invalid proof)"
-                    );
-
-                    // ===== REWARD BETTORS =====
-                    uint256 totalStake = totalYesStake + totalNoStake;
-                    if (totalStake > 0 && bettorPool > 0) {
-                        for (uint256 i = 0; i < participantList.length; i++) {
-                            address user = participantList[i];
-                            uint256 userStake = participants[user].yesStake + participants[user].noStake;
-
-                            if (userStake > 0) {
-                                uint256 share = (bettorPool * userStake) / totalStake;
-
-                                if (share > 0) {
-                                    // Bettors receive extra USDC credited to their claimable payout
-                                    participants[user].yesStake += share; 
-                                }
-                            }
-                        }
-                    }
-
-                    // ===== REWARD INVALID VOTERS =====
-                    if (invalidVotes > 0 && invalidPool > 0) {
-                        uint256 perInvalid = invalidPool / invalidVotes;
-
-                        for (uint256 i = 0; i < voterList.length; i++) {
-                            address v = voterList[i];
-                            if (votes[v] == Side.INVALID) {
-                                pendingVoterRewardsUsdc[v] += perInvalid;
-                            }
-                        }
-                    }
-
-                    // Clean collateral
-                    _collateralSnapshot = creatorCollateral;
-                    creatorCollateral = 0;
-                    collateralLocked = false;
-
-                    // Ban creator — bad actor
-                    betFactory.banCreator(creator);
-                }
-            } else if (yesVotes > noVotes) {
-                    winningSide = Side.YES;
-                    _currentStatus = Status.COMPLETED;
-                    emit BetResolved(winningSide);
-                } else if (noVotes > yesVotes) {
-                    winningSide = Side.NO;
-                    _currentStatus = Status.COMPLETED;
-                    emit BetResolved(winningSide);
-                } else {
-                    _currentStatus = Status.CANCELLED;
-                    emit BetCancelled("Vote tie");
-                }
-            }
-
-            betFactory.factoryLogBetCompletion(creator,uint8(_currentStatus));
-            withdrawFunds();
-        }
-    }
-
-    // ======== FUND DISTRIBUTION (POOL-LEVEL) ========
-
-    function withdrawFunds() internal {
-        require(
-            _currentStatus == Status.COMPLETED ||
-                _currentStatus == Status.CANCELLED,
-            "Bet not finished"
-        );
-        require(!fundsDistributed, "Already distributed");
-
-        if (_currentStatus == Status.COMPLETED) {
-            distributeWinnings();
+        // Normal outcome
+        if (yesVotes > noVotes) {
+            _complete(Side.YES);
+        } else if (noVotes > yesVotes) {
+            _complete(Side.NO);
         } else {
-            refundAll();
+            _cancel(CancelReason.TIE, Side.NONE);
         }
+
+        betFactory.factoryLogBetCompletion(creator,uint8(_status));
     }
 
-    function distributeWinnings() internal {
-        fundsDistributed = true;
+    // ======== FINALIZATION (SNAPSHOT) ========
 
-        uint256 totalWinning =
-            (winningSide == Side.YES) ? totalYesStake : totalNoStake;
-        uint256 totalLosing =
-            (winningSide == Side.YES) ? totalNoStake : totalYesStake;
-        require(totalWinning > 0, "No stakes to distribute");
-
-        uint256 platformFeeAmount =
-            (totalLosing * betFactory.defaultPlatformFeePercentage()) / 100;
-        if (platformFeeAmount > 0) {
-            betFactory.transferInternalUsdc(
-                address(this),
-                feeCollector,
-                platformFeeAmount,
-                "Platform fee"
-            );
-        }
-
-        // Loop-free: sum of losing side proof stakes has been tracked on the fly.
-        uint256 totalLosingProofStake =
-            (winningSide == Side.YES)
-                ? totalNoProofStake
-                : totalYesProofStake;
-        if (totalLosingProofStake > 0) {
-            betFactory.transferInternalProof(
-                address(this),
-                address(betFactory),
-                totalLosingProofStake,
-                "Collect losing proof stakes"
-            );
-        }
+    function _complete(Side win) internal {
+        _status = Status.COMPLETED;
+        cancelReason = CancelReason.NONE;
+        outcomeSide = win;
+        _snapshot();
+        emit StatusChanged(_status, cancelReason, outcomeSide);
     }
 
-    function refundAll() internal {
-        // No direct transfers here; users claim individually.
-        fundsDistributed = true;
+    function _cancel(CancelReason reason, Side outcome) internal {
+        _status = Status.CANCELLED;
+        cancelReason = reason;
+        outcomeSide = outcome; // only meaningful for VOTE_INVALID (INVALID), else NONE
+        _snapshot();
+        emit StatusChanged(_status, cancelReason, outcomeSide);
+    }
+
+    function _snapshot() internal {
+        if (snapshotted) return;
+        snapshotted = true;
+
+        snapTotalYesStake = totalYesStake;
+        snapTotalNoStake  = totalNoStake;
+
+        snapTotalYesProofStake = totalYesProofStake;
+        snapTotalNoProofStake  = totalNoProofStake;
+        snapTotalInvalidProofStake = totalInvalidProofStake;
+
+        snapCreatorCollateral = creatorCollateral;
+
+        // ===== COMPLETED pools =====
+        if (_status == Status.COMPLETED) {
+            uint256 losing = (outcomeSide == Side.YES) ? snapTotalNoStake : snapTotalYesStake;
+            uint256 winning = (outcomeSide == Side.YES) ? snapTotalYesStake : snapTotalNoStake;
+            require(winning > 0, "No winning stake");
+
+            uint256 feePct = betFactory.defaultPlatformFeePercentage();
+            uint256 voterPct = betFactory.defaultVoterRewardPercentage();
+
+            snapPlatformFeeUsdc = (losing * feePct) / 100;
+            snapVoterRewardPoolUsdc = (losing * voterPct) / 100;
+
+            uint256 net = losing - snapPlatformFeeUsdc - snapVoterRewardPoolUsdc;
+            snapNetLosingPoolUsdc = net;
+            snapWinningBettorTotalStake = winning;
+
+            // Send platform fee now (internal)
+            if (snapPlatformFeeUsdc > 0) {
+                betFactory.transferInternalUsdc(address(this), betFactory.feeCollector(), snapPlatformFeeUsdc, "Platform fee");
+            }
+
+            // Wrong voters forfeit PROOF:
+            // - if YES wins => (NO + INVALID) forfeits to YES voters
+            // - if NO wins  => (YES + INVALID) forfeits to NO voters
+            uint256 forfeitedProof = (outcomeSide == Side.YES)
+                ? (snapTotalNoProofStake + snapTotalInvalidProofStake)
+                : (snapTotalYesProofStake + snapTotalInvalidProofStake);
+
+            // Keep forfeited PROOF in this contract; winners will claim it proportionally.
+            snapInvalidLosingVoterTotalStakeProof = forfeitedProof; // reused as "forfeitedProof" storage
+                if (outcomeSide == Side.YES) {
+                snaptotalWinnerProof = totalYesProofStake;
+            } else if (outcomeSide == Side.NO) {
+                snaptotalWinnerProof = totalNoProofStake;
+            }
+            
+        }
+
+        // ===== CANCELLED pools =====
+        else if (_status == Status.CANCELLED) {
+            console.log("Snapshotting CANCELLED bet with reason:", uint256(cancelReason));
+            uint256 feePct2 = betFactory.defaultPlatformFeePercentage();
+            snapPlatformFeeUsdc = (snapCreatorCollateral * feePct2) / 100;
+
+            // always take fee from collateral if any (optional)
+            if (snapPlatformFeeUsdc > 0) {
+                betFactory.transferInternalUsdc(address(this), betFactory.feeCollector(), snapPlatformFeeUsdc, "Platform fee (collateral)");
+            }
+
+            uint256 remainingCollateral = snapCreatorCollateral - snapPlatformFeeUsdc;
+
+            if (cancelReason == CancelReason.NO_PROOF) {
+                // No voters path: collateral remainder goes to bettors (as bonus pool)
+                snapBettorRefundBonusPoolUsdc = remainingCollateral;
+                creatorCollateral = 0;
+            } else if (cancelReason == CancelReason.VOTE_INVALID && outcomeSide == Side.INVALID) {
+                console.log("Snapshotting VOTE_INVALID cancellation");
+                // INVALID vote cancellation:
+                // You said: "voters who vote different should lose collateral and it should be distributed between correct voters"
+                // Here: bettors get refunds, plus optional collateral split between bettors & INVALID voters.
+                // Split collateral remainder 50/50 (tune as you want).
+                snapBettorRefundBonusPoolUsdc = remainingCollateral / 2;
+                snapInvalidVoterBonusPoolUsdc = remainingCollateral - snapBettorRefundBonusPoolUsdc;
+
+                // Losing voter proof forfeited to INVALID voters:
+                // forfeited = YES + NO (since INVALID is the winning voter side)
+                snapInvalidLosingVoterTotalStakeProof = snapTotalYesProofStake + snapTotalNoProofStake;
+                snapInvalidWinningVoterTotalStakeProof = snapTotalInvalidProofStake;
+                creatorCollateral = 0;
+                snaptotalWinnerProof = totalInvalidProofStake;
+                console.log("snapInvalidLosingVoterTotalStakeProof:", snaptotalWinnerProof);
+                snapVoterRewardPoolUsdc = snapInvalidVoterBonusPoolUsdc;
+                console.log("snapInvalidVoterBonusPoolUsdc:", snapVoterRewardPoolUsdc);
+            } 
+
+
+        }
+       
+        // ===== Common winner proof snapshot =====
+      
     }
 
     // ======== CLAIMS ========
 
-    function claimWinnings() external nonReentrant {
-        require(_currentStatus == Status.COMPLETED, "Not completed");
-        require(fundsDistributed, "Not distributed");
-
+    /**
+     * Bettors:
+     * - COMPLETED: winning bettors get stake + share of net losing pool
+     * - CANCELLED: everyone gets refund of their stake (+ possible bonus from collateral pools)
+     */
+    function claimBettor() external nonReentrant {
+        require(snapshotted, "Not finalized");
         Participant storage p = participants[msg.sender];
-        require(p.yesStake > 0 || p.noStake > 0, "No participation");
-        require(!p.hasWithdrawn, "Already withdrawn");
+        require(!p.claimed, "Already claimed");
 
-        uint256 participantWinningStake =
-            (winningSide == Side.YES) ? p.yesStake : p.noStake;
-        require(participantWinningStake > 0, "Not winner");
+        uint256 userYes = p.yesStake;
+        uint256 userNo  = p.noStake;
+        require(userYes > 0 || userNo > 0, "Not a bettor");
 
-        uint256 totalWinningStake =
-            (winningSide == Side.YES) ? totalYesStake : totalNoStake;
-        uint256 totalLosingStake =
-            (winningSide == Side.YES) ? totalNoStake : totalYesStake;
+        p.claimed = true;
 
-        uint256 voterRewardAmount =
-            (totalLosingStake * betFactory.defaultVoterRewardPercentage()) /
-                100;
-        uint256 platformFeeAmount =
-            (totalLosingStake * betFactory.defaultPlatformFeePercentage()) /
-                100;
-        uint256 netPool =
-            totalLosingStake - voterRewardAmount - platformFeeAmount;
+        uint256 payoutUsdc = 0;
 
-        uint256 payout =
-            participantWinningStake +
-            (netPool * participantWinningStake) / totalWinningStake;
+        if (_status == Status.COMPLETED) {
+            uint256 userWin = (outcomeSide == Side.YES) ? userYes : userNo;
+            require(userWin > 0, "Not winner");
 
-        p.hasWithdrawn = true;
-        if (payout > 0) {
-            betFactory.transferInternalUsdc(
-                address(this),
-                msg.sender,
-                payout,
-                "Bet winnings"
-            );
-        }
-        emit FundsWithdrawn(msg.sender, payout, 0);
-    }
+            payoutUsdc = userWin + (snapNetLosingPoolUsdc * userWin) / snapWinningBettorTotalStake;
 
-    function claimVoterRewards() external nonReentrant {
-        require(
-            _currentStatus == Status.COMPLETED ||
-                _currentStatus == Status.CANCELLED,
-            "Not finished"
-        );
-        require(voted[msg.sender], "Not voted");
-        require(voterStakesProof[msg.sender] > 0, "No stake");
+        } else {
+            // CANCELLED => full refund
+            uint256 refund = userYes + userNo;
+            payoutUsdc = refund;
 
-        uint256 proofToReturn;
-        uint256 usdcReward;
-        uint256 originalStake = voterStakesProof[msg.sender];
-        voterStakesProof[msg.sender] = 0;
+            // optional bonus from collateral pools
+            uint256 totalStakes = snapTotalYesStake + snapTotalNoStake;
+            if (totalStakes > 0) {
+                uint256 bonusPool = snapBettorRefundBonusPoolUsdc;
 
-        if (_currentStatus == Status.COMPLETED || winningSide == Side.INVALID) {
-            bool votedCorrect = (votes[msg.sender] == winningSide);
-            if (votedCorrect) {
-                proofToReturn = originalStake;
-                uint256 rewardPool;
-                uint256 winners;
-
-                if (winningSide == Side.YES) {
-                    rewardPool = totalNoProofStake + totalInvalidProofStake;
-                    winners = yesVotes;
-                } else if (winningSide == Side.NO) {
-                    rewardPool = totalYesProofStake + totalInvalidProofStake;
-                    winners = noVotes;
-                } else {
-                // INVALID voted
-                    rewardPool = totalYesProofStake + totalNoProofStake;
-                    winners = invalidVotes;
-                }
-                if (rewardPool > 0 && winners > 0) {
-                    usdcReward = rewardPool / winners;
-                }
-                uint256 extraReward = pendingVoterRewardsUsdc[msg.sender];
-                if (extraReward > 0) {
-                    usdcReward = extraReward;
-                    pendingVoterRewardsUsdc[msg.sender] = 0;
+                if (bonusPool > 0) {
+                    uint256 userStake = userYes + userNo;
+                    payoutUsdc += (bonusPool * userStake) / totalStakes;
                 }
             }
-        } else {
-            // CANCELLED:
-            // - For normal cancellations, voters just get their proof back
-            // - For INVALID-proof cancellations, INVALID voters may have pending USDC rewards
-            proofToReturn = originalStake;
-            
         }
 
-        if (proofToReturn > 0) {
-            betFactory.transferInternalProof(
-                address(this),
-                msg.sender,
-                proofToReturn,
-                "Vote stake return"
-            );
-        }
-        if (usdcReward > 0) {
-            betFactory.transferInternalUsdc(
-                address(this),
-                msg.sender,
-                usdcReward,
-                "Voter reward"
-            );
+        if (payoutUsdc > 0) {
+            betFactory.transferInternalUsdc(address(this), msg.sender, payoutUsdc, "Bettor claim");
         }
 
-        emit FundsWithdrawn(msg.sender, usdcReward, proofToReturn);
+        emit BettorClaimed(msg.sender, payoutUsdc);
     }
-
-    function claimRefund() external nonReentrant {
-        require(_currentStatus == Status.CANCELLED, "Not cancelled");
-        Participant storage p = participants[msg.sender];
-        require(!p.hasWithdrawn, "Already withdrawn");
-
-        uint256 refund = p.yesStake + p.noStake;
-        require(refund > 0, "No refund");
-
-        p.hasWithdrawn = true;
-        betFactory.transferInternalUsdc(
-            address(this),
-            msg.sender,
-            refund,
-            "Bet refund"
-        );
-        emit FundsWithdrawn(msg.sender, refund, 0);
-    }
-
-    // ======== CREATOR COLLATERAL CLAIM ========
 
     /**
-     * @notice Creator can claim back their collateral after the bet is finished
-     *         (either COMPLETED or CANCELLED) *only* if it was not already
-     *         forfeited in missed-proof or invalid-proof flows.
+     * Voters:
+     * - Always: if you voted, you can claim your outcome-based PROOF + any USDC reward
+     *
+     * COMPLETED:
+     * - Correct voters: get PROOF stake back + share of forfeited PROOF (wrong voters)
+     * - Correct voters: also split USDC voterRewardPool (from losing bettors)
+     * - Wrong voters: get nothing (stake forfeited)
+     *
+     * CANCELLED (VOTE_INVALID):
+     * - INVALID voters: get PROOF stake back + share of forfeited PROOF (YES+NO voters)
+     * - INVALID voters: also split snapInvalidVoterBonusPoolUsdc (from collateral split)
+     * - YES/NO voters: forfeit PROOF stake
+     *
+     * Other CANCELLED:
+     * - Voters get PROOF stake back (no USDC rewards)
      */
-    function claimCreatorCollateral() external nonReentrant {
-        require(
-            _currentStatus == Status.COMPLETED ||
-                _currentStatus == Status.CANCELLED,
-            "Bet not finished"
-        );
-        require(msg.sender == creator, "Only creator");
-        require(collateralLocked, "Collateral already claimed/forfeited");
-        require(creatorCollateral > 0, "No collateral");
+    function claimVoter() external nonReentrant {
+        require(snapshotted, "Not finalized");
+        VoterInfo storage v = voters[msg.sender];
+        require(!v.claimed, "Already claimed");
+        require(v.vote != Side.NONE, "Not voted");
+        require(v.stakeProof > 0, "No stake");
 
-        collateralLocked = false;
+        v.claimed = true;
+
+        uint256 proofOut = 0;
+        uint256 usdcOut = 0;
+
+        if (_status == Status.COMPLETED) {
+            bool correct = (v.vote == outcomeSide);
+            if (correct) {
+                // refund stake
+                proofOut += v.stakeProof;
+
+                // share forfeited PROOF proportionally by voter stake
+                uint256 winnersStakeTotal = (outcomeSide == Side.YES) ? snapTotalYesProofStake : snapTotalNoProofStake;
+                uint256 forfeitedProof = snapInvalidLosingVoterTotalStakeProof; // stored as forfeitedProof for completed
+                if (winnersStakeTotal > 0 && forfeitedProof > 0) {
+                    proofOut += (forfeitedProof * v.stakeProof) / winnersStakeTotal;
+                }
+
+                // USDC reward from losing bettors pool (split equally or proportionally)
+                uint256 winnersCount = (outcomeSide == Side.YES) ? yesVotes : noVotes;
+                
+                if (winnersCount > 0 && snapVoterRewardPoolUsdc > 0) {
+                    usdcOut += snapVoterRewardPoolUsdc / winnersCount;
+                }
+            } // else: wrong voters get nothing
+
+        } else {
+            // CANCELLED
+            if (cancelReason == CancelReason.VOTE_INVALID && outcomeSide == Side.INVALID) {
+                // Only INVALID voters win here
+                if (v.vote == Side.INVALID) {
+                    proofOut += v.stakeProof;
+
+                    // share forfeited proof from YES+NO voters
+                    if (snapInvalidWinningVoterTotalStakeProof > 0 ) {
+                        proofOut += snapInvalidLosingVoterTotalStakeProof /invalidVotes;
+                    }
+
+                    // share collateral bonus for voters (proportional by stake)
+                    if (snapInvalidWinningVoterTotalStakeProof > 0 && snapInvalidVoterBonusPoolUsdc > 0) {
+                        usdcOut += snapInvalidVoterBonusPoolUsdc/invalidVotes ;
+                    }
+                }
+                // YES/NO voters: forfeit proof stake (nothing to claim)
+
+            } else {
+                // Normal cancellations => refund PROOF stake
+                proofOut += v.stakeProof;
+            }
+        }
+
+        if (proofOut > 0) {
+            betFactory.transferInternalProof(address(this), msg.sender, proofOut, "Voter claim");
+        }
+        if (usdcOut > 0) {
+            betFactory.transferInternalUsdc(address(this), msg.sender, usdcOut, "Voter reward");
+        }
+
+        emit VoterClaimed(msg.sender, usdcOut, proofOut);
+    }
+    function claimCreatorCollateral() external nonReentrant {
+        require(msg.sender == creator, "Only creator");
+        require(snapshotted, "Not finalized");
+        require(creatorCollateral > 0, "No colletoral to claim");
+
+    
+        uint256 amount = creatorCollateral;
+     
+
+        // prevent double-claim
+       creatorCollateral = 0;
 
         betFactory.transferInternalUsdc(
             address(this),
             creator,
-            creatorCollateral,
-            "Return creator collateral"
+            amount,
+            "Creator collateral claim"
         );
+         
     }
 
-    // ======== ANALYTICS ========
-    function getCurrentInfo() external view returns (CurrentInfo memory info) {
-        info = CurrentInfo({
-            status: _currentStatus,
-            winningSide: winningSide,
-            totalYesStake: totalYesStake,
-            totalNoStake: totalNoStake,
-            totalVotes: totalVotes,
-            yesVotes: yesVotes,
-            noVotes: noVotes,
-            totalYesProofStake: totalYesProofStake,
-            totalNoProofStake: totalNoProofStake,
-            totalVoteStakeProof: totalVoteStakeProof,
-            creatorCollateral: creatorCollateral,
-            collateralLocked: collateralLocked
-        });
-    }
 
-    function getResolutionInfo()
+    // ======== VIEW HELPERS ========
+
+   function getResolutionInfo()
         external
         view
-        returns (
-            Status status,
-            Side winningSide_,
-            uint256 totalWinningStake,
-            uint256 totalLosingStake,
-            uint256 platformFeePct,
-            uint256 voterRewardPct,
-            uint256 platformFeeAmount,
-            uint256 voterRewardPool,
-            uint256 winnersPool,
-            uint256 winningVoterCount,
-            uint256 rewardPerWinningVoter
-        )
+ returns (ResolutionInfo memory info)
     {
-        status = _currentStatus;
-        winningSide_ = winningSide;
-
-        platformFeePct = betFactory.defaultPlatformFeePercentage();
-        voterRewardPct = betFactory.defaultVoterRewardPercentage();
-
-        // =========================
-        // INVALID (proof failed)
-        // =========================
-        if (winningSide == Side.INVALID) {
-            uint256 collateral =
-                creatorCollateral == 0
-                    ? _collateralSnapshot
-                    : creatorCollateral;
-
-            platformFeeAmount = (collateral * platformFeePct) / 100;
-            uint256 distributable = collateral - platformFeeAmount;
-
-            // ---- NO PROOF (no voters) ----
-            if (totalVotes == 0) {
-                voterRewardPool = 0;
-                winnersPool = distributable;
-
-                winningVoterCount = 0;
-                rewardPerWinningVoter = 0;
-            }
-            // ---- VOTED INVALID ----
-            else {
-                voterRewardPool = distributable / 2;
-                winnersPool = distributable - voterRewardPool;
-
-                winningVoterCount = invalidVotes;
-                rewardPerWinningVoter =
-                    winningVoterCount > 0
-                        ? voterRewardPool / winningVoterCount
-                        : 0;
-            }
-
-            return (
-                status,
-                winningSide_,
-                0,
-                0,
-                platformFeePct,
-                voterRewardPct,
-                platformFeeAmount,
-                voterRewardPool,
-                winnersPool,
-                winningVoterCount,
-                rewardPerWinningVoter
-            );
-        }
-
-        // =========================
-        // NOT COMPLETED
-        // =========================
-        if (_currentStatus != Status.COMPLETED) {
-            return (
-                status,
-                winningSide_,
-                0,
-                0,
-                platformFeePct,
-                voterRewardPct,
-                0,
-                0,
-                0,
-                0,
-                0
-            );
-        }
-
-    // =========================
-    // COMPLETED (YES / NO)
-    // =========================
-    totalWinningStake =
-        (winningSide == Side.YES) ? totalYesStake : totalNoStake;
-    totalLosingStake =
-        (winningSide == Side.YES) ? totalNoStake : totalYesStake;
-
-    platformFeeAmount = (totalLosingStake * platformFeePct) / 100;
-    voterRewardPool = (totalLosingStake * voterRewardPct) / 100;
-    winnersPool = totalLosingStake - platformFeeAmount - voterRewardPool;
-
-    winningVoterCount =
-        (winningSide == Side.YES) ? yesVotes : noVotes;
-
-    rewardPerWinningVoter =
-        winningVoterCount > 0
-            ? voterRewardPool / winningVoterCount
-            : 0;
-}
-
-
-    function calculateParticipantPayout(address _participant)
-        public
-        view
-        returns (uint256 payout, bool isWinner)
-    {
-        if (_currentStatus != Status.COMPLETED) return (0, false);
-        Participant memory p = participants[_participant];
-        if (p.hasWithdrawn || (p.yesStake == 0 && p.noStake == 0)) {
-            return (0, false);
-        }
-
-        if (winningSide == Side.YES && p.yesStake > 0) isWinner = true;
-        else if (winningSide == Side.NO && p.noStake > 0) isWinner = true;
-        else return (0, false);
-
-        uint256 stake =
-            (winningSide == Side.YES) ? p.yesStake : p.noStake;
-        uint256 totalWinning =
-            (winningSide == Side.YES) ? totalYesStake : totalNoStake;
-        uint256 totalLosing =
-            (winningSide == Side.YES) ? totalNoStake : totalYesStake;
-
-        uint256 voterRewardPct =
-            betFactory.defaultVoterRewardPercentage();
-        uint256 platformFeePct =
-            betFactory.defaultPlatformFeePercentage();
-        uint256 voterRewardAmt =
-            (totalLosing * voterRewardPct) / 100;
-        uint256 platformFeeAmt =
-            (totalLosing * platformFeePct) / 100;
-        uint256 netPool = totalLosing - voterRewardAmt - platformFeeAmt;
-
-        payout = stake + (netPool * stake) / totalWinning;
-    }
-
-    function calculateVoterReward(address _voter)
-        public
-        view
-        returns (uint256 usdcReward, uint256 proofRefund)
-    {
-        if (!voted[_voter] || voterStakesProof[_voter] == 0) {
-            return (0, 0);
-        }
-
-        uint256 originalProofStake = voterStakesProof[_voter];
-        proofRefund = originalProofStake; // default refund for cancel or win
-
-        if (_currentStatus == Status.CANCELLED) {
-            // For INVALID-proof cancellations, off-chain caller can also read
-            // pendingVoterRewardsUsdc[_voter] for the extra USDC.
-            uint256 extra = pendingVoterRewardsUsdc[_voter];
-            return (extra, proofRefund);
-        }
-
-        if (_currentStatus != Status.COMPLETED) {
-            return (0, 0);
-        }
-
-        bool votedCorrectly = (votes[_voter] == winningSide);
-        if (!votedCorrectly) {
-            proofRefund = 0; // losing voters forfeit proof
-            return (0, 0);
-        }
-
-        uint256 totalLosingStake =
-            (winningSide == Side.YES) ? totalNoStake : totalYesStake;
-        uint256 totalVoterRewardPool =
-            (totalLosingStake *
-                betFactory.defaultVoterRewardPercentage()) / 100;
-        uint256 winningVoterCount =
-            (winningSide == Side.YES) ? yesVotes : noVotes;
-
-        if (winningVoterCount > 0 && totalVoterRewardPool > 0) {
-            usdcReward = totalVoterRewardPool / winningVoterCount;
-        }
+        info.status = _status;
+        info.reason = cancelReason;
+        info.outcome = outcomeSide;
+        info.yesStake = snapTotalYesStake;
+        info.noStake = snapTotalNoStake;
+        info.yesVotes = yesVotes;
+        info.noVotes = noVotes;
+        info.invalidVotes = invalidVotes;
+        info.creatorCollateralSnap = snapCreatorCollateral;
+        info.platformFeeUsdc = snapPlatformFeeUsdc;
+        info.voterRewardPoolUsdc = snapVoterRewardPoolUsdc;
+        info.forfeitProof = snapInvalidLosingVoterTotalStakeProof;
+        info.totalWinnerProof = snaptotalWinnerProof;
+        info.bettorBonusPoolUsdc = snapBettorRefundBonusPoolUsdc;
+        
     }
     function hasBettor(address user) external view returns (bool) {
         Participant storage p = participants[user];
@@ -967,11 +738,7 @@ struct CurrentInfo {
     }
 
     function hasVoter(address user) external view returns (bool) {
-        return voted[user]; // or your equivalent
+         VoterInfo storage v = voters[user];
+         return v.vote != Side.NONE; 
     }
-    function getCreatorCollateral() external view returns (uint256) {
-    // If collateral has been cleared, return the stored snapshot instead.
-        return creatorCollateral == 0 ? _collateralSnapshot : creatorCollateral;
-    }
-
 }

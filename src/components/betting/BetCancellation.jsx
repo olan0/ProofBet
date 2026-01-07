@@ -16,6 +16,8 @@ export default function BetCancellation({ bet, participants, walletAddress, load
   const [userVoterStake, setUserVoterStake] = useState(0);
   const [hasClaimedVoterRefund, setHasClaimedVoterRefund] = useState(false);
   const [voterUsdcReward, setVoterUsdcReward] = useState(0);
+  const [voterProofBonus, setVoterProofBonus] = useState(0);
+  const [userVotedInvalid, setUserVotedInvalid] = useState(false);
   const [isCreator, setIsCreator] = useState(false);
   const [creatorHasClaimedCollateral, setCreatorHasClaimedCollateral] = useState(false);
   const [isProcessingCreator, setIsProcessingCreator] = useState(false);
@@ -28,50 +30,67 @@ export default function BetCancellation({ bet, participants, walletAddress, load
       
       try {
         const betContract = getBetContract(bet.address);
-        const [participantData, voterStakeData, creator, collateralLocked] = await Promise.all([
-          betContract.participants(walletAddress),
-          betContract.voterStakesProof(walletAddress),
-          betContract.creator(),
-          betContract.collateralLocked()
+        const [participantData, voterInfo, creator, collateralAmount] = await Promise.all([
+            betContract.participants(walletAddress),
+            betContract.voters(walletAddress),
+            betContract.creator(),
+            betContract.creatorCollateral()
         ]);
-        
+
         const totalStake = parseFloat(ethers.formatUnits(participantData.yesStake, 6)) + 
                           parseFloat(ethers.formatUnits(participantData.noStake, 6));
-        
-        setUserRefundAmount(totalStake);
-        setUserHasRefund(totalStake > 0);
-        setHasClaimedRefund(participantData.hasWithdrawn);
-        
-        const voterStake = parseFloat(ethers.formatEther(voterStakeData));
-        setUserVoterStake(voterStake);
-        setHasClaimedVoterRefund(voterStake === 0);
-        
-        // If invalid proof, calculate voter's USDC reward share
-        if (bet.winning_side === 'invalid' && voterStake > 0) {
+
+        // Check if there's a bettor bonus pool and add proportional bonus
+        let finalRefund = totalStake;
+        if (totalStake > 0) {
           try {
             const resInfo = await betContract.getResolutionInfo();
-            const rewardPerVoter = parseFloat(ethers.formatUnits(resInfo.rewardPerWinningVoter, 6));
-            setVoterUsdcReward(rewardPerVoter);
+            const bettorBonusPool = parseFloat(ethers.formatUnits(resInfo.bettorBonusPoolUsdc, 6));
+            
+            if (bettorBonusPool > 0) {
+              const totalStakeAll = parseFloat(ethers.formatUnits(resInfo.yesStake, 6)) + parseFloat(ethers.formatUnits(resInfo.noStake, 6));
+              const userBonus = totalStakeAll > 0 ? (totalStake / totalStakeAll) * bettorBonusPool : 0;
+              finalRefund = totalStake + userBonus;
+            }
           } catch (e) {
-            console.error("Could not fetch voter USDC reward:", e);
+            console.error("Could not fetch bettor bonus:", e);
           }
         }
-        
+
+        setUserRefundAmount(finalRefund);
+        setUserHasRefund(totalStake > 0);
+        setHasClaimedRefund(participantData.claimed);
+
+        const voterStake = parseFloat(ethers.formatEther(voterInfo.stakeProof));
+        const userVote = Number(voterInfo.vote);
+        setUserVoterStake(voterStake);
+        setHasClaimedVoterRefund(voterInfo.claimed);
+        setUserVotedInvalid(userVote === 3); // 3 = INVALID
+
+        // If invalid proof, calculate voter's USDC and PROOF reward share for INVALID voters only
+        if (bet.winning_side === 'invalid' && voterStake > 0 && userVote === 3) {
+          try {
+            const resInfo = await betContract.getResolutionInfo();
+            const totalInvalidVoters = Number(resInfo.invalidVotes);
+            if (totalInvalidVoters > 0) {
+              const usdcReward = parseFloat(ethers.formatUnits(resInfo.voterRewardPoolUsdc, 6)) / totalInvalidVoters;
+              const proofBonus = parseFloat(ethers.formatEther(resInfo.forfeitProof)) / totalInvalidVoters;
+              setVoterUsdcReward(usdcReward);
+              setVoterProofBonus(proofBonus);
+            }
+          } catch (e) {
+            console.error("Could not fetch voter rewards:", e);
+          }
+        }
+
         // Check if user is creator
         const userIsCreator = creator.toLowerCase() === walletAddress.toLowerCase();
         setIsCreator(userIsCreator);
         if (userIsCreator) {
-          // Show claim button when collateralLocked == true (collateral exists)
-          // Hide button if: already claimed OR no collateral (collateralLocked == false)
-          setCreatorHasClaimedCollateral(participantData.hasWithdrawn || !collateralLocked);
-          
-          // Fetch collateral amount
-          try {
-            const collateralAmount = await betContract.getCreatorCollateral();
-            setCreatorCollateralAmount(parseFloat(ethers.formatUnits(collateralAmount, 6)));
-          } catch (e) {
-            console.error("Could not fetch creator collateral:", e);
-          }
+          const collateralAmountFloat = parseFloat(ethers.formatUnits(collateralAmount, 6));
+          setCreatorCollateralAmount(collateralAmountFloat);
+          // Creator can claim if: collateral exists AND not yet claimed
+          setCreatorHasClaimedCollateral(participantData.claimed || collateralAmountFloat === 0);
         }
       } catch (e) {
         console.error("Could not check refund status:", e);
@@ -87,7 +106,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
     
     try {
       const betContract = getBetContract(bet.address, true);
-      const tx = await betContract.claimRefund();
+      const tx = await betContract.claimBettor();
       await tx.wait();
       
       if (loadBetDetails) {
@@ -109,7 +128,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
     
     try {
       const betContract = getBetContract(bet.address, true);
-      const tx = await betContract.claimVoterRewards();
+      const tx = await betContract.claimVoter();
       await tx.wait();
       
       if (loadBetDetails) {
@@ -240,21 +259,21 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && userVoterStake > 0 && (
+        {walletAddress && userVoterStake > 0 && (bet.winning_side !== 'invalid' || userVotedInvalid) && (
           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
             <div className="space-y-2">
               <h3 className="font-semibold text-white flex items-center gap-2">
                 <Vote className="w-4 h-4 text-purple-400" />
-                {bet.winning_side === 'invalid' ? 'Your Voter Rewards' : 'Your Voter Stake Refund'}
+                {bet.winning_side === 'invalid' && userVotedInvalid ? 'Your Voter Rewards' : 'Your Voter Stake Refund'}
               </h3>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-purple-400" />
                   <span className="text-2xl font-bold text-purple-400">
-                    {userVoterStake.toFixed(2)} PROOF
+                    {(userVoterStake + voterProofBonus).toFixed(2)} PROOF
                   </span>
                 </div>
-                {bet.winning_side === 'invalid' && voterUsdcReward > 0 && (
+                {bet.winning_side === 'invalid' && userVotedInvalid && voterUsdcReward > 0 && (
                   <>
                     <span className="text-gray-400">+</span>
                     <div className="flex items-center gap-2">
@@ -270,13 +289,13 @@ export default function BetCancellation({ bet, participants, walletAddress, load
             
             {hasClaimedVoterRefund ? (
               <div className="p-3 bg-purple-900/20 border border-purple-500/30 rounded-md">
-                <p className="text-purple-300 text-sm">✓ {bet.winning_side === 'invalid' ? 'Rewards claimed' : 'Voter stake refunded'} successfully! Check your internal wallet.</p>
+                <p className="text-purple-300 text-sm">✓ {bet.winning_side === 'invalid' && userVotedInvalid ? 'Rewards claimed' : 'Voter stake refunded'} successfully! Check your internal wallet.</p>
               </div>
             ) : (
               <>
                 <p className="text-sm text-gray-400">
-                  {bet.winning_side === 'invalid' 
-                    ? 'Your PROOF stake plus your share of creator\'s collateral in USDC (50% split among correct voters).'
+                  {bet.winning_side === 'invalid' && userVotedInvalid
+                    ? 'Your PROOF stake + bonus from losing voters, plus your share of creator\'s collateral in USDC (50% split among invalid voters).'
                     : 'Your voting stake is ready to be claimed. It will be returned to your internal wallet.'}
                 </p>
                 <Button 
@@ -292,7 +311,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
                   ) : (
                     <>
                       <RefreshCw className="w-4 h-4 mr-2" />
-                      {bet.winning_side === 'invalid' ? 'Claim Rewards' : 'Claim Voter Refund'}
+                      {bet.winning_side === 'invalid' && userVotedInvalid ? 'Claim Rewards' : 'Claim Voter Refund'}
                     </>
                   )}
                 </Button>
@@ -357,6 +376,12 @@ export default function BetCancellation({ bet, participants, walletAddress, load
                 <p className="text-sm text-red-300">{creatorError}</p>
               </div>
             )}
+          </div>
+        )}
+
+        {walletAddress && userVoterStake > 0 && bet.winning_side === 'invalid' && !userVotedInvalid && (
+          <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+            <p className="text-red-300 text-sm">You voted {userVotedInvalid ? 'INVALID' : 'YES/NO'} but the proof was rejected as invalid. Your PROOF stake was forfeited and distributed to voters who correctly voted INVALID.</p>
           </div>
         )}
 

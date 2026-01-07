@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =  [
+export const BET_FACTORY_ABI =   [
     {
       "inputs": [
         {
@@ -147,6 +147,18 @@ export const BET_FACTORY_ABI =  [
           "internalType": "string",
           "name": "title",
           "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256[3]",
+          "name": "deadlines",
+          "type": "uint256[3]"
         }
       ],
       "name": "BetCreated",
@@ -1433,24 +1445,11 @@ export const BET_FACTORY_ABI =  [
   ];
 
 // Find the full ABI in: 'artifacts/contracts/Bet.sol/Bet.json'
-export const BET_ABI = [
+export const BET_ABI =  [
     {
       "inputs": [],
       "name": "ReentrancyGuardReentrantCall",
       "type": "error"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "reason",
-          "type": "string"
-        }
-      ],
-      "name": "BetCancelled",
-      "type": "event"
     },
     {
       "anonymous": false,
@@ -1481,74 +1480,6 @@ export const BET_ABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": false,
-          "internalType": "enum Bet.Side",
-          "name": "winningSide",
-          "type": "uint8"
-        }
-      ],
-      "name": "BetResolved",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "enum Bet.Side",
-          "name": "winningSide",
-          "type": "uint8"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "totalWinningStake",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "totalLosingStake",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "platformFeeAmount",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "voterRewardPool",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "winnersPool",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "winningVoterCount",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "rewardPerWinningVoter",
-          "type": "uint256"
-        }
-      ],
-      "name": "BetResolvedSnapshot",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
           "indexed": true,
           "internalType": "address",
           "name": "user",
@@ -1557,17 +1488,11 @@ export const BET_ABI = [
         {
           "indexed": false,
           "internalType": "uint256",
-          "name": "amountUsdc",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "amountProof",
+          "name": "usdcAmount",
           "type": "uint256"
         }
       ],
-      "name": "FundsWithdrawn",
+      "name": "BettorClaimed",
       "type": "event"
     },
     {
@@ -1587,6 +1512,31 @@ export const BET_ABI = [
         }
       ],
       "name": "ProofSubmitted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "enum Bet.Status",
+          "name": "newStatus",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum Bet.CancelReason",
+          "name": "reason",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum Bet.Side",
+          "name": "outcomeSide",
+          "type": "uint8"
+        }
+      ],
+      "name": "StatusChanged",
       "type": "event"
     },
     {
@@ -1615,11 +1565,36 @@ export const BET_ABI = [
       "type": "event"
     },
     {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "user",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "usdcAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proofAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "VoterClaimed",
+      "type": "event"
+    },
+    {
       "inputs": [],
       "name": "betFactory",
       "outputs": [
         {
-          "internalType": "contract BetFactory",
+          "internalType": "contract IBetFactory",
           "name": "",
           "type": "address"
         }
@@ -1628,48 +1603,13 @@ export const BET_ABI = [
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_participant",
-          "type": "address"
-        }
-      ],
-      "name": "calculateParticipantPayout",
+      "inputs": [],
+      "name": "cancelReason",
       "outputs": [
         {
-          "internalType": "uint256",
-          "name": "payout",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "isWinner",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_voter",
-          "type": "address"
-        }
-      ],
-      "name": "calculateVoterReward",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "usdcReward",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "proofRefund",
-          "type": "uint256"
+          "internalType": "enum Bet.CancelReason",
+          "name": "",
+          "type": "uint8"
         }
       ],
       "stateMutability": "view",
@@ -1677,7 +1617,7 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "checkAndCancelForProof",
+      "name": "checkAndCancelForNoProof",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1698,6 +1638,13 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
+      "name": "claimBettor",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "claimCreatorCollateral",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -1705,36 +1652,9 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "claimRefund",
+      "name": "claimVoter",
       "outputs": [],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "claimVoterRewards",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "claimWinnings",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "collateralLocked",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -1824,32 +1744,6 @@ export const BET_ABI = [
           "internalType": "uint256",
           "name": "minimumVotes",
           "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "feeCollector",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "fundsDistributed",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
         }
       ],
       "stateMutability": "view",
@@ -1961,12 +1855,12 @@ export const BET_ABI = [
         },
         {
           "internalType": "uint256",
-          "name": "participantsCount",
+          "name": "participantsC",
           "type": "uint256"
         },
         {
           "internalType": "uint256",
-          "name": "voters",
+          "name": "votersC",
           "type": "uint256"
         }
       ],
@@ -1975,20 +1869,7 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "getCreatorCollateral",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getCurrentInfo",
+      "name": "getResolutionInfo",
       "outputs": [
         {
           "components": [
@@ -1998,23 +1879,23 @@ export const BET_ABI = [
               "type": "uint8"
             },
             {
+              "internalType": "enum Bet.CancelReason",
+              "name": "reason",
+              "type": "uint8"
+            },
+            {
               "internalType": "enum Bet.Side",
-              "name": "winningSide",
+              "name": "outcome",
               "type": "uint8"
             },
             {
               "internalType": "uint256",
-              "name": "totalYesStake",
+              "name": "yesStake",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "totalNoStake",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "totalVotes",
+              "name": "noStake",
               "type": "uint256"
             },
             {
@@ -2029,96 +1910,43 @@ export const BET_ABI = [
             },
             {
               "internalType": "uint256",
-              "name": "totalYesProofStake",
+              "name": "invalidVotes",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "totalNoProofStake",
+              "name": "creatorCollateralSnap",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "totalVoteStakeProof",
+              "name": "platformFeeUsdc",
               "type": "uint256"
             },
             {
               "internalType": "uint256",
-              "name": "creatorCollateral",
+              "name": "voterRewardPoolUsdc",
               "type": "uint256"
             },
             {
-              "internalType": "bool",
-              "name": "collateralLocked",
-              "type": "bool"
+              "internalType": "uint256",
+              "name": "bettorBonusPoolUsdc",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "forfeitProof",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalWinnerProof",
+              "type": "uint256"
             }
           ],
-          "internalType": "struct Bet.CurrentInfo",
+          "internalType": "struct Bet.ResolutionInfo",
           "name": "info",
           "type": "tuple"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getResolutionInfo",
-      "outputs": [
-        {
-          "internalType": "enum Bet.Status",
-          "name": "status",
-          "type": "uint8"
-        },
-        {
-          "internalType": "enum Bet.Side",
-          "name": "winningSide_",
-          "type": "uint8"
-        },
-        {
-          "internalType": "uint256",
-          "name": "totalWinningStake",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "totalLosingStake",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "platformFeePct",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "voterRewardPct",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "platformFeeAmount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "voterRewardPool",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "winnersPool",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "winningVoterCount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "rewardPerWinningVoter",
-          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -2161,25 +1989,6 @@ export const BET_ABI = [
         }
       ],
       "name": "hasBettor",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "hasParticipated",
       "outputs": [
         {
           "internalType": "bool",
@@ -2287,11 +2096,6 @@ export const BET_ABI = [
           "internalType": "address",
           "name": "_proofToken",
           "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "_feeCollector",
-          "type": "address"
         }
       ],
       "name": "initialize",
@@ -2327,31 +2131,12 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "participantCount",
+      "name": "outcomeSide",
       "outputs": [
         {
-          "internalType": "uint256",
+          "internalType": "enum Bet.Side",
           "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "name": "participantList",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
+          "type": "uint8"
         }
       ],
       "stateMutability": "view",
@@ -2379,7 +2164,7 @@ export const BET_ABI = [
         },
         {
           "internalType": "bool",
-          "name": "hasWithdrawn",
+          "name": "claimed",
           "type": "bool"
         }
       ],
@@ -2387,14 +2172,8 @@ export const BET_ABI = [
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "pendingVoterRewardsUsdc",
+      "inputs": [],
+      "name": "participantsCount",
       "outputs": [
         {
           "internalType": "uint256",
@@ -2409,12 +2188,12 @@ export const BET_ABI = [
       "inputs": [
         {
           "internalType": "enum Bet.Side",
-          "name": "_position",
+          "name": "position",
           "type": "uint8"
         },
         {
           "internalType": "uint256",
-          "name": "_amountUsdc",
+          "name": "amountUsdc",
           "type": "uint256"
         }
       ],
@@ -2444,6 +2223,227 @@ export const BET_ABI = [
           "internalType": "string",
           "name": "",
           "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapBettorRefundBonusPoolUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapCreatorCollateral",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapInvalidBettorBonusPoolUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapInvalidLosingVoterTotalStakeProof",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapInvalidVoterBonusPoolUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapInvalidWinningVoterTotalStakeProof",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapNetLosingPoolUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapPlatformFeeUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapTotalInvalidProofStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapTotalNoProofStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapTotalNoStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapTotalYesProofStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapTotalYesStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapVoterRewardPoolUsdc",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapWinningBettorTotalStake",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snapshotted",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "snaptotalWinnerProof",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -2503,19 +2503,6 @@ export const BET_ABI = [
     },
     {
       "inputs": [],
-      "name": "totalVoteStakeProof",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "totalVotes",
       "outputs": [
         {
@@ -2558,7 +2545,7 @@ export const BET_ABI = [
       "name": "trustScoreContract",
       "outputs": [
         {
-          "internalType": "contract TrustScore",
+          "internalType": "contract ITrustScore",
           "name": "",
           "type": "address"
         }
@@ -2583,7 +2570,7 @@ export const BET_ABI = [
       "inputs": [
         {
           "internalType": "enum Bet.Side",
-          "name": "_vote",
+          "name": "v",
           "type": "uint8"
         }
       ],
@@ -2600,82 +2587,22 @@ export const BET_ABI = [
           "type": "address"
         }
       ],
-      "name": "voted",
+      "name": "voters",
       "outputs": [
+        {
+          "internalType": "enum Bet.Side",
+          "name": "vote",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint256",
+          "name": "stakeProof",
+          "type": "uint256"
+        },
         {
           "internalType": "bool",
-          "name": "",
+          "name": "claimed",
           "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "name": "voterList",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "voterStakesProof",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "votes",
-      "outputs": [
-        {
-          "internalType": "enum Bet.Side",
-          "name": "",
-          "type": "uint8"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "winningSide",
-      "outputs": [
-        {
-          "internalType": "enum Bet.Side",
-          "name": "",
-          "type": "uint8"
         }
       ],
       "stateMutability": "view",

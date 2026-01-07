@@ -99,6 +99,8 @@ async function handleBetCreated(
   betId: string,
   creator: string,
   title: string,
+   description: string,
+  deadlines: bigint[],
   event: ethers.EventLog
 ) {
   
@@ -110,10 +112,21 @@ async function handleBetCreated(
       betId,
       creator,
       title,
+      description,
+      bettingDeadline: Number(deadlines[0]),
+      proofDeadline: Number(deadlines[1]),
+      votingDeadline: Number(deadlines[2]),
       status: "OPEN_FOR_BETS",
       createdAt,
       blockNumber: event.blockNumber,
       txHash: event.transactionHash,
+      totalYesStake: 0,
+      totalNoStake: 0,
+      yesVotes: 0,
+      noVotes: 0,
+      invalidVotes: 0,
+      totalParticipants: 0,
+      totalVotes: 0
     },
     { upsert: true }
   );
@@ -174,8 +187,8 @@ for (const ev of events) {
     const args = parsed.args as Result;
 
     if (eventName === "BetCreated") {
-      const [betAddress, creator, title] =  decodeArgs<[string, string, string]>(args);
-      await handleBetCreated(betAddress, creator, title, ev as any);
+      const [betAddress, creator, title, desc, deadlines] =  decodeArgs<[string, string, string, string, bigint[]]>(args);
+      await handleBetCreated(betAddress, creator, title, desc, deadlines, ev as any);
     } else if (eventName === "BetStatusChanged") {
       const [betAddress, newStatus] = decodeArgs<[string, string]>(args);
       await handleStatusChanged(betAddress, newStatus, ev as any);
@@ -197,7 +210,7 @@ for (const ev of events) {
 
 export function subscribeLiveEvents() {
   // BetCreated
-  factory.on("BetCreated", async (betAddress, creator, title, event) => {
+  factory.on("BetCreated", async (betAddress, creator, title, description,deadlines , event) => {
     console.log(`📡 Detected BetCreated: ${title}`);
     //console.log(`📡 Event block number : ${event.blockNumber}`);
     // Wait for finality
@@ -210,7 +223,7 @@ export function subscribeLiveEvents() {
     }
     
     //provider.once(event.blockNumber + CONFIRMATIONS, async () =>
-      handleBetCreated(betAddress, creator, title , event as any )
+      handleBetCreated(betAddress, creator, title ,description,deadlines, event as any )
     //);
   });
 

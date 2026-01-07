@@ -25,11 +25,11 @@ console.log("New Creator stake (USDC): ", newStake.toString());
   for (const addr of betAddrs) {
     try {
        const bet = (await ethers.getContractAt("Bet", addr)) ;
-       const stake = await bet.creatorCollateral();
+       const stake = await bet.snapBettorRefundBonusPoolUsdc();
        const betDetails = await bet.details();
        const resInfo = await bet.getResolutionInfo();
        console.log("Creator stake for bet ", betDetails.title, ": ", ethers.formatUnits(stake, 6));
-       console.log("Resolution info: ", resInfo);
+       console.log("Resolution info: ", resInfo.toObject());
 
     } catch (err: any) {
       console.warn(`⚠️ Error handling bet ${addr}: ${err?.message ?? err}`);

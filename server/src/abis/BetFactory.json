@@ -1,4 +1,4 @@
-[
+  [
     {
       "inputs": [
         {
@@ -118,6 +118,18 @@
           "internalType": "string",
           "name": "title",
           "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256[3]",
+          "name": "deadlines",
+          "type": "uint256[3]"
         }
       ],
       "name": "BetCreated",

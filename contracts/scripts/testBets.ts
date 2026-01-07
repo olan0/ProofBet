@@ -207,7 +207,7 @@ async function main() {
         // Keeper calls checkAndCloseBetting
         await (await betContract.connect(keeper).checkAndCloseBetting()).wait(); 
         // Keeper calls checkAndCancelForProof
-        await (await betContract.connect(keeper).checkAndCancelForProof()).wait();
+        await (await betContract.connect(keeper).checkAndCancelForNoProof()).wait();
         console.log("    ✅ No proof submitted. Market is now CANCELLED.");
 
         // --- Scenario 6: Cancelled (Vote Tie) ---

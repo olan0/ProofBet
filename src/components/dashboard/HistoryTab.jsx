@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Loader2, Book, FolderOpen } from 'lucide-react';
 import { getBetFactoryContract, getBetContract } from '../blockchain/contracts';
@@ -34,7 +33,7 @@ export default function HistoryTab({ walletAddress }) {
             ]);
 
             const [title, description, creator, status, totalYes, totalNo, creationTime] = betInfo;
-            const { yesStake, noStake, hasWithdrawn } = userParticipant;
+            const { yesStake, noStake, claimed } = userParticipant;
             
             const isResolvedOrCancelled = Number(status) === 2 || Number(status) === 3;
 

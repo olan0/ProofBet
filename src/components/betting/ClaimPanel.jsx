@@ -10,6 +10,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
   const [error, setError] = useState('');
   const [userParticipantData, setUserParticipantData] = useState(null);
   const [userVoteStake, setUserVoteStake] = useState(null);
+  const [voterHasClaimed, setVoterHasClaimed] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
   const [creatorHasClaimed, setCreatorHasClaimed] = useState(false);
@@ -22,60 +23,93 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
       if (!walletAddress || !bet) return;
       try {
         const betContract = getBetContract(bet.address);
-        const [participantData, voteStakeData, winningSide, creator, collateralLocked] = await Promise.all([
+        const [participantData, voterInfo, winningSide, creator, collateralAmount, betData] = await Promise.all([
             betContract.participants(walletAddress),
-            betContract.voterStakesProof(walletAddress),
-            betContract.winningSide(),
+            betContract.voters(walletAddress),
+            betContract.outcomeSide(),
             betContract.creator(),
-            betContract.collateralLocked()
+            betContract.creatorCollateral(),
+            betContract.getBetInfo()
         ]);
         
         setUserParticipantData(participantData);
-        setUserVoteStake(voteStakeData);
+        setUserVoteStake(voterInfo.stakeProof);
+        setVoterHasClaimed(voterInfo.claimed);
         
         // Check if user is creator
         const userIsCreator = creator.toLowerCase() === walletAddress.toLowerCase();
         setIsCreator(userIsCreator);
         
-        // Show claim button when collateralLocked == true (collateral exists)
-        // Hide button if: already claimed OR no collateral (collateralLocked == false)
+        // Creator can claim if: collateral exists AND not yet claimed
         if (userIsCreator) {
-          setCreatorHasClaimed(participantData.hasWithdrawn || !collateralLocked);
+          const collateralAmountFloat = parseFloat(ethers.formatUnits(collateralAmount, 6));
+          setCreatorCollateralAmount(collateralAmountFloat);
+          setCreatorHasClaimed(participantData.claimed || collateralAmountFloat === 0);
         }
         
-        // Calculate payout amounts
+        // Calculate payout amounts using getResolutionInfo
         try {
-          const [payoutInfo, voterRewardInfo] = await Promise.all([
-            betContract.calculateParticipantPayout(walletAddress),
-            betContract.calculateVoterReward(walletAddress)
-          ]);
-          
-          setWinningsAmount(parseFloat(ethers.formatUnits(payoutInfo.payout, 6)));
-          setVoterRewardAmounts({
-            usdc: parseFloat(ethers.formatUnits(voterRewardInfo.usdcReward, 6)),
-            proof: parseFloat(ethers.formatEther(voterRewardInfo.proofRefund))
-          });
+          const resInfo = await betContract.getResolutionInfo();
+
+          const outcomeNum = Number(resInfo.outcome);
+          const userYesStake = parseFloat(ethers.formatUnits(participantData.yesStake, 6));
+          const userNoStake = parseFloat(ethers.formatUnits(participantData.noStake, 6));
+          const totalUserStake = userYesStake + userNoStake;
+
+          // Calculate participant payout
+          const bettorBonusPool = parseFloat(ethers.formatUnits(resInfo.bettorBonusPoolUsdc, 6));
+
+          if (bettorBonusPool > 0) {
+            // Bettors get their stake + proportional bonus from forfeited collateral
+            const totalStakeAll = parseFloat(ethers.formatUnits(resInfo.yesStake, 6)) + parseFloat(ethers.formatUnits(resInfo.noStake, 6));
+            const userBonus = totalStakeAll > 0 ? (totalUserStake / totalStakeAll) * bettorBonusPool : 0;
+            setWinningsAmount(totalUserStake + userBonus);
+          } else if (outcomeNum === 3) {
+            // Invalid but no bonus pool
+            setWinningsAmount(totalUserStake);
+          } else {
+            const totalWinningStake = outcomeNum === 1 ? parseFloat(ethers.formatUnits(resInfo.yesStake, 6)) : parseFloat(ethers.formatUnits(resInfo.noStake, 6));
+            const totalLosingStake = outcomeNum === 1 ? parseFloat(ethers.formatUnits(resInfo.noStake, 6)) : parseFloat(ethers.formatUnits(resInfo.yesStake, 6));
+            const userWinningStake = outcomeNum === 1 ? userYesStake : userNoStake;
+
+            if (userWinningStake > 0 && totalWinningStake > 0) {
+              const voterReward = parseFloat(ethers.formatUnits(resInfo.voterRewardPoolUsdc, 6));
+              const platformFee = parseFloat(ethers.formatUnits(resInfo.platformFeeUsdc, 6));
+              const winnersPool = totalLosingStake - voterReward - platformFee;
+              const userShare = (userWinningStake / totalWinningStake) * winnersPool;
+              setWinningsAmount(userWinningStake + userShare);
+            } else {
+              setWinningsAmount(0);
+            }
+          }
+
+          // Calculate voter reward
+          const userVote = Number(voterInfo.vote);
+          if (userVote === outcomeNum && userVote !== 0) {
+            const winningVoters = outcomeNum === 1 ? Number(resInfo.yesVotes) : outcomeNum === 2 ? Number(resInfo.noVotes) : Number(resInfo.invalidVotes);
+            const usdcReward = winningVoters > 0 ? parseFloat(ethers.formatUnits(resInfo.voterRewardPoolUsdc, 6)) / winningVoters : 0;
+            const proofBonus = winningVoters > 0 ? parseFloat(ethers.formatEther(resInfo.forfeitProof)) / winningVoters : 0;
+            const originalStake = parseFloat(ethers.formatEther(voterInfo.stakeProof));
+            setVoterRewardAmounts({
+              usdc: usdcReward,
+              proof: originalStake + proofBonus
+            });
+          } else {
+            setVoterRewardAmounts({ usdc: 0, proof: 0 });
+          }
         } catch (e) {
           console.error("Could not calculate payout amounts:", e);
         }
         
-        // Fetch creator collateral amount if user is creator
-        if (userIsCreator) {
-          try {
-            const collateralAmount = await betContract.getCreatorCollateral();
-            setCreatorCollateralAmount(parseFloat(ethers.formatUnits(collateralAmount, 6)));
-          } catch (e) {
-            console.error("Could not fetch creator collateral:", e);
-          }
-        }
+
         
         // Debug info
         setDebugInfo({
           winningSide: Number(winningSide),
           userYesStake: ethers.formatUnits(participantData.yesStake, 6),
           userNoStake: ethers.formatUnits(participantData.noStake, 6),
-          hasWithdrawn: participantData.hasWithdrawn,
-          voterStake: ethers.formatEther(voteStakeData),
+          claimed: participantData.claimed,
+          voterStake: ethers.formatEther(voterInfo.stakeProof),
           isCreator: userIsCreator,
           creatorCollateralAmount: creatorCollateralAmount
         });
@@ -93,7 +127,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
     }
 
     // Check for winnings
-    const hasWithdrawnWinnings = userParticipantData?.hasWithdrawn || false;
+    const hasWithdrawnWinnings = userParticipantData?.claimed || false;
     // If winning side is INVALID, all bettors are winners and get a share
     const isWinner = bet.winning_side === 'invalid' 
       ? participants.some(p => p.participant_address.toLowerCase() === walletAddress.toLowerCase())
@@ -105,8 +139,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
 
     // Check for voter rewards
     const didVote = votes.some(v => v.address.toLowerCase() === walletAddress.toLowerCase());
-    const hasWithdrawnVoterRewards = userVoteStake !== null && userVoteStake === 0n; 
-    const hasVoterRewardsToClaim = didVote && !hasWithdrawnVoterRewards;
+    const hasVoterRewardsToClaim = didVote && !voterHasClaimed;
 
     // Check for creator collateral claim
     const hasCreatorStakeToClaim = isCreator && !creatorHasClaimed && bet.proofUrl;
@@ -129,11 +162,11 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
         console.log("Attempting to claim creator collateral...");
         tx = await betContract.claimCreatorCollateral();
       } else if (canClaimWinnings) {
-        console.log("Attempting to claim winnings...");
-        tx = await betContract.claimWinnings();
+        console.log("Attempting to claim bettor winnings/refunds...");
+        tx = await betContract.claimBettor();
       } else if (canClaimVoterRewards) {
-        console.log("Attempting to claim voter rewards...");
-        tx = await betContract.claimVoterRewards();
+        console.log("Attempting to claim voter rewards/refunds...");
+        tx = await betContract.claimVoter();
       }
       if (tx) {
         console.log("Transaction sent, waiting for confirmation...");

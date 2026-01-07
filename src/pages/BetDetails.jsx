@@ -133,7 +133,7 @@ export default function BetDetails() {
         betContract.getBetInfo(),
         betContract.details(),
         betContract.creator(),
-        betContract.winningSide(),
+        betContract.outcomeSide(),
         betContract.queryFilter(betContract.filters.BetPlaced()),
         betContract.queryFilter(betContract.filters.VoteCast()),
       ]);
@@ -241,7 +241,7 @@ export default function BetDetails() {
         if (bet.onChainStatus === 'open_for_bets') {
             tx = await betContract.checkAndCloseBetting();
         } else if (bet.onChainStatus === 'awaiting_proof') {
-            tx = await betContract.checkAndCancelForProof();
+            tx = await betContract.checkAndCancelForNoProof();
         } else if (bet.onChainStatus === 'voting') {
             tx = await betContract.checkAndResolve();
         }

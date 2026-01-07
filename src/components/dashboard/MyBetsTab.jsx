@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Loader2, FolderOpen } from 'lucide-react';
 import { getBetFactoryContract, getBetContract } from '../blockchain/contracts';
@@ -38,7 +37,7 @@ export default function MyBetsTab({ walletAddress }) {
             ]);
 
             const [title, description, creator, status, totalYes, totalNo, creationTime] = betInfo;
-            const { yesStake, noStake, hasWithdrawn } = userParticipant;
+            const { yesStake, noStake, claimed } = userParticipant;
 
             // Calculate total user stake and determine position
             const userYesStake = parseFloat(ethers.formatUnits(yesStake, 6));

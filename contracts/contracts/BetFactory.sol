@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
-
+import "hardhat/console.sol";
 /**
  * @title BetFactory
  * @dev Factory for creating and managing Bet contracts.
@@ -46,7 +46,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     uint256 public proofCollateralUsdc ;        // Collateral in USDC required from creator
     mapping(address => bool) public bannedCreators;
 
-    event BetCreated(address betAddress, address creator, string title);
+    event BetCreated(address betAddress, address creator, string title,string description, uint256[3] deadlines);
     event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
     event DefaultVoterRewardChanged(uint8 oldPercentage, uint8 newPercentage);
@@ -132,21 +132,24 @@ modifier onlyAuthorizedBet() {
         unchecked { internalProofBalance[msg.sender] -= _amount; }
         require(proofToken.transfer(msg.sender, _amount), "PROOF transfer failed");
         emit ProofWithdrawn(msg.sender, _amount);
+        
     }
 
     function transferInternalUsdc(address _from, address _to, uint256 _amount, string memory _reason)
     public
-    nonReentrant
+    
     {
+        console.log("transferInternalUsdc called by:", msg.sender);
         require(isBetFromFactory[msg.sender], "Only factory bets");
+        console.log("Testing transferInternalUsdc from:" , _from);
         require(internalUsdcBalance[_from] >= _amount, "Insufficient internal USDC");
         unchecked { internalUsdcBalance[_from] -= _amount; internalUsdcBalance[_to] += _amount; }
         emit InternalTransfer(_from, _to, _amount, 0, _reason);
     }
 
     function transferInternalProof(address _from, address _to, uint256 _amount, string memory _reason)
-    public
-    nonReentrant
+    public 
+    
     {
         require(isBetFromFactory[msg.sender], "Only factory bets");
         require(internalProofBalance[_from] >= _amount, "Insufficient internal PROOF");
@@ -174,7 +177,7 @@ modifier onlyAuthorizedBet() {
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Too many active bets");
         require(!bannedCreators[msg.sender], "Creator is banned");
         require(internalUsdcBalance[msg.sender] >= proofCollateralUsdc, "Insufficient collateral");
-
+        console.log("Creating bet with dynamic fee: ", dynamicFee);
         unchecked { internalProofBalance[msg.sender] -= dynamicFee; }
 
         uint256 burnAmount = (dynamicFee * proofToken.feeBurnPercentage()) / 100;
@@ -207,7 +210,7 @@ modifier onlyAuthorizedBet() {
         address newBetAddress = address(newBet);*/
         
       
-        
+        isBetFromFactory[newBetAddress] = true;
         // Initialize the cloned Bet contract
         Bet(newBetAddress).initialize(
             _details,
@@ -215,16 +218,14 @@ modifier onlyAuthorizedBet() {
             address(this),
             address(trustScoreContract),
             address(usdcToken),
-            address(proofToken),
-            feeCollector
+            address(proofToken)
         );
         
         allBets.push(newBetAddress);
-        isBetFromFactory[newBetAddress] = true;
-        activeBetsCount[msg.sender]++;
+         activeBetsCount[msg.sender]++;
         
         trustScoreContract.logBetCreation(msg.sender);
-        emit BetCreated(newBetAddress, msg.sender, _details.title);
+        emit BetCreated(newBetAddress, msg.sender, _details.title, _details.description, [ _details.bettingDeadline,_details.proofDeadline,_details.votingDeadline]);
         return newBetAddress;
     }
 
