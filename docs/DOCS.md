@@ -141,45 +141,90 @@ Final Resolution Rules
 
 How bets, voters, and creators are rewarded or penalized based on outcome.
 
-Scenario
+Final Status
+
+Outcome
+
+Resolution Condition
 
 Bettors
 
-Voters
+Correct Voters
 
-Creator
+Incorrect Voters
 
-✅ Valid Proof (YES / NO)
+Creator Collateral
 
-Winners receive stake + share of losing side
+COMPLETED
 
-Correct voters get PROOF back + USDC reward
+YES
 
-Collateral returned
+YES votes > NO votes
 
-❌ Invalid Proof (Voted INVALID)
+YES bettors receive stake + share of NO pool
 
-Original bets refunded
+Receive USDC reward + PROOF returned
 
-INVALID voters share creator collateral
+Lose PROOF stake
 
-Collateral slashed
+Returned to creator
 
-⏱ No Proof Submitted
+COMPLETED
 
-Bettors receive share of creator collateral
+NO
 
-No voting rewards
+NO votes > YES votes
 
-Creator banned & collateral forfeited
+NO bettors receive stake + share of YES pool
 
-⚖ Vote Tie / Insufficient Votes
+Receive USDC reward + PROOF returned
 
-Bets refunded
+Lose PROOF stake
 
-PROOF stakes refunded
+Returned to creator
 
-Collateral returned
+CANCELLED
+
+NO\_PROOF
+
+Creator failed to submit proof
+
+Refund + collateral bonus
+
+PROOF returned
+
+—
+
+Distributed to bettors (minus fee)
+
+CANCELLED
+
+INVALID
+
+INVALID votes > YES  
+INVALID votes > NO
+
+Refund + 50% collateral bonus
+
+Receive 50% collateral + forfeited PROOF
+
+Lose PROOF stake
+
+Split 50% bettors / 50% voters
+
+CANCELLED
+
+TIE / INSUFFICIENT
+
+No strict majority or minimum votes unmet
+
+Full refund
+
+PROOF returned
+
+—
+
+Returned to creator
 
 )} {activeSection === "trust-score" && (
 
