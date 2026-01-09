@@ -588,86 +588,80 @@ export default function DocumentationPage() {
 
                     <CardContent>
                       <div className="overflow-x-auto">
-                        <table className="w-full border-collapse rounded-lg overflow-hidden">
-                          <thead className="bg-gray-200">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
-                                Scenario
-                              </th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
-                                Bettors
-                              </th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
-                                Voters
-                              </th>
-                              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
-                                Creator
-                              </th>
-                            </tr>
-                          </thead>
+                     <table className="w-full border-collapse mt-4 text-sm">
+                        <thead>
+                          <tr className="bg-gray-800 text-gray-100">
+                            <th className="p-3 border border-gray-700 text-left">Final Status</th>
+                            <th className="p-3 border border-gray-700 text-left">Outcome</th>
+                            <th className="p-3 border border-gray-700 text-left">Resolution Condition</th>
+                            <th className="p-3 border border-gray-700 text-left">Bettors</th>
+                            <th className="p-3 border border-gray-700 text-left">Correct Voters</th>
+                            <th className="p-3 border border-gray-700 text-left">Incorrect Voters</th>
+                            <th className="p-3 border border-gray-700 text-left">Creator Collateral</th>
+                          </tr>
+                        </thead>
 
-                          <tbody className="bg-gray-100 divide-y divide-gray-300">
-                            <tr>
-                              <td className="px-4 py-3 font-medium text-gray-900">
-                                ✅ Valid Proof (YES / NO)
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Winners receive stake + share of losing side
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Correct voters get PROOF back + USDC reward
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Collateral returned
-                              </td>
-                            </tr>
+                        <tbody className="text-gray-200">
+                          <tr className="hover:bg-gray-800/50">
+                            <td className="p-2 border border-gray-700">COMPLETED</td>
+                            <td className="p-2 border border-gray-700">YES</td>
+                            <td className="p-2 border border-gray-700">YES votes &gt; NO votes</td>
+                            <td className="p-2 border border-gray-700">YES bettors receive stake + share of NO pool</td>
+                            <td className="p-2 border border-gray-700">Receive USDC reward + PROOF returned</td>
+                            <td className="p-2 border border-gray-700">Lose PROOF stake</td>
+                            <td className="p-2 border border-gray-700">Returned to creator</td>
+                          </tr>
 
-                            <tr>
-                              <td className="px-4 py-3 font-medium text-gray-900">
-                                ❌ Invalid Proof (Voted INVALID)
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Original bets refunded
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                INVALID voters share creator collateral
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Collateral slashed
-                              </td>
-                            </tr>
+                          <tr className="hover:bg-gray-800/50">
+                            <td className="p-2 border border-gray-700">COMPLETED</td>
+                            <td className="p-2 border border-gray-700">NO</td>
+                            <td className="p-2 border border-gray-700">NO votes &gt; YES votes</td>
+                            <td className="p-2 border border-gray-700">NO bettors receive stake + share of YES pool</td>
+                            <td className="p-2 border border-gray-700">Receive USDC reward + PROOF returned</td>
+                            <td className="p-2 border border-gray-700">Lose PROOF stake</td>
+                            <td className="p-2 border border-gray-700">Returned to creator</td>
+                          </tr>
 
-                            <tr>
-                              <td className="px-4 py-3 font-medium text-gray-900">
-                                ⏱ No Proof Submitted
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Bettors receive share of creator collateral
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                No voting rewards
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Creator banned & collateral forfeited
-                              </td>
-                            </tr>
+                          <tr className="hover:bg-gray-800/50">
+                            <td className="p-2 border border-gray-700">CANCELLED</td>
+                            <td className="p-2 border border-gray-700">NO_PROOF</td>
+                            <td className="p-2 border border-gray-700">Creator failed to submit proof</td>
+                            <td className="p-2 border border-gray-700">Refund + collateral bonus</td>
+                            <td className="p-2 border border-gray-700">PROOF returned</td>
+                            <td className="p-2 border border-gray-700">—</td>
+                            <td className="p-2 border border-gray-700">Distributed to bettors (minus fee)</td>
+                          </tr>
 
-                            <tr>
-                              <td className="px-4 py-3 font-medium text-gray-900">
-                                ⚖ Vote Tie / Insufficient Votes
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Bets refunded
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                PROOF stakes refunded
-                              </td>
-                              <td className="px-4 py-3 text-gray-800">
-                                Collateral returned
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
+                          <tr className="hover:bg-gray-800/50">
+                            <td className="p-2 border border-gray-700">CANCELLED</td>
+                            <td className="p-2 border border-gray-700">INVALID</td>
+                            <td className="p-2 border border-gray-700">
+                              INVALID votes &gt; YES <br />
+                              INVALID votes &gt; NO
+                            </td>
+                            <td className="p-2 border border-gray-700">Refund + 50% collateral bonus</td>
+                            <td className="p-2 border border-gray-700">
+                              Receive 50% collateral + forfeited PROOF
+                            </td>
+                            <td className="p-2 border border-gray-700">Lose PROOF stake</td>
+                            <td className="p-2 border border-gray-700">Split 50% bettors / 50% voters</td>
+                          </tr>
+
+                          <tr className="hover:bg-gray-800/50">
+                            <td className="p-2 border border-gray-700">CANCELLED</td>
+                            <td className="p-2 border border-gray-700">TIE / INSUFFICIENT</td>
+                            <td className="p-2 border border-gray-700">
+                              No strict majority or minimum votes unmet
+                            </td>
+                            <td className="p-2 border border-gray-700">Full refund</td>
+                            <td className="p-2 border border-gray-700">PROOF returned</td>
+                            <td className="p-2 border border-gray-700">—</td>
+                            <td className="p-2 border border-gray-700">Returned to creator</td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+
                       </div>
                     </CardContent>
                   </Card>
