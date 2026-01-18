@@ -1,7 +1,7 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Video, Camera, Image as ImageIcon, User, Clock, Users, Vote, Target } from "lucide-react";
+import { Video, Camera, Image as ImageIcon, User, Clock, Users, Vote, Target, Tag, FileText } from "lucide-react";
 import AddressDisplay from "../common/AddressDisplay";
 import moment from 'moment';
 
@@ -46,6 +46,8 @@ export default function BetDetailHeader({ bet }) {
         
         <div className="border-t border-gray-700 pt-4 flex flex-wrap justify-between items-center gap-x-6 gap-y-3 text-sm text-gray-300">
             <div className="flex items-center gap-6">
+                <span title="Category" className="flex items-center gap-1.5"><Tag className="w-4 h-4 text-green-400"/> {bet.category}</span>
+                <span title="Proof Type" className="flex items-center gap-1.5"><FileText className="w-4 h-4 text-orange-400"/> {bet.proof_type}</span>
                 <span title="Participants" className="flex items-center gap-1.5"><Users className="w-4 h-4 text-cyan-400"/> {bet.participants_count || 0}</span>
                 <span title="Voters" className="flex items-center gap-1.5"><Vote className="w-4 h-4 text-purple-400"/> {bet.voters_count || 0}</span>
                 <span title="Min Votes" className="flex items-center gap-1.5"><Target className="w-4 h-4 text-gray-400"/> {bet.minimum_votes || 'N/A'}</span>

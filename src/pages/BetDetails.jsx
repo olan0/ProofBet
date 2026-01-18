@@ -31,6 +31,24 @@ const ON_CHAIN_STATUS_MAP = {
   4: "cancelled",
 };
 
+const CATEGORY_MAP = {
+  0: "Unknown",
+  1: "Crypto",
+  2: "Sports",
+  3: "Politics",
+  4: "Finance",
+  5: "Other"
+};
+
+const PROOF_TYPE_MAP = {
+  0: "Unknown",
+  1: "Video",
+  2: "Live Stream",
+  3: "Oracle",
+  4: "Document",
+  5: "Other"
+};
+
 // REVISED HELPER: Prioritizes the on-chain status as the source of truth.
 const getEffectiveStatus = (bet) => {
     if (!bet) return null;
@@ -91,9 +109,8 @@ export default function BetDetails() {
   const loadAppSettings = useCallback(async () => {
     try {
       const factory = getBetFactoryContract();
-      const connectedAddr = await getConnectedAddress();
       const [voteStakeAmount, voterRewardPercentage, platformFeePercentage] = await Promise.all([
-        factory.calculateRequiredStake(connectedAddr),
+        factory.voteStakeAmountProof(),
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage()
       ]);
@@ -191,13 +208,12 @@ export default function BetDetails() {
         winning_side: Number(winningSideRaw) === 1 ? 'yes' : Number(winningSideRaw) === 2 ? 'no' : Number(winningSideRaw) === 3 ? 'invalid' : null,
         participants_count: Number(participantCount),
         voters_count: Number(voterCount),
-        category: 'other', 
-        proof_type: 'video',
+        category: CATEGORY_MAP[Number(details.category)] || 'Other',
+        proof_type: PROOF_TYPE_MAP[Number(details.proofType)] || 'Other',
       };
       setBet(betData);
       setWalletAddress(connectedAddr);
       setIsCreator(connectedAddr && creatorAddress.toLowerCase() === connectedAddr.toLowerCase());
-
 
     } catch (err) {
       console.error("Error loading bet details from blockchain:", err);
@@ -210,6 +226,30 @@ export default function BetDetails() {
   useEffect(() => {
     loadBetDetails(betAddress);
     loadAppSettings();
+
+    // Set up event listeners for real-time updates
+    if (!betAddress) return;
+
+    const betContract = getBetContract(betAddress);
+    
+    const handleBetPlaced = (user, position, amountUsdc, event) => {
+      console.log("BetPlaced event:", user, position, amountUsdc);
+      loadBetDetails(betAddress);
+    };
+
+    const handleVoteCast = (voter, vote, event) => {
+      console.log("VoteCast event:", voter, vote);
+      loadBetDetails(betAddress);
+    };
+
+    betContract.on("BetPlaced", handleBetPlaced);
+    betContract.on("VoteCast", handleVoteCast);
+
+    // Cleanup listeners on unmount
+    return () => {
+      betContract.off("BetPlaced", handleBetPlaced);
+      betContract.off("VoteCast", handleVoteCast);
+    };
   }, [betAddress, loadBetDetails, loadAppSettings]);
 
   const handleProofSubmit = async (proofUrl) => {

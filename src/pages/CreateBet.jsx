@@ -169,6 +169,14 @@ export default function CreateBet() {
       const proofDeadlineTimestamp = Math.floor(formData.proofDeadline.getTime() / 1000);
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
+      const categoryMap = {
+        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4, 'other': 5,
+        'entertainment': 5, 'personal': 5
+      };
+      const proofTypeMap = {
+        'video': 1, 'live_stream': 2, 'livestream': 2, 'photo': 4
+      };
+
       const betDetails = {
         creator: walletAddress,
         title: formData.title || "Temporary",
@@ -181,7 +189,9 @@ export default function CreateBet() {
         minimumTrustScore: parseInt(formData.minimumTrustScore || "0"),
         voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5,
         platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,
-        minimumVotes: parseInt(formData.minimumVotes || "3")
+        minimumVotes: parseInt(formData.minimumVotes || "3"),
+        category: categoryMap[formData.category] || 5,
+        proofType: proofTypeMap[formData.proofType] || 5
       };
 
       const feeInProof = await factory.calculateDynamicCreationFee(betDetails);
@@ -262,6 +272,24 @@ export default function CreateBet() {
       const proofDeadlineTimestamp = Math.floor(formData.proofDeadline.getTime() / 1000);
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
+      // Map category and proof type to enum values
+      const categoryMap = {
+        'crypto': 1,
+        'sports': 2,
+        'politics': 3,
+        'finance': 4,
+        'other': 5,
+        'entertainment': 5,
+        'personal': 5
+      };
+
+      const proofTypeMap = {
+        'video': 1,
+        'live_stream': 2,
+        'photo': 4,
+        'livestream': 2
+      };
+
       // Create the bet details struct with ALL required fields
       const betDetails = {
         creator: walletAddress, // This will be overridden by the contract
@@ -273,9 +301,9 @@ export default function CreateBet() {
         minimumBetAmount: ethers.parseUnits(formData.minimumBetAmount, 6), // USDC has 6 decimals
         minimumSideStake: ethers.parseUnits(formData.minimumSideStake, 6),
         minimumTrustScore: parseInt(formData.minimumTrustScore),
-        voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5, // Use fetched value with fallback
-        platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,  // Use fetched value with fallback
-        minimumVotes: parseInt(formData.minimumVotes) || 3, 
+        minimumVotes: parseInt(formData.minimumVotes) || 3,
+        category: categoryMap[formData.category] || 5,
+        proofType: proofTypeMap[formData.proofType] || 5
       };
 
       // Create the bet on the blockchain - The contract now handles the fee deduction.
@@ -581,11 +609,10 @@ export default function CreateBet() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent className="bg-gray-700 border-gray-600">
+                      <SelectItem value="crypto">Crypto</SelectItem>
                       <SelectItem value="sports">Sports</SelectItem>
                       <SelectItem value="politics">Politics</SelectItem>
-                      <SelectItem value="entertainment">Entertainment</SelectItem>
-                      <SelectItem value="crypto">Crypto</SelectItem>
-                      <SelectItem value="personal">Personal Achievement</SelectItem>
+                      <SelectItem value="finance">Finance</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
@@ -598,9 +625,9 @@ export default function CreateBet() {
                       <SelectValue placeholder="How will you prove it?" />
                     </SelectTrigger>
                     <SelectContent className="bg-gray-700 border-gray-600">
-                      <SelectItem value="video">Video Upload</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
                       <SelectItem value="live_stream">Live Stream</SelectItem>
-                      <SelectItem value="photo">Photo Evidence</SelectItem>
+                      <SelectItem value="photo">Document</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

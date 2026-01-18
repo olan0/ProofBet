@@ -89,6 +89,9 @@ async function main() {
             proofDeadline: currentTimestamp + 86400 * 8,
             votingDeadline: currentTimestamp + 86400 * 9,
             minimumBetAmount: ethers.parseUnits("10", 6), minimumSideStake: ethers.parseUnits("100", 6), minimumTrustScore: 0, minimumVotes: 1,
+            category: 1, // Finance
+            proofType: 1, // URL
+           
         };
         createTx = await factory.connect(creator1).createBet(details);
         receipt = await createTx.wait();
@@ -112,6 +115,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60;
         details.proofDeadline = currentTimestamp + 1200;
         details.votingDeadline = currentTimestamp + 2400;
+        details.category = 2; // Technology
+        details.proofType = 2; // Document
         createTx = await factory.connect(creator1).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -138,6 +143,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60;
         details.proofDeadline = currentTimestamp + 120;
         details.votingDeadline = currentTimestamp + 1200;
+        details.category = 3; // Development
+        details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -164,6 +171,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60;
         details.proofDeadline = currentTimestamp + 120;
         details.votingDeadline = currentTimestamp + 180;
+        details.category = 4; // Testing
+        details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -196,6 +205,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60;
         details.proofDeadline = currentTimestamp + 120;
         details.votingDeadline = currentTimestamp + 1800;
+        details.category = 2; 
+        details.proofType = 1;
         createTx = await factory.connect(creator1).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -223,6 +234,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60;
         details.proofDeadline = currentTimestamp + 120;
         details.votingDeadline = currentTimestamp + 180;
+        details.category = 4; 
+        details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -254,6 +267,8 @@ async function main() {
         details.bettingDeadline = currentTimestamp + 60; // Closes soon
         details.proofDeadline = currentTimestamp + 86400;
         details.votingDeadline = currentTimestamp + 86400 * 2;
+        details.category = 3; 
+        details.proofType = 1;
         createTx = await factory.connect(creator1).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
@@ -276,6 +291,8 @@ async function main() {
         details.proofDeadline = currentTimestamp + 86400 * 4;
         details.votingDeadline = currentTimestamp + 86400 * 5;
         details.minimumBetAmount = ethers.parseUnits("1000", 6);
+        details.category = 1;
+        details.proofType = 2;
         createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);

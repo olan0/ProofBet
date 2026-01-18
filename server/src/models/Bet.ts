@@ -7,11 +7,9 @@ const BetSchema = new mongoose.Schema({
   creator: { type: String, index: true },
   title: String,
   description: String,
-  status: {
-    type: String,
-    enum: ["OPEN_FOR_BETS", "AWAITING_PROOF", "VOTING", "COMPLETED", "CANCELLED"],
-    default: "OPEN_FOR_BETS",
-  },
+  status: { type: Number, default: 0, index: true }, // 0: OPEN_FOR_BETS, 1: AWAITING_PROOF, 2: VOTING_IN_PROGRESS, 3: RESOLVED, 4: CANCELED
+  category:{ type: Number, requred: true, index: true }, // Category enum
+  proofType:{ type: Number, requred: true, index: true }, // ProofType enum
   totalYesStake: { type: String, default: "0" },
   totalNoStake: { type: String, default: "0" },
   totalVotes: { type: Number, default: 0 },

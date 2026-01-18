@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 //import "./TrustScore.sol";
 //import "./BetFactory.sol";
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
 
 interface ITrustScore {
@@ -32,6 +32,9 @@ interface IBetFactory {
 
     // Creator collateral baseline (USDC)
     function proofCollateralUsdc() external view returns (uint256);
+
+    // Notification of status change
+     function notifyBetStatusChange(address betAddress,uint8 newStatus,string calldata reason) external;
 }
 
 /**
@@ -41,6 +44,24 @@ interface IBetFactory {
  * - Claim-based payouts (no loops)
  */
 contract Bet is ReentrancyGuard {
+    enum Category {  
+    UNKNOWN,
+    CRYPTO,
+    SPORTS,
+    POLITICS,
+    FINANCE,
+    OTHER
+}
+
+enum ProofType {
+    UNKNOWN,
+    VIDEO,
+    LIVESTREAM,
+    ORACLE,
+    DOCUMENT,
+    OTHER
+}
+
     enum Status { OPEN_FOR_BETS, AWAITING_PROOF, VOTING, COMPLETED, CANCELLED , NONE}
     enum Side { NONE, YES, NO, INVALID } // INVALID is for voters only
     enum CancelReason { NONE, MIN_SIDE_STAKE, NO_PROOF, INSUFFICIENT_VOTES, TIE, VOTE_INVALID }
@@ -55,6 +76,8 @@ contract Bet is ReentrancyGuard {
         uint256 minimumSideStake;
         uint8 minimumTrustScore;
         uint256 minimumVotes;
+        Category category;
+        ProofType proofType;
     }
 
     struct Participant {
@@ -183,11 +206,13 @@ contract Bet is ReentrancyGuard {
     ) external {
         require(!initialized, "Already initialized");
         initialized = true;
-        console.log("Bet initialized with creator:", _creator);
+       
         require(_creator != address(0) && _betFactory != address(0) && _trustScore != address(0), "Zero address");
         require(_details.bettingDeadline < _details.proofDeadline && _details.proofDeadline < _details.votingDeadline, "Bad deadlines");
         require(msg.sender == _betFactory, "Only factory can initialize");
-        console.log("Bet details title:", _details.title);
+        require(_details.category != Category.UNKNOWN, "Invalid category");
+        require(_details.proofType != ProofType.UNKNOWN, "Invalid proof type");
+        require(bytes(_details.title).length > 0, "Empty title");
         details = _details;
         creator = _creator;
         betFactory = IBetFactory(_betFactory);
@@ -198,16 +223,16 @@ contract Bet is ReentrancyGuard {
         _status = Status.OPEN_FOR_BETS;
         cancelReason = CancelReason.NONE;
         outcomeSide = Side.NONE;
-        console.log("Bet status set to OPEN_FOR_BETS");
+       
         // baseline collateral(creator must have funded internal balance beforehand)
         creatorCollateral = betFactory.proofCollateralUsdc();
-         console.log("Bet creator collateral set to:", creatorCollateral);
+       
         if (creatorCollateral > 0) {
             // lock collateral from creator into this Bet (internal transfer)
-            console.log("Transferring creator collateral to Bet contract");
+            
             betFactory.transferInternalUsdc(_creator, address(this), creatorCollateral, "Creator collateral");
         }
-        console.log("Bet creator collateral transferred to Bet contract");
+      
         emit StatusChanged(_status, cancelReason, outcomeSide);
     }
 
@@ -332,6 +357,7 @@ contract Bet is ReentrancyGuard {
         if (totalYesStake >= details.minimumSideStake && totalNoStake >= details.minimumSideStake) {
             _status = Status.AWAITING_PROOF;
             emit StatusChanged(_status, CancelReason.NONE, Side.NONE);
+            betFactory.notifyBetStatusChange(address(this),uint8(_status),"Betting closed, awaiting proof");
         } else {
             _cancel(CancelReason.MIN_SIDE_STAKE, Side.NONE);
         }
@@ -351,6 +377,7 @@ contract Bet is ReentrancyGuard {
 
         emit ProofSubmitted(msg.sender, _proofUrl);
         emit StatusChanged(_status, CancelReason.NONE, Side.NONE);
+        betFactory.notifyBetStatusChange(address(this),uint8(_status),"Proof submitted, voting started");
     }
 
     function checkAndCancelForNoProof() external {
@@ -448,6 +475,7 @@ contract Bet is ReentrancyGuard {
         outcomeSide = win;
         _snapshot();
         emit StatusChanged(_status, cancelReason, outcomeSide);
+        betFactory.notifyBetStatusChange(address(this),uint8(_status),"Bet completed");
     }
 
     function _cancel(CancelReason reason, Side outcome) internal {
@@ -456,6 +484,7 @@ contract Bet is ReentrancyGuard {
         outcomeSide = outcome; // only meaningful for VOTE_INVALID (INVALID), else NONE
         _snapshot();
         emit StatusChanged(_status, cancelReason, outcomeSide);
+        betFactory.notifyBetStatusChange(address(this),uint8(_status),"Bet cancelled");
     }
 
     function _snapshot() internal {
@@ -511,7 +540,7 @@ contract Bet is ReentrancyGuard {
 
         // ===== CANCELLED pools =====
         else if (_status == Status.CANCELLED) {
-            console.log("Snapshotting CANCELLED bet with reason:", uint256(cancelReason));
+            
             uint256 feePct2 = betFactory.defaultPlatformFeePercentage();
             snapPlatformFeeUsdc = (snapCreatorCollateral * feePct2) / 100;
 
@@ -527,7 +556,7 @@ contract Bet is ReentrancyGuard {
                 snapBettorRefundBonusPoolUsdc = remainingCollateral;
                 creatorCollateral = 0;
             } else if (cancelReason == CancelReason.VOTE_INVALID && outcomeSide == Side.INVALID) {
-                console.log("Snapshotting VOTE_INVALID cancellation");
+
                 // INVALID vote cancellation:
                 // You said: "voters who vote different should lose collateral and it should be distributed between correct voters"
                 // Here: bettors get refunds, plus optional collateral split between bettors & INVALID voters.
@@ -541,9 +570,9 @@ contract Bet is ReentrancyGuard {
                 snapInvalidWinningVoterTotalStakeProof = snapTotalInvalidProofStake;
                 creatorCollateral = 0;
                 snaptotalWinnerProof = totalInvalidProofStake;
-                console.log("snapInvalidLosingVoterTotalStakeProof:", snaptotalWinnerProof);
+
                 snapVoterRewardPoolUsdc = snapInvalidVoterBonusPoolUsdc;
-                console.log("snapInvalidVoterBonusPoolUsdc:", snapVoterRewardPoolUsdc);
+
             } 
 
 

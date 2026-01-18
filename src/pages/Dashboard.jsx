@@ -167,6 +167,61 @@ export default function Dashboard() {
 
   useEffect(() => {
     getConnectedAddress().then(setWalletAddress);
+
+    // Set up BetFactory event listeners for real-time updates
+    const factory = getBetFactoryContract();
+
+    const handleBetCreated = (betAddress, creator, event) => {
+      console.log("New bet created:", betAddress);
+      // Reload bets to show new market
+      loadBets(0, false);
+    };
+
+    const handleBetStatusChanged = (betAddress, newStatus, reason, event) => {
+      console.log("Bet status changed:", betAddress, newStatus);
+      // Update the specific bet in the list
+      setBets(prev => prev.map(bet => 
+        bet.address.toLowerCase() === betAddress.toLowerCase()
+          ? { ...bet, onChainStatus: ON_CHAIN_STATUS_MAP[Number(newStatus)] }
+          : bet
+      ));
+    };
+
+    const handleBetParticipation = (betAddress, participant, position, amountUsdc, event) => {
+      console.log("Bet participation:", betAddress, participant);
+      // Reload the specific bet details
+      loadBetDetails(betAddress).then(updatedBet => {
+        if (updatedBet) {
+          setBets(prev => prev.map(bet =>
+            bet.address.toLowerCase() === betAddress.toLowerCase() ? updatedBet : bet
+          ));
+        }
+      });
+    };
+
+    const handleBetVote = (betAddress, voter, vote, event) => {
+      console.log("Bet vote cast:", betAddress, voter);
+      // Reload the specific bet details
+      loadBetDetails(betAddress).then(updatedBet => {
+        if (updatedBet) {
+          setBets(prev => prev.map(bet =>
+            bet.address.toLowerCase() === betAddress.toLowerCase() ? updatedBet : bet
+          ));
+        }
+      });
+    };
+
+    factory.on("BetCreated", handleBetCreated);
+    factory.on("BetStatusChanged", handleBetStatusChanged);
+    factory.on("BetParticipation", handleBetParticipation);
+    factory.on("BetVote", handleBetVote);
+
+    return () => {
+      factory.off("BetCreated", handleBetCreated);
+      factory.off("BetStatusChanged", handleBetStatusChanged);
+      factory.off("BetParticipation", handleBetParticipation);
+      factory.off("BetVote", handleBetVote);
+    };
   }, []);
 
   useEffect(() => {

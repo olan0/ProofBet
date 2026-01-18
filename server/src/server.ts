@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import messageRoutes from "./routes/messageRoutes";
 import userRoutes from "./routes/userRoutes";
-import betRoutes from "./routes/bets";
+import betRoutes from "./routes/betRoutes";
 import { Server } from "socket.io";
 import http from "http";
 import { initEventSync } from "./services/EventSync";
@@ -37,6 +37,7 @@ mongoose
   });
 
 // Routes
+
 app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bets", betRoutes);

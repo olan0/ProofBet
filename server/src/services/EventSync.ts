@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import mongoose from "mongoose";
 import BetFactoryArtifact from "../abis/BetFactory.json";
+import BetArtifact from "../abis/Bet.json";
 import Bet from "../models/Bet";
 import { SyncState } from "../models/SyncState";
 import { Interface, Result } from "ethers";
@@ -36,6 +37,12 @@ async function getBlockTimestamp(blockNumber: number): Promise<Date> {
   }
   return new Date(block.timestamp * 1000);
 }
+async function fetchBetDetails(betAddress: string) {
+  const bet = new ethers.Contract(betAddress, BetArtifact, provider);
+  const details = await bet.getBetDetails();
+  return details
+}
+
 
 // ----------- HANDLERS -----------
 
@@ -98,25 +105,24 @@ async function handleBetVote(
 async function handleBetCreated(
   betId: string,
   creator: string,
-  title: string,
-   description: string,
-  deadlines: bigint[],
   event: ethers.EventLog
 ) {
   
   const createdAt = await getBlockTimestamp(event.blockNumber);
-
+  const details = await fetchBetDetails(betId);
   await Bet.updateOne(
     { betId },
     {
       betId,
       creator,
-      title,
-      description,
-      bettingDeadline: Number(deadlines[0]),
-      proofDeadline: Number(deadlines[1]),
-      votingDeadline: Number(deadlines[2]),
-      status: "OPEN_FOR_BETS",
+      title: details.title,
+      description: details.description,
+      category: Number(details.category),
+      proofType: Number(details.proofType),
+      bettingDeadline: Number(details.bettingDeadline),
+      proofDeadline: Number(details.proofDeadline),
+      votingDeadline: Number(details.votingDeadline),
+      status: 0,
       createdAt,
       blockNumber: event.blockNumber,
       txHash: event.transactionHash,
@@ -137,14 +143,14 @@ async function handleBetCreated(
 
 async function handleStatusChanged(
   betId: string,
-  newStatus: string,
+  newStatus: number,
   event: ethers.EventLog
 ) {
   await Bet.updateOne(
     { betId },
     {
       $set: {
-        status: newStatus,
+        status: Number(newStatus),
         updatedAt: await getBlockTimestamp(event.blockNumber),
       },
     }
@@ -187,10 +193,10 @@ for (const ev of events) {
     const args = parsed.args as Result;
 
     if (eventName === "BetCreated") {
-      const [betAddress, creator, title, desc, deadlines] =  decodeArgs<[string, string, string, string, bigint[]]>(args);
-      await handleBetCreated(betAddress, creator, title, desc, deadlines, ev as any);
+      const [betAddress, creator] =  decodeArgs<[string, string]>(args);
+      await handleBetCreated(betAddress, creator,  ev as any);
     } else if (eventName === "BetStatusChanged") {
-      const [betAddress, newStatus] = decodeArgs<[string, string]>(args);
+      const [betAddress, newStatus] = decodeArgs<[string, number]>(args);
       await handleStatusChanged(betAddress, newStatus, ev as any);
     } else if (eventName === "BetParticipation") {
       const [betAddress, participant, position, amountUsdc] = decodeArgs<[string, string, number, bigint]>(args);
@@ -210,20 +216,21 @@ for (const ev of events) {
 
 export function subscribeLiveEvents() {
   // BetCreated
-  factory.on("BetCreated", async (betAddress, creator, title, description,deadlines , event) => {
-    console.log(`📡 Detected BetCreated: ${title}`);
+  factory.on("BetCreated", async (betAddress, creator,  event) => {
+    console.log(`📡 Detected BetCreated: ${betAddress}`);
     //console.log(`📡 Event block number : ${event.blockNumber}`);
     // Wait for finality
     const txHash = event.log.transactionHash;
     console.log(`📡 Waiting for ${CONFIRMATIONS} confirmations for tx ${txHash}...`)  ;
     const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
     if (!receipt || receipt.status !== 1) {
-      console.warn(`⚠️ BetCreated not finalized for ${title}`);
+      console.warn(`⚠️ BetCreated not finalized for ${betAddress}`);
       return;
     }
+    console.log(`receive ${receipt} `)
     
     //provider.once(event.blockNumber + CONFIRMATIONS, async () =>
-      handleBetCreated(betAddress, creator, title ,description,deadlines, event as any )
+      handleBetCreated(betAddress, creator,  event as any )
     //);
   });
 

@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =   [
+export const BET_FACTORY_ABI =  [
     {
       "inputs": [
         {
@@ -141,24 +141,6 @@ export const BET_FACTORY_ABI =   [
           "internalType": "address",
           "name": "creator",
           "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "title",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256[3]",
-          "name": "deadlines",
-          "type": "uint256[3]"
         }
       ],
       "name": "BetCreated",
@@ -628,6 +610,16 @@ export const BET_FACTORY_ABI =   [
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
+            },
+            {
+              "internalType": "enum Bet.Category",
+              "name": "category",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum Bet.ProofType",
+              "name": "proofType",
+              "type": "uint8"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -713,6 +705,16 @@ export const BET_FACTORY_ABI =   [
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
+            },
+            {
+              "internalType": "enum Bet.Category",
+              "name": "category",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum Bet.ProofType",
+              "name": "proofType",
+              "type": "uint8"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -1744,6 +1746,16 @@ export const BET_ABI =  [
           "internalType": "uint256",
           "name": "minimumVotes",
           "type": "uint256"
+        },
+        {
+          "internalType": "enum Bet.Category",
+          "name": "category",
+          "type": "uint8"
+        },
+        {
+          "internalType": "enum Bet.ProofType",
+          "name": "proofType",
+          "type": "uint8"
         }
       ],
       "stateMutability": "view",
@@ -1799,6 +1811,16 @@ export const BET_ABI =  [
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
+            },
+            {
+              "internalType": "enum Bet.Category",
+              "name": "category",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum Bet.ProofType",
+              "name": "proofType",
+              "type": "uint8"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -2066,6 +2088,16 @@ export const BET_ABI =  [
               "internalType": "uint256",
               "name": "minimumVotes",
               "type": "uint256"
+            },
+            {
+              "internalType": "enum Bet.Category",
+              "name": "category",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum Bet.ProofType",
+              "name": "proofType",
+              "type": "uint8"
             }
           ],
           "internalType": "struct Bet.BetDetails",
@@ -2244,19 +2276,6 @@ export const BET_ABI =  [
     {
       "inputs": [],
       "name": "snapCreatorCollateral",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "snapInvalidBettorBonusPoolUsdc",
       "outputs": [
         {
           "internalType": "uint256",
