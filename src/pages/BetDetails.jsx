@@ -37,15 +37,17 @@ const CATEGORY_MAP = {
   2: "Sports",
   3: "Politics",
   4: "Finance",
-  5: "Other"
+  5: "Entertainment",
+  6: "Personal",
+  7: "Other"
 };
 
 const PROOF_TYPE_MAP = {
   0: "Unknown",
   1: "Video",
   2: "Live Stream",
-  3: "Oracle",
-  4: "Document",
+  3: "Document",
+  4: "Oracle",
   5: "Other"
 };
 

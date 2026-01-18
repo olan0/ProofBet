@@ -50,6 +50,8 @@ contract Bet is ReentrancyGuard {
     SPORTS,
     POLITICS,
     FINANCE,
+    ENTERTAINMENT,
+    PERSONAL,
     OTHER
 }
 
@@ -57,8 +59,8 @@ enum ProofType {
     UNKNOWN,
     VIDEO,
     LIVESTREAM,
-    ORACLE,
     DOCUMENT,
+    ORACLE,
     OTHER
 }
 

@@ -170,11 +170,11 @@ export default function CreateBet() {
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
       const categoryMap = {
-        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4, 'other': 5,
-        'entertainment': 5, 'personal': 5
+        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4,
+        'entertainment': 5, 'personal': 6, 'other': 7
       };
       const proofTypeMap = {
-        'video': 1, 'live_stream': 2, 'livestream': 2, 'photo': 4
+        'video': 1, 'lifestream': 2, 'document': 3, 'oracle': 4, 'other': 5
       };
 
       const betDetails = {
@@ -187,8 +187,6 @@ export default function CreateBet() {
         minimumBetAmount: ethers.parseUnits(formData.minimumBetAmount || "10", 6),
         minimumSideStake: ethers.parseUnits(formData.minimumSideStake || "50", 6),
         minimumTrustScore: parseInt(formData.minimumTrustScore || "0"),
-        voterRewardPercentage: contractSettings.defaultVoterRewardPercentage || 5,
-        platformFeePercentage: contractSettings.defaultPlatformFeePercentage || 3,
         minimumVotes: parseInt(formData.minimumVotes || "3"),
         category: categoryMap[formData.category] || 5,
         proofType: proofTypeMap[formData.proofType] || 5
@@ -273,21 +271,12 @@ export default function CreateBet() {
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
       // Map category and proof type to enum values
-      const categoryMap = {
-        'crypto': 1,
-        'sports': 2,
-        'politics': 3,
-        'finance': 4,
-        'other': 5,
-        'entertainment': 5,
-        'personal': 5
+    const categoryMap = {
+        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4,
+        'entertainment': 5, 'personal': 6, 'other': 7
       };
-
       const proofTypeMap = {
-        'video': 1,
-        'live_stream': 2,
-        'photo': 4,
-        'livestream': 2
+        'video': 1, 'lifestream': 2, 'document': 3, 'photo': 4, 'other': 5
       };
 
       // Create the bet details struct with ALL required fields
@@ -613,6 +602,8 @@ export default function CreateBet() {
                       <SelectItem value="sports">Sports</SelectItem>
                       <SelectItem value="politics">Politics</SelectItem>
                       <SelectItem value="finance">Finance</SelectItem>
+                      <SelectItem value="entertainment">Entertainment</SelectItem>
+                      <SelectItem value="personal">Personal</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
@@ -626,8 +617,10 @@ export default function CreateBet() {
                     </SelectTrigger>
                     <SelectContent className="bg-gray-700 border-gray-600">
                       <SelectItem value="video">Video</SelectItem>
-                      <SelectItem value="live_stream">Live Stream</SelectItem>
-                      <SelectItem value="photo">Document</SelectItem>
+                      <SelectItem value="livestream">Live Stream</SelectItem>
+                      <SelectItem value="document">Document</SelectItem>
+                      <SelectItem value="oracle">Oracle</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

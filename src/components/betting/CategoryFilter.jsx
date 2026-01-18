@@ -3,11 +3,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Filter } from "lucide-react";
 
 const categories = [
-  { value: "all", label: "All Categories" },
+   { value: "all", label: "All Categories" },
+  { value: "crypto", label: "Crypto" },
   { value: "sports", label: "Sports" },
   { value: "politics", label: "Politics" },
-  { value: "tech", label: "Tech" },
-  { value: "crypto", label: "Crypto" },
+  { value: "finance", label: "Finance" },
+  { value: "entertainment", label: "Entertainment" },  
+  { value: "personal", label: "Personal" },
   { value: "other", label: "Other" }
 ];
 
