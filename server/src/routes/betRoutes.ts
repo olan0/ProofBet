@@ -1,4 +1,4 @@
-// src/routes/bets.ts
+// src/routes/betsRoutes.ts
 import express from "express";
 import Bet from "../models/Bet";
 import { ALLOWED_FILTERS, ALLOWED_SORT_FIELDS } from "../config/betQueryConfig";
@@ -69,6 +69,7 @@ function escapeRegex(value: string) {
 }
 
 function buildMongoFilter(query: any) {
+  console.log("Building filter from query:", query);
   const filter: any = {};
 
   for (const [key, type] of Object.entries(ALLOWED_FILTERS)) {
@@ -91,11 +92,11 @@ function buildMongoFilter(query: any) {
     // string contains filter (case-insensitive)
     if (
       type === "string" &&
-      query[`Contains_${key}`] !== undefined
+      query[`contains_${key}`] !== undefined
     ) {
-      console.log("Adding contains filter for", key, query[`Contains_${key}`]);
+      console.log("Adding contains filter for", key, query[`contains_${key}`]);
       filter[key] = {
-        $regex: escapeRegex(String(query[`Contains_${key}`])),
+        $regex: escapeRegex(String(query[`contains_${key}`])),
         $options: "i", // case-insensitive
       };
     }

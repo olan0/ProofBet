@@ -10,7 +10,10 @@ import { ethers } from "ethers";
 import BetCard from '../components/betting/BetCard';
 import BetRow from "../components/betting/BetRow";
 import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
+import SearchBar from "../components/betting/SearchBar";
+import CategoryFilter from "../components/betting/CategoryFilter";
 import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
+import { fetchBets } from "../api/apiClient";
 
 // Contract enums - must match Solidity
 const STATUS_ENUM = { OPEN_FOR_BETS: 0, AWAITING_PROOF: 1, VOTING: 2, COMPLETED: 3, CANCELLED: 4, NONE: 5 };
@@ -25,6 +28,7 @@ const ON_CHAIN_STATUS_MAP = {
 
 // Map tab names to contract filter params
 const TAB_FILTERS = {
+  "all": { status: STATUS_ENUM.NONE, activity: ACTIVITY_ENUM.NONE },
   "open-for-betting": { status: STATUS_ENUM.OPEN_FOR_BETS, activity: ACTIVITY_ENUM.NONE },
   "awaiting-proof": { status: STATUS_ENUM.AWAITING_PROOF, activity: ACTIVITY_ENUM.NONE },
   "open-for-voting": { status: STATUS_ENUM.VOTING, activity: ACTIVITY_ENUM.NONE },
@@ -66,13 +70,17 @@ const getEffectiveStatus = (bet) => {
 
 export default function Dashboard() {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState("open-for-betting");
+  const [activeTab, setActiveTab] = useState("my-activity");
   const [bets, setBets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
   const [nextCursor, setNextCursor] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchFilters, setSearchFilters] = useState({});
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [useApiSearch, setUseApiSearch] = useState(false);
   const ITEMS_PER_PAGE = 12;
 
   const handleConnectWallet = async () => {
@@ -113,7 +121,70 @@ export default function Dashboard() {
     }
   };
 
+  const loadBetsFromApi = useCallback(async (page = 1, filters = {}) => {
+    setIsLoading(true);
+    try {
+      // Get the status for current tab
+      const tabFilter = TAB_FILTERS[activeTab] || TAB_FILTERS["open-for-betting"];
+      const tabStatus = tabFilter.status !== STATUS_ENUM.NONE ? tabFilter.status : undefined;
+
+      // Map category to enum value
+      const categoryMap = {
+        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4,
+        'entertainment': 5, 'personal': 6, 'other': 7
+      };
+      const categoryEnum = selectedCategory !== 'all' ? categoryMap[selectedCategory] : undefined;
+
+      const params = {
+        page,
+        limit: ITEMS_PER_PAGE,
+        ...filters,
+        status: filters.status || tabStatus, // Use search status if provided, otherwise use tab status
+        category: categoryEnum,
+        userAddress: activeTab === 'my-activity' ? walletAddress : undefined, // Filter by user address on My Activity tab
+      };
+
+      const response = await fetchBets(params);
+      
+      if (response.data && response.data.length > 0) {
+        // Map API response to match our bet structure
+        const mappedBets = response.data.map(bet => ({
+          address: bet.betId,
+          title: bet.title,
+          description: bet.description,
+        total_yes_stake_usd: parseFloat(ethers.formatUnits(bet.totalYesStake, 6)),
+        total_no_stake_usd: parseFloat(ethers.formatUnits(bet.totalNoStake, 6)),
+          bettingDeadline: Number(bet.bettingDeadline),
+          proofDeadline: Number(bet.proofDeadline),
+          votingDeadline: Number(bet.votingDeadline),
+          proofUrl: bet.proofUrl,
+          participants_count: parseInt(bet.totalParticipants.toString(), 10),
+          voters_count: parseInt(bet.totalVotes.toString(), 10),
+          onChainStatus: ON_CHAIN_STATUS_MAP[bet.status] || 'open_for_bets',
+          category: bet.category || 0,
+        }));
+        
+        setBets(mappedBets);
+        setHasMore(response.pagination?.hasMore || false);
+      } else {
+        setBets([]);
+        setHasMore(false);
+      }
+    } catch (e) {
+      console.error("Could not load bets from API:", e);
+      // Fallback to blockchain if API fails
+      setUseApiSearch(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedCategory, ITEMS_PER_PAGE, activeTab, walletAddress]);
+
   const loadBets = useCallback(async (cursorVal = 0, append = false) => {
+    if (useApiSearch) {
+      loadBetsFromApi(currentPage, searchFilters);
+      return;
+    }
+
     setIsLoading(true);
     try {
       const factory = getBetFactoryContract();
@@ -155,7 +226,7 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, useApiSearch, currentPage, searchFilters, loadBetsFromApi, selectedCategory]);
 
   // Reset and reload when tab changes
   useEffect(() => {
@@ -234,7 +305,33 @@ export default function Dashboard() {
 
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
-      loadBets(nextCursor, true);
+      if (useApiSearch) {
+        setCurrentPage(prev => prev + 1);
+      } else {
+        loadBets(nextCursor, true);
+      }
+    }
+  };
+
+  const handleSearch = (filters) => {
+    setSearchFilters(filters);
+    setUseApiSearch(true);
+    setCurrentPage(1);
+    loadBetsFromApi(1, filters);
+  };
+
+  const handleSearchReset = () => {
+    setSearchFilters({});
+    setUseApiSearch(false);
+    setCurrentPage(1);
+    setNextCursor(0);
+    loadBets(0, false);
+  };
+
+  const handleCategoryChange = (category) => {
+    setSelectedCategory(category);
+    if (useApiSearch) {
+      loadBetsFromApi(1, searchFilters);
     }
   };
 
@@ -306,29 +403,40 @@ export default function Dashboard() {
 
       {walletAddress ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-4 sm:grid-cols-7">
-            <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open</TabsTrigger>
+          <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-4 sm:grid-cols-8">
             <TabsTrigger value="my-activity" className="data-[state=active]:bg-purple-600">My Activity</TabsTrigger>
+            <TabsTrigger value="all" className="data-[state=active]:bg-cyan-600">All</TabsTrigger>
+            <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open</TabsTrigger>
             <TabsTrigger value="awaiting-proof" className="data-[state=active]:bg-cyan-600">Awaiting Proof</TabsTrigger>
             <TabsTrigger value="open-for-voting" className="data-[state=active]:bg-cyan-600">Voting</TabsTrigger>
             <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-600">Resolved</TabsTrigger>
             <TabsTrigger value="cancelled" className="data-[state=active]:bg-cyan-600">Cancelled</TabsTrigger>
             <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">Wallet</TabsTrigger>
           </TabsList>
-          
-          <div className="flex justify-end">
-            <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
-              <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
-                <LayoutGrid className="w-5 h-5"/>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setViewMode('list')} className={`px-3 ${viewMode === 'list' ? 'bg-cyan-600' : ''}`}>
-                <List className="w-5 h-5"/>
-              </Button>
-            </div>
-          </div>
 
-          <TabsContent value="open-for-betting">{renderBetList()}</TabsContent>
+          {activeTab !== 'wallet' && (
+            <div className="space-y-4">
+              <SearchBar onSearch={handleSearch} onReset={handleSearchReset} />
+              <div className="flex justify-between items-center">
+                <CategoryFilter 
+                  selectedCategory={selectedCategory} 
+                  onCategoryChange={handleCategoryChange} 
+                />
+                <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
+                  <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
+                    <LayoutGrid className="w-5 h-5"/>
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setViewMode('list')} className={`px-3 ${viewMode === 'list' ? 'bg-cyan-600' : ''}`}>
+                    <List className="w-5 h-5"/>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <TabsContent value="my-activity">{renderBetList()}</TabsContent>
+          <TabsContent value="all">{renderBetList()}</TabsContent>
+          <TabsContent value="open-for-betting">{renderBetList()}</TabsContent>
           <TabsContent value="awaiting-proof">{renderBetList()}</TabsContent>
           <TabsContent value="open-for-voting">{renderBetList()}</TabsContent>
           <TabsContent value="completed">{renderBetList()}</TabsContent>

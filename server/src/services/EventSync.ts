@@ -66,7 +66,7 @@ async function handleBetParticipation(
     } else if (pos === 2) {
       bet.totalNoStake = (BigInt(bet.totalNoStake || 0) + amountUsdc).toString();
     }
-
+    bet.totalParticipants = (bet.totalParticipants || 0) + 1;
     bet.updatedAt = await getBlockTimestamp(event.blockNumber);
     await bet.save();
     await updateLastBlock(event.blockNumber);
