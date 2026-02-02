@@ -327,7 +327,7 @@ export default function BetCancellation({ bet, participants, walletAddress, load
           </div>
         )}
 
-        {walletAddress && isCreator && bet.winning_side !== 'invalid' && (
+        {walletAddress && isCreator && bet.winning_side !== 'invalid' && bet.proofUrl && (
           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-cyan-700">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-white flex items-center gap-2">
@@ -388,6 +388,12 @@ export default function BetCancellation({ bet, participants, walletAddress, load
         {walletAddress && isCreator && bet.winning_side === 'invalid' && (
           <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-md">
             <p className="text-red-300 text-sm">Your collateral was forfeited and distributed to voters and bettors due to invalid proof.</p>
+          </div>
+        )}
+
+        {walletAddress && isCreator && !bet.proofUrl && (
+          <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-md">
+            <p className="text-red-300 text-sm">Your collateral was forfeited because you did not submit proof before the deadline.</p>
           </div>
         )}
 

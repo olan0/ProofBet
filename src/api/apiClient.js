@@ -59,5 +59,40 @@ export async function fetchBet(id) {
   }
 }
 
+/**
+ * Fetch user activity (bets where user was creator, bettor, or voter)
+ * @param {Object} params - Query parameters
+ * @param {string} params.actor - User wallet address
+ * @param {string} params.type - Activity type filter: "creator", "bettor", "voter" (optional)
+ * @param {number} params.limit - Results per page (default: 20)
+ * @param {string} params.cursor - Pagination cursor
+ * @returns {Promise<Object>} Response with items array, nextCursor, and appliedRoles
+ */
+export async function fetchActivity(params = {}) {
+  // Map 'user' to 'actor' for backward compatibility
+  if (params.user) {
+    params.actor = params.user;
+    delete params.user;
+  }
+
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+  );
+
+  const queryString = new URLSearchParams(cleanParams).toString();
+  const url = `${API_BASE_URL}/api/activity${queryString ? `?${queryString}` : ''}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching activity from API:', error);
+    throw error;
+  }
+}
+
 // Expose API_BASE_URL for configuration
 export { API_BASE_URL };

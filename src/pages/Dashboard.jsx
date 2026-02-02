@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LayoutGrid, List, Loader2, Wallet, Plus, ChevronRight } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
@@ -9,11 +10,12 @@ import { ethers } from "ethers";
 
 import BetCard from '../components/betting/BetCard';
 import BetRow from "../components/betting/BetRow";
+import ActivityCard from "../components/betting/ActivityCard";
 import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
 import SearchBar from "../components/betting/SearchBar";
 import CategoryFilter from "../components/betting/CategoryFilter";
 import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
-import { fetchBets } from "../api/apiClient";
+import { fetchBets, fetchActivity } from "../api/apiClient";
 
 // Contract enums - must match Solidity
 const STATUS_ENUM = { OPEN_FOR_BETS: 0, AWAITING_PROOF: 1, VOTING: 2, COMPLETED: 3, CANCELLED: 4, NONE: 5 };
@@ -77,10 +79,11 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('grid');
   const [nextCursor, setNextCursor] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [apiCursor, setApiCursor] = useState(null);
   const [searchFilters, setSearchFilters] = useState({});
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [useApiSearch, setUseApiSearch] = useState(false);
+  const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const ITEMS_PER_PAGE = 12;
 
   const handleConnectWallet = async () => {
@@ -121,7 +124,42 @@ export default function Dashboard() {
     }
   };
 
-  const loadBetsFromApi = useCallback(async (page = 1, filters = {}) => {
+  const [activities, setActivities] = useState([]);
+
+  const loadActivityFromApi = useCallback(async (cursor = null, append = false) => {
+    setIsLoading(true);
+    try {
+      const params = {
+        user: walletAddress,
+        limit: ITEMS_PER_PAGE,
+        ...(cursor && { cursor }),
+        ...(activityTypeFilter !== 'all' && { type: activityTypeFilter }),
+      };
+
+      const response = await fetchActivity(params);
+      
+      if (response.items && response.items.length > 0) {
+        if (append) {
+          setActivities(prev => [...prev, ...response.items]);
+        } else {
+          setActivities(response.items);
+        }
+        setApiCursor(response.nextCursor || null);
+        setHasMore(!!response.nextCursor);
+      } else {
+        if (!append) setActivities([]);
+        setApiCursor(null);
+        setHasMore(false);
+      }
+    } catch (e) {
+      console.error("Could not load activity from API:", e);
+      setUseApiSearch(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [walletAddress, ITEMS_PER_PAGE, activityTypeFilter]);
+
+  const loadBetsFromApi = useCallback(async (cursor = null, filters = {}, append = false) => {
     setIsLoading(true);
     try {
       // Get the status for current tab
@@ -136,12 +174,11 @@ export default function Dashboard() {
       const categoryEnum = selectedCategory !== 'all' ? categoryMap[selectedCategory] : undefined;
 
       const params = {
-        page,
         limit: ITEMS_PER_PAGE,
+        ...(cursor && { cursor }),
         ...filters,
-        status: filters.status || tabStatus, // Use search status if provided, otherwise use tab status
+        status: filters.status || tabStatus,
         category: categoryEnum,
-        userAddress: activeTab === 'my-activity' ? walletAddress : undefined, // Filter by user address on My Activity tab
       };
 
       const response = await fetchBets(params);
@@ -164,10 +201,16 @@ export default function Dashboard() {
           category: bet.category || 0,
         }));
         
-        setBets(mappedBets);
+        if (append) {
+          setBets(prev => [...prev, ...mappedBets]);
+        } else {
+          setBets(mappedBets);
+        }
+        setApiCursor(response.pagination?.nextCursor || null);
         setHasMore(response.pagination?.hasMore || false);
       } else {
-        setBets([]);
+        if (!append) setBets([]);
+        setApiCursor(null);
         setHasMore(false);
       }
     } catch (e) {
@@ -177,11 +220,17 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedCategory, ITEMS_PER_PAGE, activeTab, walletAddress]);
+  }, [selectedCategory, ITEMS_PER_PAGE, activeTab]);
 
   const loadBets = useCallback(async (cursorVal = 0, append = false) => {
+    // Use activity endpoint for my-activity tab
+    if (activeTab === 'my-activity' && walletAddress) {
+      loadActivityFromApi(append ? apiCursor : null, append);
+      return;
+    }
+
     if (useApiSearch) {
-      loadBetsFromApi(currentPage, searchFilters);
+      loadBetsFromApi(append ? apiCursor : null, searchFilters, append);
       return;
     }
 
@@ -226,15 +275,16 @@ export default function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTab, useApiSearch, currentPage, searchFilters, loadBetsFromApi, selectedCategory]);
+  }, [activeTab, useApiSearch, apiCursor, searchFilters, loadBetsFromApi, loadActivityFromApi, selectedCategory, walletAddress]);
 
   // Reset and reload when tab changes
   useEffect(() => {
     setNextCursor(0);
     setHasMore(true);
     setBets([]);
+    setActivities([]);
     loadBets(0, false);
-  }, [activeTab, walletAddress, loadBets]);
+  }, [activeTab, walletAddress, loadBets, activityTypeFilter]);
 
   useEffect(() => {
     getConnectedAddress().then(setWalletAddress);
@@ -305,8 +355,10 @@ export default function Dashboard() {
 
   const handleLoadMore = () => {
     if (hasMore && !isLoading) {
-      if (useApiSearch) {
-        setCurrentPage(prev => prev + 1);
+      if (activeTab === 'my-activity' && walletAddress) {
+        loadActivityFromApi(apiCursor, true);
+      } else if (useApiSearch) {
+        loadBetsFromApi(apiCursor, searchFilters, true);
       } else {
         loadBets(nextCursor, true);
       }
@@ -316,14 +368,14 @@ export default function Dashboard() {
   const handleSearch = (filters) => {
     setSearchFilters(filters);
     setUseApiSearch(true);
-    setCurrentPage(1);
-    loadBetsFromApi(1, filters);
+    setApiCursor(null);
+    loadBetsFromApi(null, filters, false);
   };
 
   const handleSearchReset = () => {
     setSearchFilters({});
     setUseApiSearch(false);
-    setCurrentPage(1);
+    setApiCursor(null);
     setNextCursor(0);
     loadBets(0, false);
   };
@@ -331,7 +383,8 @@ export default function Dashboard() {
   const handleCategoryChange = (category) => {
     setSelectedCategory(category);
     if (useApiSearch) {
-      loadBetsFromApi(1, searchFilters);
+      setApiCursor(null);
+      loadBetsFromApi(null, searchFilters, false);
     }
   };
 
@@ -387,6 +440,56 @@ export default function Dashboard() {
     );
   };
 
+  const renderActivityList = () => {
+    if (isLoading && activities.length === 0) {
+      return (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+        </div>
+      );
+    }
+
+    if (activities.length === 0) {
+      return <p className="text-gray-400 text-center py-8">No activity yet. Start by placing a bet or creating a market!</p>;
+    }
+
+    return (
+      <>
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activities.map((activity, idx) => (
+              <ActivityCard key={`${activity.betId}-${activity.timestamp}-${idx}`} activity={activity} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {activities.map((activity, idx) => (
+              <ActivityCard key={`${activity.betId}-${activity.timestamp}-${idx}`} activity={activity} />
+            ))}
+          </div>
+        )}
+        
+        {hasMore && (
+          <div className="flex justify-center mt-6">
+            <Button
+              variant="outline"
+              onClick={handleLoadMore}
+              disabled={isLoading}
+              className="border-gray-600 text-gray-300"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <ChevronRight className="w-4 h-4 mr-2" />
+              )}
+              Load More
+            </Button>
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="container mx-auto p-4 md:p-6">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
@@ -414,7 +517,30 @@ export default function Dashboard() {
             <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">Wallet</TabsTrigger>
           </TabsList>
 
-          {activeTab !== 'wallet' && (
+          {activeTab === 'my-activity' ? (
+            <div className="flex justify-between items-center">
+              <Select value={activityTypeFilter} onValueChange={setActivityTypeFilter}>
+                <SelectTrigger className="w-[200px] bg-gray-800 border-gray-700 text-white">
+                  <SelectValue placeholder="Filter by type" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600 text-white">
+                  <SelectItem value="all">All Activities</SelectItem>
+                  <SelectItem value="1">Created Markets</SelectItem>
+                  <SelectItem value="2">Placed Bets</SelectItem>
+                  <SelectItem value="3">Cast Votes</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
+                <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
+                  <LayoutGrid className="w-5 h-5"/>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setViewMode('list')} className={`px-3 ${viewMode === 'list' ? 'bg-cyan-600' : ''}`}>
+                  <List className="w-5 h-5"/>
+                </Button>
+              </div>
+            </div>
+          ) : activeTab !== 'wallet' && (
             <div className="space-y-4">
               <SearchBar onSearch={handleSearch} onReset={handleSearchReset} />
               <div className="flex justify-between items-center">
@@ -434,7 +560,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <TabsContent value="my-activity">{renderBetList()}</TabsContent>
+          <TabsContent value="my-activity">{renderActivityList()}</TabsContent>
           <TabsContent value="all">{renderBetList()}</TabsContent>
           <TabsContent value="open-for-betting">{renderBetList()}</TabsContent>
           <TabsContent value="awaiting-proof">{renderBetList()}</TabsContent>

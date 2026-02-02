@@ -8,6 +8,7 @@ import betRoutes from "./routes/betRoutes";
 import { Server } from "socket.io";
 import http from "http";
 import { initEventSync } from "./services/EventSync";
+import activityRoutes  from "./routes/activityRoutes";
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ mongoose
 app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bets", betRoutes);
+app.use("/api/activity", activityRoutes);
 initEventSync().catch(console.error);
 //startBetIndexer();
 // Handle socket connections

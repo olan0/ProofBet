@@ -13,6 +13,7 @@ const BetSchema = new mongoose.Schema({
   totalYesStake: { type: String, default: "0" },
   totalNoStake: { type: String, default: "0" },
   totalParticipants: { type: Number, default: 0 },
+  totalBet: { type: Number, default: 0 },
   totalVotes: { type: Number, default: 0 },
   yesVotes: { type: Number, default: 0 },
   noVotes: { type: Number, default: 0 },

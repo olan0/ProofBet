@@ -3,9 +3,12 @@ import mongoose from "mongoose";
 import BetFactoryArtifact from "../abis/BetFactory.json";
 import BetArtifact from "../abis/Bet.json";
 import Bet from "../models/Bet";
+import BetVote from "../models/BetVote";
+import BetParticipation from "../models/BetParticipation";
 import { SyncState } from "../models/SyncState";
 import { Interface, Result } from "ethers";
 import dotenv from "dotenv";
+import Activity, { ActivityType, ActorRole } from "../models/Activity";
  
 dotenv.config();
 const FACTORY_ADDRESS = process.env.FACTORY_ADDRESS!;
@@ -67,8 +70,33 @@ async function handleBetParticipation(
       bet.totalNoStake = (BigInt(bet.totalNoStake || 0) + amountUsdc).toString();
     }
     bet.totalParticipants = (bet.totalParticipants || 0) + 1;
+    bet.totalBet = (Number(bet.totalYesStake) + Number(bet.totalNoStake));
     bet.updatedAt = await getBlockTimestamp(event.blockNumber);
     await bet.save();
+    /*
+     await BetParticipation.create({
+    betId,
+    title: bet.title,
+    user: participant.toUpperCase(),
+    side: Number(position),
+    amountUsdc: Number(amountUsdc), // USDC fits in JS number
+    blockNumber: event.blockNumber,
+    txHash: event.transactionHash,
+  });*/
+      await Activity.create({
+      txHash: event.transactionHash,
+      blockNumber: event.blockNumber,
+      timestamp: await getBlockTimestamp(event.blockNumber),
+
+      betId: betId,
+      actor: participant.toLowerCase(),
+      role: ActorRole.BETTOR,
+      type: ActivityType.BET,
+
+      betTitle: bet.title,
+      side: Number(position),
+      amountUsdc: amountUsdc.toString(),
+    });
     await updateLastBlock(event.blockNumber);
 
     console.log(`💰 BetParticipation: ${participant} placed ${amountUsdc} USDC on side ${position}`);
@@ -94,6 +122,30 @@ async function handleBetVote(
     bet.totalVotes = (bet.totalVotes || 0) + 1;
     bet.updatedAt = await getBlockTimestamp(event.blockNumber);
     await bet.save();
+/*
+  await BetVote.create({
+    betId,
+    title: bet.title,
+    voter: voter.toUpperCase(),
+    vote,
+    //stakeProof: stakeProof.toString(), // bigint → string
+    blockNumber: event.blockNumber,
+    txHash: event.transactionHash
+  });*/
+      await Activity.create({
+      txHash: event.transactionHash,
+      blockNumber: event.blockNumber,
+      timestamp: await getBlockTimestamp(event.blockNumber),
+
+      betId: betId,
+      actor: voter.toLowerCase(),
+      role: ActorRole.VOTER,
+      type: ActivityType.VOTE,
+
+      side: Number(vote),
+      betTitle: bet.title,
+    });
+
     await updateLastBlock(event.blockNumber);
 
     console.log(`🗳️ BetVote: ${voter} voted ${vote === 1 ? "YES" : "NO"} on bet ${betId}`);
@@ -114,7 +166,7 @@ async function handleBetCreated(
     { betId },
     {
       betId,
-      creator,
+      creator: creator.toUpperCase() ,
       title: details.title,
       description: details.description,
       category: Number(details.category),
@@ -136,6 +188,19 @@ async function handleBetCreated(
     },
     { upsert: true }
   );
+    await Activity.create({
+      txHash: event.transactionHash,
+      blockNumber: event.blockNumber,
+      timestamp: await getBlockTimestamp(event.blockNumber),
+
+      betId: betId,
+      betTitle: details.title,
+      betStatus: 0,
+
+      actor: creator.toLowerCase(),
+      role: ActorRole.CREATOR,
+      type: ActivityType.CREATE,
+    });
 
   await updateLastBlock(event.blockNumber);
   
@@ -156,6 +221,7 @@ async function handleStatusChanged(
     }
   );
   await updateLastBlock(event.blockNumber);
+  
   console.log(`🔄 [EventSync] StatusChanged: ${betId} → ${newStatus}`);
 }
 
