@@ -94,5 +94,53 @@ export async function fetchActivity(params = {}) {
   }
 }
 
+export async function fetchPlatformStats() {
+  const response = await fetch(`${API_BASE_URL}/api/stats/platform`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch platform stats: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchTopActive(limit = 5) {
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-active?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch top active: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchTopVolume(limit = 5) {
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-volume?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch top volume: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchRecent(limit = 5) {
+  const response = await fetch(`${API_BASE_URL}/api/stats/recent?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recent: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchTopCreators(limit = 5) {
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-creators?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch top creators: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchUserStats(walletAddress) {
+  const response = await fetch(`${API_BASE_URL}/api/stats/user/${walletAddress}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user stats: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 // Expose API_BASE_URL for configuration
 export { API_BASE_URL };

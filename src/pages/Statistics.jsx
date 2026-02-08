@@ -4,17 +4,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, Users, DollarSign, Award, Clock, Flame, Activity, BarChart3, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { getBetFactoryContract, getBetContract, getConnectedAddress } from '../components/blockchain/contracts';
-import { ethers } from 'ethers';
+import { getConnectedAddress } from '../components/blockchain/contracts';
+import { fetchPlatformStats, fetchTopActive, fetchTopVolume, fetchRecent, fetchTopCreators, fetchUserStats } from '../api/apiClient';
 import AddressDisplay from '../components/common/AddressDisplay';
 import moment from 'moment';
+import { ethers } from 'ethers';
 
-const ON_CHAIN_STATUS_MAP = {
-  0: "open_for_bets",
-  1: "awaiting_proof",
-  2: "voting",
-  3: "completed",
-  4: "cancelled",
+const formatUSDC = (value) => {
+ 
+ return (!value) ? '0.00' : parseFloat(ethers.formatUnits(value, 6)).toFixed(2);
+ 
 };
 
 export default function Statistics() {
@@ -46,95 +45,24 @@ export default function Statistics() {
   const loadStatistics = async () => {
     setLoading(true);
     try {
-      const factory = getBetFactoryContract();
-      const betAddresses = await factory.getBets();
+      const [platformData, topActive, topVolume, recent, topCreatorsData] = await Promise.all([
+        fetchPlatformStats(),
+        fetchTopActive(5),
+        fetchTopVolume(5),
+        fetchRecent(5),
+        fetchTopCreators(5),
+      ]);
 
-      const betPromises = betAddresses.map(async (address) => {
-        try {
-          const betContract = getBetContract(address);
-          const [onChainStatusRaw, info, creatorAddress] = await Promise.all([
-            betContract.currentStatus(),
-            betContract.getBetInfo(),
-            betContract.creator(),
-          ]);
-
-          const [
-            title,
-            description,
-            totalYes,
-            totalNo,
-            bettingDeadline,
-            proofDeadline,
-            votingDeadline,
-            proofUrl,
-            participantCount,
-            voterCount
-          ] = info;
-
-          const onChainStatus = ON_CHAIN_STATUS_MAP[Number(onChainStatusRaw)];
-
-          return {
-            address,
-            title,
-            creator: creatorAddress,
-            status: onChainStatus,
-            totalVolume: parseFloat(ethers.formatUnits(totalYes, 6)) + parseFloat(ethers.formatUnits(totalNo, 6)),
-            participantCount: Number(participantCount),
-            voterCount: Number(voterCount),
-            totalActivity: Number(participantCount) + Number(voterCount),
-            bettingDeadline: Number(bettingDeadline),
-          };
-        } catch (e) {
-          console.error(`Failed to load bet ${address}:`, e);
-          return null;
-        }
-      });
-
-      const bets = (await Promise.all(betPromises)).filter(b => b !== null);
-
-      const totalVolume = bets.reduce((sum, bet) => sum + bet.totalVolume, 0);
-      const totalParticipants = bets.reduce((sum, bet) => sum + bet.participantCount, 0);
-      const activeBets = bets.filter(b => b.status === 'open_for_bets' || b.status === 'voting').length;
-      const completedBets = bets.filter(b => b.status === 'completed').length;
-
-      setPlatformStats({
-        totalBets: bets.length,
-        totalVolume,
-        totalParticipants,
-        activeBets,
-        completedBets,
-      });
-
-      const sortedByActivity = [...bets].sort((a, b) => b.totalActivity - a.totalActivity);
-      setMostActiveBets(sortedByActivity.slice(0, 5));
-
-      const sortedByVolume = [...bets].sort((a, b) => b.totalVolume - a.totalVolume);
-      setHighestVolumeBets(sortedByVolume.slice(0, 5));
-
-      const sortedByRecent = [...bets].sort((a, b) => b.bettingDeadline - a.bettingDeadline);
-      setRecentBets(sortedByRecent.slice(0, 5));
-
-      const creatorMap = {};
-      bets.forEach(bet => {
-        const creator = bet.creator.toLowerCase();
-        if (!creatorMap[creator]) {
-          creatorMap[creator] = { address: bet.creator, count: 0, totalVolume: 0 };
-        }
-        creatorMap[creator].count++;
-        creatorMap[creator].totalVolume += bet.totalVolume;
-      });
-      const sortedCreators = Object.values(creatorMap).sort((a, b) => b.count - a.count);
-      setTopCreators(sortedCreators.slice(0, 5));
+      setPlatformStats(platformData);
+      setMostActiveBets(topActive);
+      setHighestVolumeBets(topVolume);
+      setRecentBets(recent);
+      setTopCreators(topCreatorsData);
 
       const connectedAddr = await getConnectedAddress();
       if (connectedAddr) {
-        const userBets = bets.filter(b => b.creator.toLowerCase() === connectedAddr.toLowerCase());
-        const userVolume = userBets.reduce((sum, bet) => sum + bet.totalVolume, 0);
-        
-        setUserStats({
-          betsCreated: userBets.length,
-          totalVolume: userVolume,
-        });
+        const userData = await fetchUserStats(connectedAddr);
+        setUserStats(userData);
       }
 
     } catch (error) {
@@ -162,14 +90,14 @@ export default function Statistics() {
   );
 
   const BetListItem = ({ bet, showMetric, metricLabel, metricValue }) => (
-    <Link to={createPageUrl(`BetDetails?address=${bet.address}`)}>
+    <Link to={createPageUrl(`BetDetails?address=${bet.betId || bet.address}`)}>
       <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors">
         <div className="flex-1 min-w-0">
           <p className="text-white font-medium truncate">{bet.title}</p>
           <div className="flex items-center gap-2 mt-1">
             <AddressDisplay address={bet.creator} />
             <span className="text-xs text-gray-500">•</span>
-            <span className="text-xs text-gray-400">{moment.unix(bet.bettingDeadline).format('MMM D')}</span>
+            <span className="text-xs text-gray-400">{moment.unix(bet.bettingDeadline).format('yyyy MMM D')}</span>
           </div>
         </div>
         {showMetric && (
@@ -208,7 +136,7 @@ export default function Statistics() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard icon={TrendingUp} title="Total Markets" value={platformStats.totalBets} iconColor="bg-cyan-600" />
-          <StatCard icon={DollarSign} title="Total Volume" value={`$${platformStats.totalVolume.toFixed(2)}`} iconColor="bg-green-600" />
+          <StatCard icon={DollarSign} title="Total Volume" value={`$${formatUSDC(platformStats.totalVolume)}`} iconColor="bg-green-600" />
           <StatCard icon={Users} title="Total Participants" value={platformStats.totalParticipants} iconColor="bg-purple-600" />
           <StatCard icon={Flame} title="Active Markets" value={platformStats.activeBets} iconColor="bg-orange-600" />
           <StatCard icon={Award} title="Completed" value={platformStats.completedBets} iconColor="bg-blue-600" />
@@ -226,12 +154,24 @@ export default function Statistics() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm text-gray-400">Markets Created</p>
-                  <p className="text-2xl font-bold text-white">{userStats.betsCreated}</p>
+                  <p className="text-2xl font-bold text-white">{userStats.marketsCreated || userStats.betsCreated || 0}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-400">Total Volume</p>
-                  <p className="text-2xl font-bold text-green-400">${userStats.totalVolume.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-green-400">${formatUSDC(userStats.totalVolumeCreated || userStats.totalVolume)}</p>
                 </div>
+                {userStats.betsPlaced !== undefined && (
+                  <div>
+                    <p className="text-sm text-gray-400">Bets Placed</p>
+                    <p className="text-2xl font-bold text-white">{userStats.betsPlaced}</p>
+                  </div>
+                )}
+                {userStats.votesCount !== undefined && (
+                  <div>
+                    <p className="text-sm text-gray-400">Votes Cast</p>
+                    <p className="text-2xl font-bold text-white">{userStats.votesCount}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -252,7 +192,7 @@ export default function Statistics() {
                 <CardDescription className="text-gray-400">Markets with the highest combined participants and voters</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {mostActiveBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : mostActiveBets.map(bet => <BetListItem key={bet.address} bet={bet} showMetric metricLabel="Activity" metricValue={bet.totalActivity} />)}
+                {mostActiveBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : mostActiveBets.map(bet => <BetListItem key={bet.betId || bet.address} bet={bet} showMetric metricLabel="Activity" metricValue={bet.activityCount} />)}
               </CardContent>
             </Card>
           </TabsContent>
@@ -264,7 +204,7 @@ export default function Statistics() {
                 <CardDescription className="text-gray-400">Markets with the most USDC staked</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {highestVolumeBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : highestVolumeBets.map(bet => <BetListItem key={bet.address} bet={bet} showMetric metricLabel="Volume" metricValue={`$${bet.totalVolume.toFixed(2)}`} />)}
+                {highestVolumeBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : highestVolumeBets.map(bet => <BetListItem key={bet.betId || bet.address} bet={bet} showMetric metricLabel="Volume" metricValue={`$${formatUSDC(bet.totalBet || bet.totalVolume)}`} />)}
               </CardContent>
             </Card>
           </TabsContent>
@@ -276,7 +216,7 @@ export default function Statistics() {
                 <CardDescription className="text-gray-400">The latest markets on the platform</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {recentBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : recentBets.map(bet => <BetListItem key={bet.address} bet={bet} showMetric metricLabel="Volume" metricValue={`$${bet.totalVolume.toFixed(2)}`} />)}
+                {recentBets.length === 0 ? <p className="text-gray-400 text-center py-8">No markets yet</p> : recentBets.map(bet => <BetListItem key={bet.betId || bet.address} bet={bet} showMetric metricLabel="Volume" metricValue={`$${formatUSDC(bet.totalBet || bet.totalVolume)}`} />)}
               </CardContent>
             </Card>
           </TabsContent>
@@ -295,8 +235,8 @@ export default function Statistics() {
                       <AddressDisplay address={creator.address} showFullOnHover />
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-white">{creator.count} markets</p>
-                      <p className="text-xs text-gray-400">${creator.totalVolume.toFixed(2)} volume</p>
+                      <p className="text-lg font-bold text-white">{creator.marketCount || creator.count} markets</p>
+                      <p className="text-xs text-gray-400">${formatUSDC(creator.totalBet || creator.totalVolume)} volume</p>
                     </div>
                   </div>
                 ))}

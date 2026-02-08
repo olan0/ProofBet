@@ -9,6 +9,7 @@ import { Server } from "socket.io";
 import http from "http";
 import { initEventSync } from "./services/EventSync";
 import activityRoutes  from "./routes/activityRoutes";
+import statsRoutes from "./routes/statsRoutes";
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bets", betRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/stats", statsRoutes);
 initEventSync().catch(console.error);
 //startBetIndexer();
 // Handle socket connections
