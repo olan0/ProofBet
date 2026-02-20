@@ -5,10 +5,18 @@ import { configVariable } from "hardhat/config";
 
 const config: HardhatUserConfig = {
   plugins: [hardhatToolboxMochaEthersPlugin],
+  
   solidity: {
     profiles: {
       default: {
         version: "0.8.28",
+         settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+          viaIR: true,  // ← ADD THIS to default profile
+        },
       },
       production: {
         version: "0.8.28",

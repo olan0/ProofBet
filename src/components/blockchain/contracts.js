@@ -27,7 +27,7 @@ export const ERC20_ABI = [
 ];
 
 // Find the full ABI in: 'artifacts/contracts/BetFactory.sol/BetFactory.json'
-export const BET_FACTORY_ABI =  [
+export const BET_FACTORY_ABI = [
     {
       "inputs": [
         {
@@ -231,6 +231,25 @@ export const BET_FACTORY_ABI =  [
       "anonymous": false,
       "inputs": [
         {
+          "indexed": true,
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "banningBet",
+          "type": "address"
+        }
+      ],
+      "name": "CreatorBanned",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
           "indexed": false,
           "internalType": "uint8",
           "name": "oldPercentage",
@@ -356,6 +375,25 @@ export const BET_FACTORY_ABI =  [
       "anonymous": false,
       "inputs": [
         {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "oldAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "MinVoteStakeChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
           "indexed": true,
           "internalType": "address",
           "name": "previousOwner",
@@ -465,6 +503,19 @@ export const BET_FACTORY_ABI =  [
       ],
       "name": "VoteStakeAmountChanged",
       "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "DEPOSIT_LOCK_PERIOD",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
       "inputs": [
@@ -1099,8 +1150,40 @@ export const BET_FACTORY_ABI =  [
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "lastDepositTime",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "maxActiveBetsPerUser",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "minVoteStake",
       "outputs": [
         {
           "internalType": "uint256",
