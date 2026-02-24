@@ -56,6 +56,12 @@ async function main() {
             await (await factory.connect(acc).depositProof(proofAmount)).wait();
         }
         console.log("  ✅ All accounts have deposited funds.");
+
+        // Flash loan protection: wait 1 hour after deposits before creating bets
+        console.log("\n[3.5/4] Advancing time past deposit lock period (1 hour)...");
+        await advanceTime(provider, 3601);
+        console.log("  ✅ Deposit lock period satisfied.");
+
         console.log("\n[4/4] Creating markets with various statuses...");
         
         // Helper to robustly get bet address from receipt
@@ -113,8 +119,8 @@ async function main() {
         }
         details.title = "Is 'Awaiting Proof' the current status of this market?";
         details.bettingDeadline = currentTimestamp + 60;
-        details.proofDeadline = currentTimestamp + 1200;
-        details.votingDeadline = currentTimestamp + 2400;
+        details.proofDeadline = currentTimestamp + 3660;  // 1h after betting deadline
+        details.votingDeadline = currentTimestamp + 7320; // 1h after proof deadline
         details.category = 2; // Technology
         details.proofType = 2; // Document
         createTx = await factory.connect(creator1).createBet(details);
@@ -141,8 +147,8 @@ async function main() {
         }
         details.title = "Should smart contract documentation be a top priority for developers?";
         details.bettingDeadline = currentTimestamp + 60;
-        details.proofDeadline = currentTimestamp + 120;
-        details.votingDeadline = currentTimestamp + 1200;
+        details.proofDeadline = currentTimestamp + 3660;  // 1h after betting deadline
+        details.votingDeadline = currentTimestamp + 7320; // 1h after proof deadline
         details.category = 3; // Development
         details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
@@ -169,8 +175,8 @@ async function main() {
         }
         details.title = "Was this test script executed successfully?";
         details.bettingDeadline = currentTimestamp + 60;
-        details.proofDeadline = currentTimestamp + 120;
-        details.votingDeadline = currentTimestamp + 180;
+        details.proofDeadline = currentTimestamp + 3660;  // 1h after betting deadline
+        details.votingDeadline = currentTimestamp + 7320; // 1h after proof deadline
         details.category = 4; // Testing
         details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
@@ -187,7 +193,7 @@ async function main() {
         await (await betContract.connect(creator2).submitProof("https://github.com")).wait();
         await (await betContract.connect(voter1).vote(1)).wait(); // Vote YES
         await (await betContract.connect(voter2).vote(1)).wait(); // Vote YES
-        await advanceTime(provider, 61); // Advance past voting deadline
+        await advanceTime(provider, 7260); // Advance past voting deadline (currentTimestamp + 7320)
         // Keeper calls checkAndResolve
         await (await betContract.connect(keeper).checkAndResolve()).wait();
         console.log("    ✅ Market resolved. Market is now COMPLETED.");
@@ -203,9 +209,9 @@ async function main() {
         }
         details.title = "Will this market be cancelled if the creator fails to provide proof?";
         details.bettingDeadline = currentTimestamp + 60;
-        details.proofDeadline = currentTimestamp + 120;
-        details.votingDeadline = currentTimestamp + 1800;
-        details.category = 2; 
+        details.proofDeadline = currentTimestamp + 3660;  // 1h after betting deadline
+        details.votingDeadline = currentTimestamp + 7320; // 1h after proof deadline
+        details.category = 2;
         details.proofType = 1;
         createTx = await factory.connect(creator1).createBet(details);
         receipt = await createTx.wait();
@@ -214,7 +220,7 @@ async function main() {
         betContract = await ethers.getContractAt("Bet",betAddress);;
         await (await betContract.connect(bettorYes).placeBet(1, ethers.parseUnits("100", 6))).wait();
         await (await betContract.connect(bettorNo).placeBet(2, ethers.parseUnits("100", 6))).wait();
-        await advanceTime(provider, 121); // Advance past proof deadline
+        await advanceTime(provider, 3661); // Advance past proof deadline (currentTimestamp + 3660)
         // Keeper calls checkAndCloseBetting
         await (await betContract.connect(keeper).checkAndCloseBetting()).wait(); 
         // Keeper calls checkAndCancelForProof
@@ -232,9 +238,9 @@ async function main() {
         }
         details.title = "If the vote is a tie, does the market get cancelled?";
         details.bettingDeadline = currentTimestamp + 60;
-        details.proofDeadline = currentTimestamp + 120;
-        details.votingDeadline = currentTimestamp + 180;
-        details.category = 4; 
+        details.proofDeadline = currentTimestamp + 3660;  // 1h after betting deadline
+        details.votingDeadline = currentTimestamp + 7320; // 1h after proof deadline
+        details.category = 4;
         details.proofType = 1;
         createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
@@ -249,7 +255,7 @@ async function main() {
         await (await betContract.connect(creator2).submitProof("https://en.wikipedia.org/wiki/Tie")).wait();
         await (await betContract.connect(voter1).vote(1)).wait(); // Vote YES
         await (await betContract.connect(voter2).vote(2)).wait(); // Vote NO
-        await advanceTime(provider, 61); // Advance past voting deadline
+        await advanceTime(provider, 7260); // Advance past voting deadline (currentTimestamp + 7320)
         // Keeper calls checkAndResolve
         await (await betContract.connect(keeper).checkAndResolve()).wait();
         console.log("    ✅ Vote was a tie. Market is now CANCELLED.");
@@ -269,7 +275,7 @@ async function main() {
         details.votingDeadline = currentTimestamp + 86400 * 2;
         details.category = 3; 
         details.proofType = 1;
-        createTx = await factory.connect(creator1).createBet(details);
+        createTx = await factory.connect(creator2).createBet(details);
         receipt = await createTx.wait();
         betAddress = getBetAddressFromReceipt(receipt);
         console.log(`    ✅ Market created: ${betAddress}`);

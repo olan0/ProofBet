@@ -1,7 +1,6 @@
 // src/routes/betsRoutes.ts
 import express from "express";
 import Bet from "../models/Bet";
-import { log } from "console";
 
 const router = express.Router();
 

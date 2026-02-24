@@ -160,8 +160,9 @@ export default function InternalWalletPanel({ walletAddress }) {
             setSuccess(`✓ Successfully deposited ${amount} ${token.toUpperCase()}`);
             if (token === 'usdc') setUsdcDepositAmount("");
             else setProofDepositAmount("");
-            
+
             await loadBalances();
+            window.dispatchEvent(new CustomEvent('balanceChanged'));
         } catch (err) {
             console.error("Deposit failed:", err);
             setError(err.reason || err.message || "Deposit failed");
@@ -195,8 +196,9 @@ export default function InternalWalletPanel({ walletAddress }) {
             setSuccess(`✓ Successfully withdrew ${amount} ${token.toUpperCase()}`);
             if (token === 'usdc') setUsdcWithdrawAmount("");
             else setProofWithdrawAmount("");
-            
+
             await loadBalances();
+            window.dispatchEvent(new CustomEvent('balanceChanged'));
         } catch (err) {
             console.error("Withdraw failed:", err);
             setError(err.reason || err.message || "Withdrawal failed");

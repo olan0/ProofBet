@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import Activity from "../models/Activity";
-import { title } from "process";
 
 const router = Router();
 

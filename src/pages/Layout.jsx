@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Wallet, TrendingUp, Settings, BookOpen, Code, ChevronDown, LogOut, DollarSign, ShieldCheck, Award } from "lucide-react";
@@ -18,10 +18,11 @@ import { ethers } from "ethers";
 import axios from "axios";
 
 
-const apiBaseUrl =import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
 
 export default function Layout({ children }) {
   const [walletAddress, setWalletAddress] = useState("");
+  const walletAddressRef = useRef("");
   const [walletConnected, setWalletConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState("0");
@@ -81,6 +82,16 @@ export default function Layout({ children }) {
     checkWallet();
   }, []);
   
+  // Keep ref in sync so the event handler always has the current address
+  useEffect(() => { walletAddressRef.current = walletAddress; }, [walletAddress]);
+
+  // Register once — reads address from ref to avoid stale closure
+  useEffect(() => {
+      const handleBalanceChanged = () => fetchBalances(walletAddressRef.current);
+      window.addEventListener('balanceChanged', handleBalanceChanged);
+      return () => window.removeEventListener('balanceChanged', handleBalanceChanged);
+  }, []);
+
   useEffect(() => {
       if(window.ethereum) {
           const handleAccountsChanged = (accounts) => {

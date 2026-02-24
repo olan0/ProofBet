@@ -21,12 +21,18 @@ const getStatusInfo = (status) => {
 export default function BetDetailHeader({ bet }) {
   const { text, color } = getStatusInfo(bet.effectiveStatus);
 
-  // Convert Unix timestamps (seconds) to moment objects
-  // Note: bet.bettingDeadline is already in seconds from the blockchain
+  // Determine which deadlines have logically passed based on on-chain status.
+  // We check status first (not just Date.now()) because Hardhat's evm_increaseTime
+  // advances block timestamps beyond real-world time, so a completed bet can still
+  // have a bettingDeadline that appears to be in the future to the browser.
+  const BETTING_PASSED = ['betting_closed', 'awaiting_proof', 'awaiting_cancellation_no_proof', 'voting', 'awaiting_resolution', 'completed', 'cancelled'];
+  const PROOF_PASSED   = ['awaiting_cancellation_no_proof', 'voting', 'awaiting_resolution', 'completed', 'cancelled'];
+  const VOTING_PASSED  = ['awaiting_resolution', 'completed', 'cancelled'];
+
   const deadlines = [
-    { label: 'Betting Closes', date: moment.unix(bet.bettingDeadline) },
-    { label: 'Proof Deadline', date: moment.unix(bet.proofDeadline) },
-    { label: 'Voting Ends', date: moment.unix(bet.votingDeadline) },
+    { label: 'Betting Closes', date: moment.unix(bet.bettingDeadline), passed: BETTING_PASSED.includes(bet.effectiveStatus) || moment.unix(bet.bettingDeadline).isBefore(moment()) },
+    { label: 'Proof Deadline', date: moment.unix(bet.proofDeadline),   passed: PROOF_PASSED.includes(bet.effectiveStatus)   || moment.unix(bet.proofDeadline).isBefore(moment()) },
+    { label: 'Voting Ends',    date: moment.unix(bet.votingDeadline),  passed: VOTING_PASSED.includes(bet.effectiveStatus)  || moment.unix(bet.votingDeadline).isBefore(moment()) },
   ];
 
   return (
@@ -54,9 +60,13 @@ export default function BetDetailHeader({ bet }) {
             </div>
             <div className="flex items-center gap-4">
                 {deadlines.map(d => (
-                    <span key={d.label} className="flex items-center gap-1.5" title={d.date.format('LLLL')}>
-                        <Clock className="w-4 h-4 text-gray-500"/> 
-                        {d.label}: {d.date.fromNow()}
+                    <span
+                        key={d.label}
+                        className={`flex items-center gap-1.5 ${d.passed ? 'text-gray-500 line-through' : 'text-gray-300'}`}
+                        title={d.date.format('LLLL')}
+                    >
+                        <Clock className={`w-4 h-4 ${d.passed ? 'text-gray-600' : 'text-gray-500'}`}/>
+                        {d.label}: {d.passed ? 'Passed' : d.date.fromNow()}
                     </span>
                 ))}
             </div>

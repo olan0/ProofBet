@@ -1,5 +1,3 @@
-import { title } from "process";
-
 // src/config/betQueryConfig.ts
 export const ALLOWED_FILTERS = {
   status: "string",

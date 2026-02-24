@@ -174,7 +174,7 @@ export default function CreateBet() {
         'entertainment': 5, 'personal': 6, 'other': 7
       };
       const proofTypeMap = {
-        'video': 1, 'lifestream': 2, 'document': 3, 'oracle': 4, 'other': 5
+        'video': 1, 'livestream': 2, 'document': 3, 'oracle': 4, 'other': 5
       };
 
       const betDetails = {
@@ -276,7 +276,7 @@ export default function CreateBet() {
         'entertainment': 5, 'personal': 6, 'other': 7
       };
       const proofTypeMap = {
-        'video': 1, 'lifestream': 2, 'document': 3, 'photo': 4, 'other': 5
+        'video': 1, 'livestream': 2, 'document': 3, 'oracle': 4, 'other': 5
       };
 
       // Create the bet details struct with ALL required fields

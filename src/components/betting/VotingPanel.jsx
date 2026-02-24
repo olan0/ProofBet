@@ -24,7 +24,7 @@ export default function VotingPanel({
   isProcessingTx,
 }) {
   const navigate = useNavigate(); 
-  const [betAmount, setBetAmount] = useState(bet.minimum_bet_amount || 0.01);
+  const [betAmount, setBetAmount] = useState(String(bet.minimum_bet_amount || 0.01));
   const [isLocalProcessing, setIsLocalProcessing] = useState(false);
   const [error, setError] = useState(null);
 
@@ -91,13 +91,19 @@ export default function VotingPanel({
   const isBettor = walletAddress && participants.some(p => p.participant_address.toLowerCase() === walletAddress.toLowerCase());
   const hasVoted = walletAddress && votes.some(v => v.address.toLowerCase() === walletAddress.toLowerCase());
 
-  const requiredAmount = isCreator ? betAmount * 2 : betAmount;
-  const hasSufficientUsdcForBet = internalBalances.usdc >= requiredAmount;
+  const numericBet = parseFloat(betAmount) || 0;
+  const requiredAmount = isCreator ? numericBet * 2 : numericBet;
+  // Treat empty field as "sufficient" so the deposit warning doesn't flash while typing
+  const hasSufficientUsdcForBet = numericBet === 0 || internalBalances.usdc >= requiredAmount;
   const voteStakeAmount = appSettings?.vote_stake_amount_proof || 10;
   const hasSufficientProofForVote = internalBalances.proof >= voteStakeAmount;
 
-  const handlePlaceBet = async (side) => { // FIX: Added side parameter
+  const handlePlaceBet = async (side) => {
     setError(null);
+    if (!numericBet || numericBet < bet.minimum_bet_amount) {
+      setError(`Stake too low. Minimum bet is ${bet.minimum_bet_amount} USDC.`);
+      return;
+    }
     if (isCreator && side === 'no') {
       setError("You cannot bet NO on your own market.");
       return;
@@ -114,12 +120,13 @@ export default function VotingPanel({
     try {
       const betContract = getBetContract(bet.address, true);
       const sideEnum = side === 'yes' ? 1 : 2; // FIX: Use passed side parameter
-      const amountInSmallestUnit = ethers.parseUnits(betAmount.toString(), 6);
+      const amountInSmallestUnit = ethers.parseUnits(numericBet.toString(), 6);
       const tx = await betContract.placeBet(sideEnum, amountInSmallestUnit);
       await tx.wait();
       loadBetDetails();
       loadInternalBalances();
       loadUserTrustScore();
+      window.dispatchEvent(new CustomEvent('balanceChanged'));
     } catch (err) {
       setError(err.reason || "Failed to place bet.");
     } finally {
@@ -150,6 +157,7 @@ export default function VotingPanel({
       loadBetDetails();
       loadInternalBalances();
       loadUserTrustScore();
+      window.dispatchEvent(new CustomEvent('balanceChanged'));
     } catch (err) {
       setError(err.reason || "Failed to cast vote.");
     } finally {
@@ -195,7 +203,8 @@ export default function VotingPanel({
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="betAmount" className="text-gray-300">Bet Amount (USDC)</Label>
-            <Input id="betAmount" type="number" step="0.01" min={bet.minimum_bet_amount} value={betAmount} onChange={(e) => setBetAmount(parseFloat(e.target.value))} className="bg-gray-700 border-gray-600 text-white" />
+            <Input id="betAmount" type="number" step="0.01" min={bet.minimum_bet_amount} value={betAmount} onChange={(e) => { setBetAmount(e.target.value); if (parseFloat(e.target.value) >= bet.minimum_bet_amount) setError(null); }} className="bg-gray-700 border-gray-600 text-white" />
+            <p className="text-xs text-gray-500">Minimum: {bet.minimum_bet_amount} USDC</p>
           </div>
 
           {!walletConnected ? (
@@ -222,10 +231,10 @@ export default function VotingPanel({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              <Button onClick={() => handlePlaceBet('yes')} disabled={isProcessing} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => handlePlaceBet('yes')} disabled={isProcessing || !numericBet} className="bg-green-600 hover:bg-green-700">
                 {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "Bet YES"}
               </Button>
-              <Button onClick={() => handlePlaceBet('no')} disabled={isProcessing || isCreator} className="bg-red-600 hover:bg-red-700">
+              <Button onClick={() => handlePlaceBet('no')} disabled={isProcessing || isCreator || !numericBet} className="bg-red-600 hover:bg-red-700">
                 {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : isCreator ? "Creator Cannot Bet NO" : "Bet NO"}
               </Button>
             </div>

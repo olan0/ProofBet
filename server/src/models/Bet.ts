@@ -1,5 +1,4 @@
 // src/models/Bet.ts
-import { N } from "ethers";
 import mongoose from "mongoose";
 
 const BetSchema = new mongoose.Schema({
@@ -8,8 +7,8 @@ const BetSchema = new mongoose.Schema({
   title: String,
   description: String,
   status: { type: Number, default: 0, index: true }, // 0: OPEN_FOR_BETS, 1: AWAITING_PROOF, 2: VOTING_IN_PROGRESS, 3: RESOLVED, 4: CANCELED
-  category:{ type: Number, requred: true, index: true }, // Category enum
-  proofType:{ type: Number, requred: true, index: true }, // ProofType enum
+  category:{ type: Number, required: true, index: true }, // Category enum
+  proofType:{ type: Number, required: true, index: true }, // ProofType enum
   totalYesStake: { type: String, default: "0" },
   totalNoStake: { type: String, default: "0" },
   totalParticipants: { type: Number, default: 0 },

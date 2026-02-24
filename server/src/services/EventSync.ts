@@ -3,8 +3,6 @@ import mongoose from "mongoose";
 import BetFactoryArtifact from "../abis/BetFactory.json";
 import BetArtifact from "../abis/Bet.json";
 import Bet from "../models/Bet";
-import BetVote from "../models/BetVote";
-import BetParticipation from "../models/BetParticipation";
 import { SyncState } from "../models/SyncState";
 import { Interface, Result } from "ethers";
 import dotenv from "dotenv";
@@ -77,7 +75,7 @@ async function handleBetParticipation(
      await BetParticipation.create({
     betId,
     title: bet.title,
-    user: participant.toUpperCase(),
+    user: participant.toLowerCase(),
     side: Number(position),
     amountUsdc: Number(amountUsdc), // USDC fits in JS number
     blockNumber: event.blockNumber,
@@ -126,7 +124,7 @@ async function handleBetVote(
   await BetVote.create({
     betId,
     title: bet.title,
-    voter: voter.toUpperCase(),
+    voter: voter.toLowerCase(),
     vote,
     //stakeProof: stakeProof.toString(), // bigint → string
     blockNumber: event.blockNumber,
@@ -166,7 +164,7 @@ async function handleBetCreated(
     { betId },
     {
       betId,
-      creator: creator.toUpperCase() ,
+      creator: creator.toLowerCase(),
       title: details.title,
       description: details.description,
       category: Number(details.category),

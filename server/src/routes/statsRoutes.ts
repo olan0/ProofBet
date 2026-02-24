@@ -187,7 +187,7 @@ router.get("/top-creators", async (req, res) => {
  * GET /api/stats/user/:wallet
  */
 router.get("/user/:wallet", async (req, res) => {
-  const wallet = req.params.wallet.toUpperCase();
+  const wallet = req.params.wallet?.toLowerCase();
 
   try {
     const marketsCreated = await Bet.countDocuments({

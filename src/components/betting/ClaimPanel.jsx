@@ -172,7 +172,7 @@ export default function ClaimPanel({ bet, participants, votes, walletAddress, lo
         console.log("Transaction sent, waiting for confirmation...");
         await tx.wait();
         console.log("Transaction confirmed!");
-        loadBetDetails(bet.address);
+        loadBetDetails();
       }
     } catch (err) {
       console.error("Claim failed:", err);
