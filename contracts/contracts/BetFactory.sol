@@ -27,7 +27,6 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     mapping(address => uint256) public internalUsdcBalance;
     mapping(address => uint256) public internalProofBalance;
-    mapping(address => uint256) public lastDepositTime; // FIX High #2: Flash loan protection
 
     uint256 public creationFeeProof;
     uint256 public voteStakeAmountProof;
@@ -50,8 +49,6 @@ contract BetFactory is Ownable, ReentrancyGuard {
     mapping(address => bool) public bannedCreators;
 
     
-    uint256 public constant DEPOSIT_LOCK_PERIOD = 1 hours;
-
     // Events
     event BetCreated(address betAddress, address creator);
     event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
@@ -114,39 +111,18 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Internal wallet =========
 
-    /**
-     * @notice Deposit USDC into internal wallet
-     * @param _amount Amount of USDC to deposit
-     * @dev FIX High #2: Records timestamp to prevent flash loan attacks
-     */
     function depositUsdc(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
-        
         require(usdcToken.transferFrom(msg.sender, address(this), _amount), "USDC transfer failed");
-        
         if (firstInteraction[msg.sender] == 0) firstInteraction[msg.sender] = block.timestamp;
-        
-        lastDepositTime[msg.sender] = block.timestamp;
-        
         internalUsdcBalance[msg.sender] += _amount;
         emit UsdcDeposited(msg.sender, _amount);
     }
 
-    /**
-     * @notice Deposit PROOF tokens into internal wallet
-     * @param _amount Amount of PROOF to deposit
-     * @dev FIX High #2: Records timestamp to prevent flash loan attacks
-     */
     function depositProof(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
-        
-                require(proofToken.transferFrom(msg.sender, address(this), _amount), "PROOF transfer failed");
-        
+        require(proofToken.transferFrom(msg.sender, address(this), _amount), "PROOF transfer failed");
         if (firstInteraction[msg.sender] == 0) firstInteraction[msg.sender] = block.timestamp;
-        
-        // FIX High #2: Record deposit time
-        lastDepositTime[msg.sender] = block.timestamp;
-        
         internalProofBalance[msg.sender] += _amount;
         emit ProofDeposited(msg.sender, _amount);
     }
@@ -215,23 +191,11 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Bet creation =========
 
-    /**
-     * @notice Create a new prediction market
-     * @param _details Bet configuration details
-     * @return Address of the newly created Bet contract
-     * @dev FIX High #2: Checks deposit lock period to prevent flash loan attacks
-     */
     function createBet(Bet.BetDetails memory _details)
         external
         nonReentrant
         returns (address)
     {
-        // FIX High #2: Prevent flash loan attacks
-        require(
-            block.timestamp >= lastDepositTime[msg.sender] + DEPOSIT_LOCK_PERIOD,
-            "Funds locked (flash loan protection)"
-        );
-        
         uint256 dynamicFee = calculateDynamicCreationFee(_details);
         require(internalProofBalance[msg.sender] >= dynamicFee, "Insufficient PROOF");
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Too many active bets");
@@ -275,6 +239,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         allBets.push(newBetAddress);
         isBetFromFactory[newBetAddress] = true;
         activeBetsCount[msg.sender]++;
+        trustScoreContract.logBetCreation(msg.sender);
 
         emit BetCreated(newBetAddress, msg.sender);
         return newBetAddress;
@@ -282,21 +247,34 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Factory callback functions =========
 
-    function factoryLogBetParticipation(address participant, uint8 _position, uint256 _amountUsdc) 
-        external 
-        onlyAuthorizedBet 
+    function factoryLogBetParticipation(address participant, uint8 _position, uint256 _amountUsdc)
+        external
+        onlyAuthorizedBet
     {
+        trustScoreContract.logBetParticipation(participant);
         emit BetParticipation(msg.sender, participant, _position, _amountUsdc);
     }
 
-    function factoryLogVote(address voter, uint8 _vote) 
-        external 
-        onlyAuthorizedBet 
+    function factoryLogVote(address voter, uint8 _vote)
+        external
+        onlyAuthorizedBet
     {
+        trustScoreContract.logVote(voter);
         emit BetVote(msg.sender, voter, _vote);
     }
 
-    function factoryLogBetCompletion(address creator, uint8 newStatus) 
+    function factoryApplyPenalty(address user)
+        external
+        onlyAuthorizedBet
+    {
+        bool hitBanThreshold = trustScoreContract.applyPenalty(user);
+        if (hitBanThreshold && !bannedCreators[user]) {
+            bannedCreators[user] = true;
+            emit CreatorBanned(user, msg.sender);
+        }
+    }
+
+    function factoryLogBetCompletion(address creator, uint8 /*newStatus*/)
         external 
         onlyAuthorizedBet 
     {
@@ -309,7 +287,8 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
  
     function calculateRequiredStake(address voter) public view returns (uint256) {
-        uint8 trust = trustScoreContract.getScore(voter);
+        int16 rawTrust = trustScoreContract.getScore(voter);
+        uint8 trust = rawTrust > 0 ? uint8(uint16(rawTrust)) : 0; // negative score = no discount
         uint256 createdAt = firstInteraction[voter] == 0
             ? block.timestamp
             : firstInteraction[voter];
@@ -425,6 +404,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(bet.creator() == _creator, "Can only ban own creator");
         
         bannedCreators[_creator] = true;
+        trustScoreContract.resetScoreOnBan(_creator);
         emit CreatorBanned(_creator, msg.sender);
     }
 

@@ -30,10 +30,10 @@ const contractsData = [
     description: "The ERC-20 utility token for the platform, used for paying creation fees, staking on votes, and future governance."
   },
   {
-    name: "MockUSDC (USDC)",
+    name: "USDC (Circle Sepolia)",
     address: CONTRACT_ADDRESSES.USDC,
     abi: ERC20_ABI,
-    description: "The ERC-20 stablecoin used for placing all bets, providing a stable unit of account for market participants."
+    description: "Circle's USDC stablecoin on Sepolia testnet, used for placing all bets and providing a stable unit of account for market participants."
   },
   {
     name: "TrustScore",

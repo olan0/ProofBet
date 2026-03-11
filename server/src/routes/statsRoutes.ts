@@ -22,7 +22,7 @@ router.get("/platform", async (_req, res) => {
           _id: null,
           totalBets: { $sum: 1 },
           activeBets: {
-            $sum: { $cond: [{ $eq: ["$status", 1] }, 1, 0] }
+            $sum: { $cond: [{ $in: ["$status", [0, 1, 2]] }, 1, 0] }
           },
           completedBets: {
             $sum: { $cond: [{ $eq: ["$status", 3] }, 1, 0] }

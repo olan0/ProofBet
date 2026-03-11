@@ -841,7 +841,7 @@ export default function DocumentationPage() {
                         <div className="space-y-3 text-sm">
                           <div className="flex justify-between">
                             <span className="text-gray-300">Network:</span>
-                            <span className="text-white font-medium">Ethereum Mainnet</span>
+                            <span className="text-white font-medium">Ethereum Sepolia Testnet</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-gray-300">Solidity Version:</span>
@@ -859,23 +859,23 @@ export default function DocumentationPage() {
                       </div>
                       
                       <div className="space-y-4">
-                        <h3 className="font-semibold text-white text-lg">Token Addresses</h3>
+                        <h3 className="font-semibold text-white text-lg">Contract Addresses (Sepolia)</h3>
                         <div className="space-y-3 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">USDC:</span>
-                            <code className="text-cyan-400 font-mono">0xA0b8...6eB48</code>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-300 shrink-0">USDC:</span>
+                            <code className="text-cyan-400 font-mono text-xs">0x1c7d4b196cb0c7b01d743fbc6116a902379c7238</code>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">PROOF:</span>
-                            <code className="text-purple-400 font-mono">TBD</code>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-300 shrink-0">PROOF:</span>
+                            <code className="text-purple-400 font-mono text-xs">0xC0383bf30268239Cae53aF9B98b7070813b9D3db</code>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">BetFactory:</span>
-                            <code className="text-green-400 font-mono">TBD</code>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-300 shrink-0">BetFactory:</span>
+                            <code className="text-green-400 font-mono text-xs">0x30F9bAac593f974c31d9aFD4D0915Cb5fbC6d1f5</code>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-300">TrustScore:</span>
-                            <code className="text-orange-400 font-mono">TBD</code>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-300 shrink-0">TrustScore:</span>
+                            <code className="text-orange-400 font-mono text-xs">0xCB1a1d56f14F42278aDbe94361c8280B9B542D61</code>
                           </div>
                         </div>
                       </div>
@@ -890,10 +890,9 @@ export default function DocumentationPage() {
                           <div>
                             <h4 className="font-semibold text-white mb-3">Required Libraries</h4>
                             <ul className="space-y-2 text-gray-300 text-sm font-mono">
-                              <li>• ethers.js or web3.js</li>
-                              <li>• @wagmi/core</li>
-                              <li>• viem</li>
-                              <li>• @rainbow-me/rainbowkit</li>
+                              <li>• ethers.js v6</li>
+                              <li>• react + react-dom</li>
+                              <li>• MetaMask or EIP-1193 compatible wallet</li>
                             </ul>
                           </div>
                           <div>
@@ -935,7 +934,7 @@ export default function DocumentationPage() {
                           "Dual-token system (USDC & PROOF)",
                           "Core bet creation, betting, and voting logic",
                           "Internal wallet system for gasless actions",
-                          "Smart contract architecture on local testnet",
+                          "Smart contract deployment on Sepolia testnet",
                           "Web3 wallet connectivity and basic UI"
                         ]
                       },

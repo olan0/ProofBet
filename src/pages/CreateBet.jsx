@@ -15,11 +15,12 @@ import { format } from "date-fns";
 import { ethers } from "ethers";
 
 // Import contract utilities
-import { 
-  getBetFactoryContract, 
-  connectWallet, 
-  getConnectedAddress, 
-  formatAddress 
+import {
+  getBetFactoryContract,
+  getTrustScoreContract,
+  connectWallet,
+  getConnectedAddress,
+  formatAddress
 } from "../components/blockchain/contracts";
 
 export default function CreateBet() {
@@ -41,6 +42,9 @@ export default function CreateBet() {
     bettingDeadline: null,
     proofDeadline: null,
     votingDeadline: null,
+    bettingTime: "23:59",
+    proofTime: "23:59",
+    votingTime: "23:59",
   });
 
   const [creating, setCreating] = useState(false);
@@ -59,6 +63,8 @@ export default function CreateBet() {
   const [dynamicFeeProof, setDynamicFeeProof] = useState(0); // State for dynamic PROOF fee
   const [calculatingFee, setCalculatingFee] = useState(false); // State for fee calculation loading
   const [isBanned, setIsBanned] = useState(false);
+  const [userTrustScore, setUserTrustScore] = useState(null);
+  const [banThreshold, setBanThreshold] = useState(-20);
 
   // Check for wallet connection on mount AND listen for account changes
   useEffect(() => {
@@ -105,12 +111,19 @@ export default function CreateBet() {
     }
   }, [formData, walletConnected, walletAddress, contractSettings]);
 
-  // Check if user is banned
+  // Check if user is banned and fetch trust score + ban threshold
   const checkBannedStatus = async (address) => {
     try {
       const factory = getBetFactoryContract();
-      const banned = await factory.isBanned(address);
+      const ts = getTrustScoreContract();
+      const [banned, score, threshold] = await Promise.all([
+        factory.isBanned(address),
+        ts.getScore(address),
+        ts.banThreshold(),
+      ]);
       setIsBanned(banned);
+      setUserTrustScore(Number(score));
+      setBanThreshold(Number(threshold));
     } catch (error) {
       console.error("Error checking banned status:", error);
       setIsBanned(false);
@@ -130,7 +143,7 @@ export default function CreateBet() {
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage(),
         factory.proofCollateralUsdc(),
-        factory.getInternalBalances(address)
+        factory.getInternalBalances(address),
       ]);
 
       const [internalUsdc, internalProof] = internalBalances;
@@ -218,6 +231,31 @@ export default function CreateBet() {
     setError("");
   };
 
+  const combineDateAndTime = (date, timeStr) => {
+    if (!date) return null;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const result = new Date(date);
+    result.setHours(hours, minutes, 0, 0);
+    return result;
+  };
+
+  const handleDeadlineDateChange = (dateField, timeField, date) => {
+    setFormData(prev => ({
+      ...prev,
+      [dateField]: combineDateAndTime(date, prev[timeField]),
+    }));
+    setError("");
+  };
+
+  const handleDeadlineTimeChange = (dateField, timeField, timeStr) => {
+    setFormData(prev => ({
+      ...prev,
+      [timeField]: timeStr,
+      [dateField]: combineDateAndTime(prev[dateField], timeStr),
+    }));
+    setError("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -226,9 +264,13 @@ export default function CreateBet() {
       return;
     }
 
-    // Check if user is banned
+    // Check if user is banned or trust score is too low
     if (isBanned) {
       setError("You are banned from creating markets.");
+      return;
+    }
+    if (userTrustScore !== null && userTrustScore <= banThreshold) {
+      setError(`Your trust score (${userTrustScore}) is at or below the ban threshold (${banThreshold}). Creating markets is disabled.`);
       return;
     }
 
@@ -395,11 +437,13 @@ export default function CreateBet() {
           </div>
         </div>
 
-        {isBanned && (
+        {(isBanned || (userTrustScore !== null && userTrustScore <= banThreshold)) && (
           <Alert variant="destructive" className="mb-6 bg-red-900/20 border-red-500/50">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-red-200">
-              You are banned from creating markets. Please contact support if you believe this is an error.
+              {isBanned
+                ? "You are banned from creating markets. Please contact support if you believe this is an error."
+                : `Your trust score (${userTrustScore}) is at or below the ban threshold (${banThreshold}). Creating markets is disabled.`}
             </AlertDescription>
           </Alert>
         )}
@@ -637,17 +681,26 @@ export default function CreateBet() {
                         className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.bettingDeadline ? format(formData.bettingDeadline, 'PPP') : 'Select deadline'}
+                        {formData.bettingDeadline ? format(formData.bettingDeadline, 'PPP HH:mm') : 'Select deadline'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.bettingDeadline}
-                        onSelect={(date) => handleInputChange('bettingDeadline', date)}
+                        onSelect={(date) => handleDeadlineDateChange('bettingDeadline', 'bettingTime', date)}
                         disabled={(date) => date < new Date()}
                         className="text-white"
                       />
+                      <div className="p-3 border-t border-gray-600">
+                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
+                        <input
+                          type="time"
+                          value={formData.bettingTime}
+                          onChange={(e) => handleDeadlineTimeChange('bettingDeadline', 'bettingTime', e.target.value)}
+                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
+                        />
+                      </div>
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -661,17 +714,26 @@ export default function CreateBet() {
                         className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.proofDeadline ? format(formData.proofDeadline, 'PPP') : 'Select deadline'}
+                        {formData.proofDeadline ? format(formData.proofDeadline, 'PPP HH:mm') : 'Select deadline'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.proofDeadline}
-                        onSelect={(date) => handleInputChange('proofDeadline', date)}
+                        onSelect={(date) => handleDeadlineDateChange('proofDeadline', 'proofTime', date)}
                         disabled={(date) => date < new Date()}
                         className="text-white"
                       />
+                      <div className="p-3 border-t border-gray-600">
+                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
+                        <input
+                          type="time"
+                          value={formData.proofTime}
+                          onChange={(e) => handleDeadlineTimeChange('proofDeadline', 'proofTime', e.target.value)}
+                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
+                        />
+                      </div>
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -685,17 +747,26 @@ export default function CreateBet() {
                         className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.votingDeadline ? format(formData.votingDeadline, 'PPP') : 'Select deadline'}
+                        {formData.votingDeadline ? format(formData.votingDeadline, 'PPP HH:mm') : 'Select deadline'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
                       <Calendar
                         mode="single"
                         selected={formData.votingDeadline}
-                        onSelect={(date) => handleInputChange('votingDeadline', date)}
+                        onSelect={(date) => handleDeadlineDateChange('votingDeadline', 'votingTime', date)}
                         disabled={(date) => date < new Date()}
                         className="text-white"
                       />
+                      <div className="p-3 border-t border-gray-600">
+                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
+                        <input
+                          type="time"
+                          value={formData.votingTime}
+                          onChange={(e) => handleDeadlineTimeChange('votingDeadline', 'votingTime', e.target.value)}
+                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
+                        />
+                      </div>
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -722,17 +793,18 @@ export default function CreateBet() {
 
                 <Button
                   type="submit"
-                  disabled={creating || hasInsufficientFunds || calculatingFee || isBanned}
+                  disabled={creating || hasInsufficientFunds || calculatingFee || isBanned || (userTrustScore !== null && userTrustScore <= banThreshold)}
                   className={`w-full font-semibold py-3 ${
-                    hasInsufficientFunds || calculatingFee || isBanned
-                      ? 'bg-gray-600 cursor-not-allowed' 
+                    hasInsufficientFunds || calculatingFee || isBanned || (userTrustScore !== null && userTrustScore <= banThreshold)
+                      ? 'bg-gray-600 cursor-not-allowed'
                       : 'bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700'
                   } text-white`}
                 >
                   {isBanned ? 'You Are Banned From Creating Markets' :
-                   creating ? 'Creating Market...' : 
+                   (userTrustScore !== null && userTrustScore <= banThreshold) ? 'Trust Score Too Low' :
+                   creating ? 'Creating Market...' :
                    calculatingFee ? 'Calculating Fees...' :
-                   hasInsufficientFunds ? 
+                   hasInsufficientFunds ?
                    'Insufficient Funds - Deposit Required' :
                    `Create Market (${dynamicFeeProof.toFixed(2)} PROOF + ${contractSettings.proofCollateralUsdc.toFixed(2)} USDC)`}
                 </Button>

@@ -3,31 +3,19 @@ import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 // This module is designed to be network-aware.
 // On local networks (hardhat/localhost), it deploys a MockUSDC contract.
 // On other networks (like Sepolia or mainnet), it uses a pre-configured address.
-const ProofBetModule = buildModule("ProofBetModule", (m) => {
+const ProofBetModule = buildModule("SepoliaProofBetModule", (m) => {
   // --- Get Deployer ---
   const deployer = m.getAccount(0);
 
   // --- Network-Specific USDC Configuration ---
-  // Use Ignition parameters to control USDC address
-  // For local deployment: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network localhost --parameters '{"useLocalUSDC": true, "maxActiveBets": 5}'
-  // For testnet: npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia --parameters '{"maxActiveBets": 5}'
-  const useLocalUSDC = m.getParameter("useLocalUSDC", false);
-  const SEPOLIA_USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7a9c";
-
-  let usdcAddress;
-
-  if (useLocalUSDC) {
-    // For local testing, deploy a mock ERC20 token and mint some to the deployer.
-    const mockUsdc = m.contract("MockERC20", ["Mock USDC", "mUSDC"]);
-    usdcAddress = mockUsdc;
-
-    // Mint 10,000 mock USDC to the deployer (USDC has 6 decimals)
-    m.call(mockUsdc, "mint", [deployer, "10000000000"]); // 10,000 * 10^6
-  } else {
-    // For live networks, use the official USDC contract address.
-    // We create a contract "from" an existing address.
-    usdcAddress = m.contractAt("IERC20", SEPOLIA_USDC_ADDRESS);
-  }
+  // Pass the USDC address as a parameter. Defaults to Circle's Sepolia USDC.
+  // For local deployment with MockUSDC, deploy MockERC20 separately and pass its address:
+  //   npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network localhost --parameters '{"usdcAddress": "0x<MockERC20Address>", "maxActiveBets": 5}'
+  // For testnet (uses real Circle USDC by default):
+  //   npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia
+  const SEPOLIA_USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+  const usdcAddressParam = m.getParameter("usdcAddress", SEPOLIA_USDC_ADDRESS);
+  const usdcAddress = m.contractAt("IERC20", usdcAddressParam);
 
   // --- Deployment Parameters ---
   const BET_CREATION_FEE = m.getParameter(

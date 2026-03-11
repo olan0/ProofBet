@@ -1,22 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getConnectedAddress } from "../components/blockchain/contracts";
+import { getConnectedAddress, getBetFactoryContract } from "../components/blockchain/contracts";
 import FaucetPanel from "../components/admin/FaucetPanel";
-import MarketSeederPanel from "../components/admin/MarketSeederPanel";
+import AdminControlPanel from "../components/admin/AdminControlPanel";
 import KeeperPanel from "../components/admin/KeeperPanel";
-import { Settings, Droplets, DatabaseZap, Bot } from 'lucide-react';
+import { Settings, Droplets, SlidersHorizontal, Bot, ShieldOff } from 'lucide-react';
 
 export default function AdminPage() {
     const [walletAddress, setWalletAddress] = useState(null);
+    const [isOwner, setIsOwner] = useState(null); // null = loading
 
     useEffect(() => {
         const fetchAddress = async () => {
             const address = await getConnectedAddress();
             setWalletAddress(address);
+            if (address) {
+                try {
+                    const factory = getBetFactoryContract();
+                    const owner = await factory.owner();
+                    setIsOwner(owner.toLowerCase() === address.toLowerCase());
+                } catch {
+                    setIsOwner(false);
+                }
+            } else {
+                setIsOwner(false);
+            }
         };
         fetchAddress();
     }, []);
+
+    if (isOwner === null) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <p className="text-gray-400">Checking permissions...</p>
+            </div>
+        );
+    }
+
+    if (!isOwner) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                <Card className="bg-gray-800 border-red-700 max-w-md w-full">
+                    <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+                        <ShieldOff className="w-12 h-12 text-red-400" />
+                        <h2 className="text-2xl font-bold text-white">Access Denied</h2>
+                        <p className="text-gray-400">Only the contract deployer can access the Admin Panel.</p>
+                        {walletAddress && (
+                            <p className="text-xs text-gray-500 font-mono break-all">Connected: {walletAddress}</p>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-900 text-white p-8">
@@ -31,12 +68,20 @@ export default function AdminPage() {
                     </div>
                 </div>
 
-                <Alert variant="destructive" className="bg-red-900/30 border-red-500/50 text-red-300">
-                    <AlertTitle>Development Only</AlertTitle>
-                    <AlertDescription>
-                        These tools are designed for use on a local Hardhat development network. Most features will not work on a live network.
-                    </AlertDescription>
-                </Alert>
+                <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <SlidersHorizontal className="w-5 h-5 text-orange-400" />
+                            Contract Settings
+                        </CardTitle>
+                        <CardDescription>
+                            Owner-only functions to configure the BetFactory contract parameters.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <AdminControlPanel />
+                    </CardContent>
+                </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <Card className="bg-gray-800 border-gray-700">
@@ -46,7 +91,7 @@ export default function AdminPage() {
                                 Token Faucet
                             </CardTitle>
                             <CardDescription>
-                                Mint mock USDC and PROOF tokens to your connected wallet. This is essential for testing betting, creation, and voting features.
+                                Mint mock USDC and PROOF tokens to your connected wallet.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -57,26 +102,11 @@ export default function AdminPage() {
                     <Card className="bg-gray-800 border-gray-700">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <DatabaseZap className="w-5 h-5 text-purple-400" />
-                                Hardhat Market Seeder
-                            </CardTitle>
-                            <CardDescription>
-                                Run an E2E script to automatically create a diverse set of markets with different statuses (Open, Voting, Completed, etc.). This script populates your local blockchain with realistic test data.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <MarketSeederPanel walletAddress={walletAddress} />
-                        </CardContent>
-                    </Card>
-                    
-                    <Card className="bg-gray-800 border-gray-700 lg:col-span-2">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
                                 <Bot className="w-5 h-5 text-green-400" />
                                 Keeper Functions
                             </CardTitle>
-                             <CardDescription>
-                                Manually trigger the time-based "keeper" functions that advance market states. In a live environment, this would be automated. Use this to move markets from 'Open' to 'Awaiting Proof' or from 'Voting' to 'Resolved' after their deadlines have passed.
+                            <CardDescription>
+                                Manually trigger keeper functions to advance market states.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

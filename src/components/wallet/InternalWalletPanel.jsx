@@ -46,30 +46,28 @@ export default function InternalWalletPanel({ walletAddress }) {
 
     const loadBalances = async () => {
         if (!walletAddress) return;
-        
-        try {
-            const factory = getBetFactoryContract();
-            const usdcToken = getUsdcTokenContract();
-            const proofToken = getProofTokenContract();
-            
-            const [walletUsdc, walletProof, internalBals] = await Promise.all([
-                usdcToken.balanceOf(walletAddress),
-                proofToken.balanceOf(walletAddress),
-                factory.getInternalBalances(walletAddress)
-            ]);
-            
-            setWalletBalances({
-                usdc: parseFloat(ethers.formatUnits(walletUsdc, 6)),
-                proof: parseFloat(ethers.formatEther(walletProof))
-            });
-            
-            setInternalBalances({
-                usdc: parseFloat(ethers.formatUnits(internalBals[0], 6)),
-                proof: parseFloat(ethers.formatEther(internalBals[1]))
-            });
-        } catch (err) {
-            console.error("Failed to load balances:", err);
-        }
+
+        const factory = getBetFactoryContract();
+        const usdcToken = getUsdcTokenContract();
+        const proofToken = getProofTokenContract();
+
+        const [usdcResult, proofResult, internalResult] = await Promise.allSettled([
+            usdcToken.balanceOf(walletAddress),
+            proofToken.balanceOf(walletAddress),
+            factory.getInternalBalances(walletAddress),
+        ]);
+        const walletUsdc = usdcResult.status === 'fulfilled' ? usdcResult.value : 0n;
+        const walletProof = proofResult.status === 'fulfilled' ? proofResult.value : 0n;
+        const internalBals = internalResult.status === 'fulfilled' ? internalResult.value : [0n, 0n];
+
+        setWalletBalances({
+            usdc: parseFloat(ethers.formatUnits(walletUsdc, 6)),
+            proof: parseFloat(ethers.formatEther(walletProof))
+        });
+        setInternalBalances({
+            usdc: parseFloat(ethers.formatUnits(internalBals[0], 6)),
+            proof: parseFloat(ethers.formatEther(internalBals[1]))
+        });
     };
 
     const loadUserProfile = async () => {

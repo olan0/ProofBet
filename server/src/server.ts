@@ -10,21 +10,23 @@ import http from "http";
 import { initEventSync } from "./services/EventSync";
 import activityRoutes  from "./routes/activityRoutes";
 import statsRoutes from "./routes/statsRoutes";
+import { apiKeyMiddleware } from "./middleware/apiKey";
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "http://localhost:5173";
+
 // Create Socket.IO instance
 export const io = new Server(server, {
-  cors: {
-    origin: "*", // change to your frontend URL in production
-  },
+  cors: { origin: allowedOrigin },
 });
 
-app.use(cors());
+app.use(cors({ origin: allowedOrigin }));
 app.use(express.json());
+app.use("/api", apiKeyMiddleware);
 
 // Connect to MongoDB
 const mongoUri = process.env.MONGO_URI;

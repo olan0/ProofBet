@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { AlertCircle, TrendingUp, Shield, Vote, Wallet, Plus, Info, Loader2 } from "lucide-react";
 import TrustScoreDisplay from "../trust/TrustScoreDisplay";
 import { ethers } from "ethers";
-import { getBetContract, getBetFactoryContract } from "../blockchain/contracts";
+import { getBetContract, getBetFactoryContract, getTrustScoreContract } from "../blockchain/contracts";
 import { TrustScoreManager } from "../trust/TrustScoreManager";
 import { createPageUrl } from "@/utils";
 
@@ -29,21 +29,24 @@ export default function VotingPanel({
   const [error, setError] = useState(null);
 
   const [internalBalances, setInternalBalances] = useState({ usdc: 0, proof: 0 });
-  const [loadingBalances, setLoadingBalances] = useState(false);
+  const [loadingBalances, setLoadingBalances] = useState(false); // eslint-disable-line no-unused-vars
   const [userTrustScore, setUserTrustScore] = useState(null);
-  const [loadingTrustScore, setLoadingTrustScore] = useState(false);
   const [isBanned, setIsBanned] = useState(false);
+  const [banThreshold, setBanThreshold] = useState(-20);
 
   const isProcessing = isProcessingTx || isLocalProcessing;
 
   const loadUserTrustScore = useCallback(async () => {
     if (!walletAddress) return;
-    setLoadingTrustScore(true);
     try {
-      const trustScore = await TrustScoreManager.getTrustScore(walletAddress);
+      const [trustScore, tsContract] = await Promise.all([
+        TrustScoreManager.getTrustScore(walletAddress),
+        getTrustScoreContract(),
+      ]);
       setUserTrustScore(trustScore);
+      const threshold = await tsContract.banThreshold();
+      setBanThreshold(Number(threshold));
     } catch (e) { setUserTrustScore({ overall_score: 0 }); }
-    setLoadingTrustScore(false);
   }, [walletAddress]);
 
   const loadInternalBalances = useCallback(async () => {
@@ -86,6 +89,7 @@ export default function VotingPanel({
   const yesPercentage = totalStakeUsd > 0 ? (yesStakeUsd / totalStakeUsd) * 100 : 50;
 
   const meetsMinimumTrustScore = !walletConnected || !bet.minimum_trust_score || (userTrustScore && userTrustScore.overall_score >= bet.minimum_trust_score);
+  const isTrustBanned = walletConnected && userTrustScore !== null && userTrustScore.overall_score <= banThreshold;
   
   const isCreator = walletAddress && bet.creator_address && walletAddress.toLowerCase() === bet.creator_address.toLowerCase();
   const isBettor = walletAddress && participants.some(p => p.participant_address.toLowerCase() === walletAddress.toLowerCase());
@@ -146,6 +150,10 @@ export default function VotingPanel({
     }
     if (hasVoted) {
       setError("You have already voted on this market.");
+      return;
+    }
+    if (isTrustBanned) {
+      setError(`Your trust score (${userTrustScore?.overall_score}) is at or below the ban threshold (${banThreshold}). Voting is disabled.`);
       return;
     }
     setIsLocalProcessing(true);
@@ -266,11 +274,13 @@ export default function VotingPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isBanned ? (
+          {isBanned || isTrustBanned ? (
             <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
               <AlertCircle className="w-5 h-5 text-red-400" />
               <p className="text-red-300">
-                You are banned from participating in this market.
+                {isBanned
+                  ? "You are banned from participating in this market."
+                  : `Voting disabled — your trust score (${userTrustScore?.overall_score}) is at or below the ban threshold (${banThreshold}).`}
               </p>
             </div>
           ) : isCreator || isBettor || hasVoted ? (

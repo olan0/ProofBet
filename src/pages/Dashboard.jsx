@@ -13,13 +13,9 @@ import BetRow from "../components/betting/BetRow";
 import ActivityCard from "../components/betting/ActivityCard";
 import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
 import SearchBar from "../components/betting/SearchBar";
-import CategoryFilter from "../components/betting/CategoryFilter";
-import { getBetFactoryContract, getBetContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
+import { getBetFactoryContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
 import { fetchBets, fetchActivity } from "../api/apiClient";
 
-// Contract enums - must match Solidity
-const STATUS_ENUM = { OPEN_FOR_BETS: 0, AWAITING_PROOF: 1, VOTING: 2, COMPLETED: 3, CANCELLED: 4, NONE: 5 };
-const ACTIVITY_ENUM = { PARTICIPATED: 1, VOTED: 2, NONE: 0 };
 const ON_CHAIN_STATUS_MAP = {
   0: "open_for_bets",
   1: "awaiting_proof",
@@ -28,43 +24,33 @@ const ON_CHAIN_STATUS_MAP = {
   4: "cancelled",
 };
 
-// Map tab names to contract filter params
-const TAB_FILTERS = {
-  "all": { status: STATUS_ENUM.NONE, activity: ACTIVITY_ENUM.NONE },
-  "open-for-betting": { status: STATUS_ENUM.OPEN_FOR_BETS, activity: ACTIVITY_ENUM.NONE },
-  "awaiting-proof": { status: STATUS_ENUM.AWAITING_PROOF, activity: ACTIVITY_ENUM.NONE },
-  "open-for-voting": { status: STATUS_ENUM.VOTING, activity: ACTIVITY_ENUM.NONE },
-  "completed": { status: STATUS_ENUM.COMPLETED, activity: ACTIVITY_ENUM.NONE },
-  "cancelled": { status: STATUS_ENUM.CANCELLED, activity: ACTIVITY_ENUM.NONE },
-  "my-activity": { status: STATUS_ENUM.NONE, activity: ACTIVITY_ENUM.PARTICIPATED },
+const STATUS_ENUM = { OPEN_FOR_BETS: 0, AWAITING_PROOF: 1, VOTING: 2, COMPLETED: 3, CANCELLED: 4, NONE: 5 };
+
+const TAB_STATUS = {
+  "all": undefined,
+  "open-for-betting": STATUS_ENUM.OPEN_FOR_BETS,
+  "awaiting-proof": STATUS_ENUM.AWAITING_PROOF,
+  "open-for-voting": STATUS_ENUM.VOTING,
+  "completed": STATUS_ENUM.COMPLETED,
+  "cancelled": STATUS_ENUM.CANCELLED,
 };
 
-// Helper: Prioritizes the on-chain status as the source of truth.
+
 const getEffectiveStatus = (bet) => {
   if (!bet) return null;
-
   const { onChainStatus, proofUrl, bettingDeadline, proofDeadline, votingDeadline } = bet;
 
-  if (onChainStatus === 'completed' || onChainStatus === 'cancelled') {
-    return onChainStatus;
-  }
+  if (onChainStatus === 'completed' || onChainStatus === 'cancelled') return onChainStatus;
 
   const now = Date.now();
-  const bettingEnds = Number(bettingDeadline) * 1000;
-  const proofEnds = Number(proofDeadline) * 1000;
-  const votingEnds = Number(votingDeadline) * 1000;
-
   switch (onChainStatus) {
     case 'open_for_bets':
-      if (now > bettingEnds) return 'betting_closed';
-      return 'open_for_bets';
+      return now > Number(bettingDeadline) * 1000 ? 'betting_closed' : 'open_for_bets';
     case 'awaiting_proof':
       if (proofUrl) return 'voting';
-      if (now > proofEnds) return 'awaiting_cancellation_no_proof';
-      return 'betting_closed';
+      return now > Number(proofDeadline) * 1000 ? 'awaiting_cancellation_no_proof' : 'betting_closed';
     case 'voting':
-      if (now > votingEnds) return 'awaiting_resolution';
-      return 'voting';
+      return now > Number(votingDeadline) * 1000 ? 'awaiting_resolution' : 'voting';
     default:
       return onChainStatus;
   }
@@ -74,15 +60,13 @@ export default function Dashboard() {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState("my-activity");
   const [bets, setBets] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
-  const [nextCursor, setNextCursor] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [apiCursor, setApiCursor] = useState(null);
   const [searchFilters, setSearchFilters] = useState({});
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [useApiSearch, setUseApiSearch] = useState(false);
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const ITEMS_PER_PAGE = 12;
 
@@ -90,41 +74,6 @@ export default function Dashboard() {
     const address = await connectWallet();
     setWalletAddress(address);
   };
-
-  const loadBetDetails = async (address) => {
-    try {
-      const betContract = getBetContract(address);
-      
-      const [onChainStatusRaw, info] = await Promise.all([
-        betContract.currentStatus(),
-        betContract.getBetInfo()
-      ]);
-      
-      const [title, description, totalYes, totalNo, bettingDeadline, proofDeadline, votingDeadline, proofUrl, participantCount, voterCount] = info;
-      const onChainStatus = ON_CHAIN_STATUS_MAP[Number(onChainStatusRaw)];
-
-      return {
-        address: address,
-        title: title,
-        description: description,
-        total_yes_stake_usd: parseFloat(ethers.formatUnits(totalYes, 6)),
-        total_no_stake_usd: parseFloat(ethers.formatUnits(totalNo, 6)),
-        bettingDeadline: Number(bettingDeadline),
-        proofDeadline: Number(proofDeadline),
-        votingDeadline: Number(votingDeadline),
-        proofUrl,
-        participants_count: parseInt(participantCount.toString(), 10),
-        voters_count: parseInt(voterCount.toString(), 10),
-        onChainStatus: onChainStatus,
-        category: 0,
-      };
-    } catch (e) {
-      console.error(`Failed to load bet ${address}:`, e);
-      return null;
-    }
-  };
-
-  const [activities, setActivities] = useState([]);
 
   const loadActivityFromApi = useCallback(async (cursor = null, append = false) => {
     setIsLoading(true);
@@ -137,15 +86,15 @@ export default function Dashboard() {
       };
 
       const response = await fetchActivity(params);
-      
+
       if (response.items && response.items.length > 0) {
         if (append) {
           setActivities(prev => [...prev, ...response.items]);
         } else {
           setActivities(response.items);
         }
-        setApiCursor(response.nextCursor || null);
-        setHasMore(!!response.nextCursor);
+        setApiCursor(response.pageInfo?.nextCursor || null);
+        setHasMore(response.pageInfo?.hasNext || false);
       } else {
         if (!append) setActivities([]);
         setApiCursor(null);
@@ -153,7 +102,8 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.error("Could not load activity from API:", e);
-      setUseApiSearch(false);
+      if (!append) setActivities([]);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
@@ -162,52 +112,41 @@ export default function Dashboard() {
   const loadBetsFromApi = useCallback(async (cursor = null, filters = {}, append = false) => {
     setIsLoading(true);
     try {
-      // Get the status for current tab
-      const tabFilter = TAB_FILTERS[activeTab] || TAB_FILTERS["open-for-betting"];
-      const tabStatus = tabFilter.status !== STATUS_ENUM.NONE ? tabFilter.status : undefined;
-
-      // Map category to enum value
-      const categoryMap = {
-        'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4,
-        'entertainment': 5, 'personal': 6, 'other': 7
-      };
-      const categoryEnum = selectedCategory !== 'all' ? categoryMap[selectedCategory] : undefined;
+      const tabStatus = TAB_STATUS[activeTab];
 
       const params = {
         limit: ITEMS_PER_PAGE,
         ...(cursor && { cursor }),
         ...filters,
-        status: filters.status || tabStatus,
-        category: categoryEnum,
+        status: filters.status !== undefined ? filters.status : tabStatus,
       };
 
       const response = await fetchBets(params);
-      
+
       if (response.data && response.data.length > 0) {
-        // Map API response to match our bet structure
         const mappedBets = response.data.map(bet => ({
           address: bet.betId,
           title: bet.title,
           description: bet.description,
-        total_yes_stake_usd: parseFloat(ethers.formatUnits(bet.totalYesStake, 6)),
-        total_no_stake_usd: parseFloat(ethers.formatUnits(bet.totalNoStake, 6)),
+          total_yes_stake_usd: parseFloat(ethers.formatUnits(bet.totalYesStake, 6)),
+          total_no_stake_usd: parseFloat(ethers.formatUnits(bet.totalNoStake, 6)),
           bettingDeadline: Number(bet.bettingDeadline),
           proofDeadline: Number(bet.proofDeadline),
           votingDeadline: Number(bet.votingDeadline),
           proofUrl: bet.proofUrl,
-          participants_count: parseInt(bet.totalParticipants.toString(), 10),
-          voters_count: parseInt(bet.totalVotes.toString(), 10),
+          participants_count: Number(bet.totalParticipants),
+          voters_count: Number(bet.totalVotes),
           onChainStatus: ON_CHAIN_STATUS_MAP[bet.status] || 'open_for_bets',
           category: bet.category || 0,
         }));
-        
+
         if (append) {
           setBets(prev => [...prev, ...mappedBets]);
         } else {
           setBets(mappedBets);
         }
         setApiCursor(response.pagination?.nextCursor || null);
-        setHasMore(response.pagination?.hasMore || false);
+        setHasMore(response.pagination?.hasNext || false);
       } else {
         if (!append) setBets([]);
         setApiCursor(null);
@@ -215,182 +154,83 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.error("Could not load bets from API:", e);
-      // Fallback to blockchain if API fails
-      setUseApiSearch(false);
+      if (!append) setBets([]);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedCategory, ITEMS_PER_PAGE, activeTab]);
+  }, [ITEMS_PER_PAGE, activeTab]);
 
-  const loadBets = useCallback(async (cursorVal = 0, append = false) => {
-    // Use activity endpoint for my-activity tab
-    if (activeTab === 'my-activity' && walletAddress) {
-      loadActivityFromApi(append ? apiCursor : null, append);
+  const loadData = useCallback(() => {
+    if (activeTab === 'my-activity') {
+      if (walletAddress) loadActivityFromApi(null, false);
       return;
     }
+    loadBetsFromApi(null, searchFilters, false);
+  }, [activeTab, walletAddress, searchFilters, loadBetsFromApi, loadActivityFromApi]);
 
-    if (useApiSearch) {
-      loadBetsFromApi(append ? apiCursor : null, searchFilters, append);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const factory = getBetFactoryContract();
-      const connectedAddr = await getConnectedAddress();
-      
-      // Get filter params for current tab
-      const filter = TAB_FILTERS[activeTab] || TAB_FILTERS["open-for-betting"];
-      const userAddr = filter.activity !== ACTIVITY_ENUM.NONE ? connectedAddr : ethers.ZeroAddress;
-      
-      // Call the new getBetsRange with filters
-      const [betAddresses, newNextCursor] = await factory.getBetsRange(
-        cursorVal,
-        ITEMS_PER_PAGE,
-        filter.status,
-        filter.activity,
-        userAddr || ethers.ZeroAddress
-      );
-      
-      setNextCursor(Number(newNextCursor));
-      setHasMore(betAddresses.length === ITEMS_PER_PAGE && Number(newNextCursor) > 0);
-      
-      if (betAddresses.length === 0) {
-        if (!append) setBets([]);
-        setIsLoading(false);
-        return;
-      }
-      
-      // Load details for this page's bets
-      const betPromises = betAddresses.map(addr => loadBetDetails(addr));
-      const loadedBets = (await Promise.all(betPromises)).filter(b => b !== null);
-      
-      if (append) {
-        setBets(prev => [...prev, ...loadedBets]);
-      } else {
-        setBets(loadedBets);
-      }
-    } catch (e) {
-      console.error("Could not load bets from factory:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeTab, useApiSearch, apiCursor, searchFilters, loadBetsFromApi, loadActivityFromApi, selectedCategory, walletAddress]);
-
-  // Reset and reload when tab changes
+  // Reset and reload when tab, wallet, or activity filter changes
   useEffect(() => {
-    setNextCursor(0);
-    setHasMore(true);
+    setApiCursor(null);
+    setHasMore(false);
     setBets([]);
     setActivities([]);
-    loadBets(0, false);
-  }, [activeTab, walletAddress, loadBets, activityTypeFilter]);
+    loadData();
+  }, [activeTab, walletAddress, loadData, activityTypeFilter]);
 
   useEffect(() => {
     getConnectedAddress().then(setWalletAddress);
 
-    // Set up BetFactory event listeners for real-time updates
     const factory = getBetFactoryContract();
 
-    const handleBetCreated = (betAddress, creator, event) => {
-      console.log("New bet created:", betAddress);
-      // Reload bets to show new market
-      loadBets(0, false);
-    };
+    const handleBetCreated = () => loadData();
 
-    const handleBetStatusChanged = (betAddress, newStatus, reason, event) => {
-      console.log("Bet status changed:", betAddress, newStatus);
-      // Update the specific bet in the list
-      setBets(prev => prev.map(bet => 
+    const handleBetStatusChanged = (betAddress, newStatus) => {
+      setBets(prev => prev.map(bet =>
         bet.address.toLowerCase() === betAddress.toLowerCase()
           ? { ...bet, onChainStatus: ON_CHAIN_STATUS_MAP[Number(newStatus)] }
           : bet
       ));
     };
 
-    const handleBetParticipation = (betAddress, participant, position, amountUsdc, event) => {
-      console.log("Bet participation:", betAddress, participant);
-      // Reload the specific bet details
-      loadBetDetails(betAddress).then(updatedBet => {
-        if (updatedBet) {
-          setBets(prev => prev.map(bet =>
-            bet.address.toLowerCase() === betAddress.toLowerCase() ? updatedBet : bet
-          ));
-        }
-      });
-    };
-
-    const handleBetVote = (betAddress, voter, vote, event) => {
-      console.log("Bet vote cast:", betAddress, voter);
-      // Reload the specific bet details
-      loadBetDetails(betAddress).then(updatedBet => {
-        if (updatedBet) {
-          setBets(prev => prev.map(bet =>
-            bet.address.toLowerCase() === betAddress.toLowerCase() ? updatedBet : bet
-          ));
-        }
-      });
-    };
-
     factory.on("BetCreated", handleBetCreated);
     factory.on("BetStatusChanged", handleBetStatusChanged);
-    factory.on("BetParticipation", handleBetParticipation);
-    factory.on("BetVote", handleBetVote);
 
     return () => {
       factory.off("BetCreated", handleBetCreated);
       factory.off("BetStatusChanged", handleBetStatusChanged);
-      factory.off("BetParticipation", handleBetParticipation);
-      factory.off("BetVote", handleBetVote);
     };
   }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
-    if (tab) {
-      setActiveTab(tab);
-    }
+    if (tab) setActiveTab(tab);
   }, [location.search]);
 
   const handleLoadMore = () => {
-    if (hasMore && !isLoading) {
-      if (activeTab === 'my-activity' && walletAddress) {
-        loadActivityFromApi(apiCursor, true);
-      } else if (useApiSearch) {
-        loadBetsFromApi(apiCursor, searchFilters, true);
-      } else {
-        loadBets(nextCursor, true);
-      }
+    if (!hasMore || isLoading) return;
+    if (activeTab === 'my-activity' && walletAddress) {
+      loadActivityFromApi(apiCursor, true);
+    } else {
+      loadBetsFromApi(apiCursor, searchFilters, true);
     }
   };
 
   const handleSearch = (filters) => {
     setSearchFilters(filters);
-    setUseApiSearch(true);
     setApiCursor(null);
     loadBetsFromApi(null, filters, false);
   };
 
   const handleSearchReset = () => {
     setSearchFilters({});
-    setUseApiSearch(false);
     setApiCursor(null);
-    setNextCursor(0);
-    loadBets(0, false);
+    loadBetsFromApi(null, {}, false);
   };
 
-  const handleCategoryChange = (category) => {
-    setSelectedCategory(category);
-    if (useApiSearch) {
-      setApiCursor(null);
-      loadBetsFromApi(null, searchFilters, false);
-    }
-  };
 
   const renderBetList = () => {
-    const listWithStatus = bets.map(bet => ({ ...bet, effectiveStatus: getEffectiveStatus(bet) }));
-
     if (isLoading && bets.length === 0) {
       return (
         <div className="flex justify-center items-center h-64">
@@ -398,10 +238,12 @@ export default function Dashboard() {
         </div>
       );
     }
-    
+
     if (bets.length === 0) {
       return <p className="text-gray-400 text-center py-8">No markets in this category.</p>;
     }
+
+    const listWithStatus = bets.map(bet => ({ ...bet, effectiveStatus: getEffectiveStatus(bet) }));
 
     return (
       <>
@@ -418,7 +260,7 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-        
+
         {hasMore && (
           <div className="flex justify-center mt-6">
             <Button
@@ -427,11 +269,7 @@ export default function Dashboard() {
               disabled={isLoading}
               className="border-gray-600 text-gray-300"
             >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <ChevronRight className="w-4 h-4 mr-2" />
-              )}
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ChevronRight className="w-4 h-4 mr-2" />}
               Load More
             </Button>
           </div>
@@ -468,7 +306,7 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-        
+
         {hasMore && (
           <div className="flex justify-center mt-6">
             <Button
@@ -477,11 +315,7 @@ export default function Dashboard() {
               disabled={isLoading}
               className="border-gray-600 text-gray-300"
             >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <ChevronRight className="w-4 h-4 mr-2" />
-              )}
+              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ChevronRight className="w-4 h-4 mr-2" />}
               Load More
             </Button>
           </div>
@@ -543,11 +377,7 @@ export default function Dashboard() {
           ) : activeTab !== 'wallet' && (
             <div className="space-y-4">
               <SearchBar onSearch={handleSearch} onReset={handleSearchReset} />
-              <div className="flex justify-between items-center">
-                <CategoryFilter 
-                  selectedCategory={selectedCategory} 
-                  onCategoryChange={handleCategoryChange} 
-                />
+              <div className="flex justify-end">
                 <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
                   <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
                     <LayoutGrid className="w-5 h-5"/>

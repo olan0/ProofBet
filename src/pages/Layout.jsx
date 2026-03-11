@@ -29,15 +29,19 @@ export default function Layout({ children }) {
   const [proofBalance, setProofBalance] = useState("0");
   const [trustScore, setTrustScore] = useState(null);
   const [userAlias, setUserAlias] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   const fetchBalances = async (address) => {
       if(!address) return;
       try {
           const factory = getBetFactoryContract();
-          const [internalUsdc, internalProof] = await factory.getInternalBalances(address);
-          
+          const [[internalUsdc, internalProof], owner] = await Promise.all([
+              factory.getInternalBalances(address),
+              factory.owner(),
+          ]);
           setUsdcBalance(ethers.formatUnits(internalUsdc, 6));
           setProofBalance(ethers.formatEther(internalProof));
+          setIsOwner(owner.toLowerCase() === address.toLowerCase());
       } catch (error) {
           console.error("Failed to fetch internal balances:", error);
           setUsdcBalance("0");
@@ -139,6 +143,7 @@ export default function Layout({ children }) {
       setProofBalance("0");
       setTrustScore(null);
       setUserAlias(null);
+      setIsOwner(false);
       window.location.reload();
     } catch (error) {
       console.error("Failed to disconnect wallet:", error);
@@ -214,12 +219,14 @@ export default function Layout({ children }) {
               </Button>
             </Link>
             
-            <Link to={createPageUrl("Admin")}>
-              <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
-                <Settings className="w-4 h-4 mr-2" />
-                Admin
-              </Button>
-            </Link>
+            {isOwner && (
+              <Link to={createPageUrl("Admin")}>
+                <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Admin
+                </Button>
+              </Link>
+            )}
 
             {/* Wallet Connection */}
             {walletConnected ? (

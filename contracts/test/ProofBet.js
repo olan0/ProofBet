@@ -6,11 +6,11 @@ describe("ProofBet Platform", function () {
   // Contracts
   let factory, betImplementation, proofToken, trustScore, usdc;
   let ethers;
-  
+
   // Signers
   let deployer, alice, bob, charlie, dave, eve;
   let signers;
-  
+
   // Constants
   const CREATION_FEE = "10000000000000000000"; // 10 PROOF
   const PROOF_COLLATERAL = "100000000"; // 100 USDC
@@ -18,54 +18,52 @@ describe("ProofBet Platform", function () {
   const MAX_ACTIVE_BETS = 10;
   const INITIAL_PROOF_SUPPLY = "1000000000000000000000"; // 1000 PROOF
   const INITIAL_USDC_SUPPLY = "10000000000"; // 10,000 USDC
-  const DEPOSIT_LOCK_PERIOD = 3600; // 1 hour
+
+  // TrustScore constants (must match TrustScore.sol)
+  const DECAY_PERIOD = 30 * 24 * 3600; // 30 days in seconds
+  const BAN_THRESHOLD = -20;
+  const PENALTY_POINTS = 5;
 
   before(async function () {
-    // Connect to network and get ethers
     const networkConnection = await network.connect({
       network: "hardhatMainnet",
       chainType: "l1",
     });
     ethers = networkConnection.ethers;
-    
-    // Get signers
+
     signers = await ethers.getSigners();
     [deployer, alice, bob, charlie, dave, eve] = signers;
   });
 
   beforeEach(async function () {
-    // Deploy contracts manually (same as your Ignition module)
-    
-    // 1. Deploy MockERC20 (USDC) - make sure this file exists in contracts/test/
+    // 1. Deploy MockERC20 (USDC)
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     usdc = await MockERC20.deploy("Mock USDC", "mUSDC");
     await usdc.waitForDeployment();
-    
-    // Mint initial USDC to deployer
-    await usdc.mint(deployer.address, "10000000000"); // 10,000 USDC
+    await usdc.mint(deployer.address, "10000000000");
 
-    // 2. Deploy ProofToken (no _FIXED suffix)
+    // 2. Deploy ProofToken
     const ProofToken = await ethers.getContractFactory("ProofToken");
     proofToken = await ProofToken.deploy();
     await proofToken.waitForDeployment();
 
-    // 3. Deploy TrustScore (no _FIXED suffix)
+    // 3. Deploy TrustScore
     const TrustScore = await ethers.getContractFactory("TrustScore");
     trustScore = await TrustScore.deploy();
     await trustScore.waitForDeployment();
 
-    // 4. Deploy Bet implementation (no _FIXED suffix)
+    // 4. Deploy Bet implementation
     const Bet = await ethers.getContractFactory("Bet");
     betImplementation = await Bet.deploy();
     await betImplementation.waitForDeployment();
 
-    // 5. Deploy BetFactory (no _FIXED suffix)
+    // 5. Deploy BetFactory
     const BetFactory = await ethers.getContractFactory("BetFactory");
     factory = await BetFactory.deploy(
       await trustScore.getAddress(),
       await usdc.getAddress(),
       await proofToken.getAddress(),
-      deployer.address, // feeCollector
+      deployer.address,
       CREATION_FEE,
       PROOF_COLLATERAL,
       INITIAL_VOTE_STAKE,
@@ -74,20 +72,15 @@ describe("ProofBet Platform", function () {
     );
     await factory.waitForDeployment();
 
-    // 6. Authorize factory (same as Ignition module)
+    // 6. Authorize factory
     await proofToken.authorizeBurner(await factory.getAddress(), true);
     await trustScore.authorizeContract(await factory.getAddress(), true);
 
     // 7. Distribute tokens to test users
     const users = [alice, bob, charlie, dave, eve];
     for (const user of users) {
-      // Transfer PROOF tokens
       await proofToken.transfer(user.address, INITIAL_PROOF_SUPPLY);
-      
-      // Mint USDC tokens
       await usdc.mint(user.address, INITIAL_USDC_SUPPLY);
-      
-      // Approve factory
       await proofToken.connect(user).approve(await factory.getAddress(), ethers.MaxUint256);
       await usdc.connect(user).approve(await factory.getAddress(), ethers.MaxUint256);
     }
@@ -100,7 +93,7 @@ describe("ProofBet Platform", function () {
   async function createValidBetDetails() {
     const latestBlock = await ethers.provider.getBlock("latest");
     const now = latestBlock.timestamp;
-    
+
     return {
       title: "Bitcoin will reach $100k by end of 2026",
       description: "BTC price prediction",
@@ -111,8 +104,8 @@ describe("ProofBet Platform", function () {
       minimumSideStake: "50000000", // 50 USDC
       minimumTrustScore: 0,
       minimumVotes: 3,
-      category: 1, // CRYPTO
-      proofType: 1  // VIDEO
+      category: 1,
+      proofType: 1
     };
   }
 
@@ -122,19 +115,13 @@ describe("ProofBet Platform", function () {
   }
 
   async function depositAndCreateBet(user) {
-    // Deposit funds
     await factory.connect(user).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
     await factory.connect(user).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
-    
-    // Wait for deposit lock period
-    await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-    
-    // Create bet
+
     const details = await createValidBetDetails();
     const tx = await factory.connect(user).createBet(details);
     const receipt = await tx.wait();
-    
-    // Get bet address from event
+
     const event = receipt.logs.find(log => {
       try {
         const parsed = factory.interface.parseLog(log);
@@ -143,7 +130,7 @@ describe("ProofBet Platform", function () {
         return false;
       }
     });
-    
+
     const betAddress = factory.interface.parseLog(event).args[0];
     return await ethers.getContractAt("Bet", betAddress);
   }
@@ -163,11 +150,11 @@ describe("ProofBet Platform", function () {
   async function vote(bet, voter, voteChoice) {
     const [, proofBalance] = await factory.getInternalBalances(voter.address);
     const requiredStake = await factory.calculateRequiredStake(voter.address);
-    
+
     if (proofBalance < requiredStake) {
       await factory.connect(voter).depositProof(BigInt(requiredStake) - BigInt(proofBalance) + BigInt("10000000000000000000"));
     }
-    
+
     await bet.connect(voter).vote(voteChoice);
   }
 
@@ -204,17 +191,17 @@ describe("ProofBet Platform", function () {
 
   describe("Deposits and Withdrawals", function () {
     it("Should deposit USDC", async function () {
-      const amount = "100000000"; // 100 USDC
+      const amount = "100000000";
       await factory.connect(alice).depositUsdc(amount);
-      
+
       const [balance] = await factory.getInternalBalances(alice.address);
       expect(balance).to.equal(amount);
     });
 
     it("Should deposit PROOF", async function () {
-      const amount = "100000000000000000000"; // 100 PROOF
+      const amount = "100000000000000000000";
       await factory.connect(alice).depositProof(amount);
-      
+
       const [, balance] = await factory.getInternalBalances(alice.address);
       expect(balance).to.equal(amount);
     });
@@ -223,7 +210,7 @@ describe("ProofBet Platform", function () {
       const amount = "100000000";
       await factory.connect(alice).depositUsdc(amount);
       await factory.connect(alice).withdrawUsdc(amount);
-      
+
       const [balance] = await factory.getInternalBalances(alice.address);
       expect(balance).to.equal(0);
     });
@@ -243,7 +230,7 @@ describe("ProofBet Platform", function () {
   describe("Bet Creation", function () {
     it("Should create a bet", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       expect(await bet.getAddress()).to.not.equal(ethers.ZeroAddress);
       expect(await factory.isBetFromFactory(await bet.getAddress())).to.be.true;
       expect(await bet.creator()).to.equal(alice.address);
@@ -253,18 +240,15 @@ describe("ProofBet Platform", function () {
     it("Should emit BetCreated event", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+
       const details = await createValidBetDetails();
       await expect(factory.connect(alice).createBet(details))
         .to.emit(factory, "BetCreated");
     });
 
     it("Should fail without collateral", async function () {
-      await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000")); // Extra PROOF
-      // Don't deposit USDC collateral - this is what should cause the failure
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+      await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
+
       const details = await createValidBetDetails();
       await expect(
         factory.connect(alice).createBet(details)
@@ -274,13 +258,12 @@ describe("ProofBet Platform", function () {
     it("Should fail with past deadline", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("100000000"));
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+
       const latestBlock = await ethers.provider.getBlock("latest");
       const now = latestBlock.timestamp;
       const details = await createValidBetDetails();
-      details.bettingDeadline = now - 1; // Past deadline
-      
+      details.bettingDeadline = now - 1;
+
       await expect(
         factory.connect(alice).createBet(details)
       ).to.be.revertedWith("Betting deadline must be future");
@@ -289,94 +272,47 @@ describe("ProofBet Platform", function () {
     it("Should fail with empty title", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("100000000"));
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+
       const details = await createValidBetDetails();
       details.title = "";
-      
+
       await expect(
         factory.connect(alice).createBet(details)
       ).to.be.revertedWith("Empty title");
+    });
+
+    it("Should increase trust score on bet creation", async function () {
+      const scoreBefore = await trustScore.getScore(alice.address);
+      await depositAndCreateBet(alice);
+      const scoreAfter = await trustScore.getScore(alice.address);
+
+      expect(scoreAfter).to.equal(scoreBefore + BigInt(2)); // CREATE_BET_POINTS = 2
     });
 
     it("Should burn fees on creation", async function () {
       const burnPercentage = await proofToken.feeBurnPercentage();
       const baseFee = await factory.creationFeeProof();
       const feeCollectorAddr = await factory.feeCollector();
-      
-      console.log("\n=== BEFORE ===");
-      console.log("Burn percentage:", burnPercentage.toString());
-      console.log("Base creation fee:", baseFee.toString());
-      console.log("Fee collector:", feeCollectorAddr);
-      
+
       const totalSupplyBefore = await proofToken.totalSupply();
-      const factoryBalBefore = await proofToken.balanceOf(await factory.getAddress());
       const feeCollectorBalBefore = await proofToken.balanceOf(feeCollectorAddr);
-      
-      console.log("Total supply before:", totalSupplyBefore.toString());
-      console.log("Factory balance before:", factoryBalBefore.toString());
-      console.log("Fee collector balance before:", feeCollectorBalBefore.toString());
-      
-      // Create bet
-      await factory.connect(alice).depositProof(BigInt(baseFee) * BigInt(3)); // 30 PROOF to be safe
+
+      await factory.connect(alice).depositProof(BigInt(baseFee) * BigInt(3));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+
       const details = await createValidBetDetails();
-      
-      // Check what the dynamic fee will be
       const dynamicFee = await factory.calculateDynamicCreationFee(details);
-      console.log("Dynamic fee for this bet:", dynamicFee.toString());
-      
       await factory.connect(alice).createBet(details);
-      
-      console.log("\n=== AFTER ===");
+
       const totalSupplyAfter = await proofToken.totalSupply();
-      const factoryBalAfter = await proofToken.balanceOf(await factory.getAddress());
       const feeCollectorBalAfter = await proofToken.balanceOf(feeCollectorAddr);
-      
-      console.log("Total supply after:", totalSupplyAfter.toString());
-      console.log("Factory balance after:", factoryBalAfter.toString());
-      console.log("Fee collector balance after:", feeCollectorBalAfter.toString());
-      
+
       const expectedBurn = (BigInt(dynamicFee) * BigInt(burnPercentage)) / BigInt(100);
       const actualBurned = totalSupplyBefore - totalSupplyAfter;
       const feeCollectorGained = feeCollectorBalAfter - feeCollectorBalBefore;
-      
-      console.log("\n=== RESULTS ===");
-      console.log("Expected burn (50% of dynamic fee):", expectedBurn.toString());
-      console.log("Actual burned:", actualBurned.toString());
-      console.log("Fee collector gained:", feeCollectorGained.toString());
-      console.log("Total accounted:", (actualBurned + feeCollectorGained).toString());
-      
+
       expect(actualBurned).to.equal(expectedBurn);
-    });
-  });
-
-  // ============================================
-  // FLASH LOAN PROTECTION TESTS
-  // ============================================
-
-  describe("Flash Loan Protection", function () {
-    it("Should prevent immediate bet creation after deposit", async function () {
-      await factory.connect(alice).depositProof(CREATION_FEE);
-      await factory.connect(alice).depositUsdc(PROOF_COLLATERAL);
-      
-      const details = await createValidBetDetails();
-      await expect(
-        factory.connect(alice).createBet(details)
-      ).to.be.revertedWith("Funds locked (flash loan protection)");
-    });
-
-    it("Should allow bet creation after lock period", async function () {
-      await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
-      await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("100000000"));
-      
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
-      const details = await createValidBetDetails();
-      const tx = await factory.connect(alice).createBet(details);
-      await expect(tx).to.emit(factory, "BetCreated");
+      expect(actualBurned + feeCollectorGained).to.equal(dynamicFee);
     });
   });
 
@@ -387,31 +323,41 @@ describe("ProofBet Platform", function () {
   describe("Betting Phase", function () {
     it("Should place a bet", async function () {
       const bet = await depositAndCreateBet(alice);
-      const betAmount = "50000000"; // 50 USDC
-      
-      await placeBet(bet, bob, 1, betAmount); // Side.YES = 1
-      
+      const betAmount = "50000000";
+
+      await placeBet(bet, bob, 1, betAmount);
+
       expect(await bet.totalYesStake()).to.equal(betAmount);
     });
 
     it("Should place bets on both sides", async function () {
       const bet = await depositAndCreateBet(alice);
-      
-      await placeBet(bet, bob, 1, "60000000"); // YES
-      await placeBet(bet, charlie, 2, "70000000"); // NO
-      
+
+      await placeBet(bet, bob, 1, "60000000");
+      await placeBet(bet, charlie, 2, "70000000");
+
       expect(await bet.totalYesStake()).to.equal("60000000");
       expect(await bet.totalNoStake()).to.equal("70000000");
     });
 
     it("Should fail to bet after deadline", async function () {
       const bet = await depositAndCreateBet(alice);
-      
-      await increaseTime(8 * 24 * 3600); // 8 days
-      
+
+      await increaseTime(8 * 24 * 3600);
+
       await expect(
         placeBet(bet, bob, 1, "50000000")
       ).to.be.revertedWith("Betting closed");
+    });
+
+    it("Should increase trust score on participation", async function () {
+      const bet = await depositAndCreateBet(alice);
+      const scoreBefore = await trustScore.getScore(bob.address);
+
+      await placeBet(bet, bob, 1, "50000000");
+      const scoreAfter = await trustScore.getScore(bob.address);
+
+      expect(scoreAfter).to.equal(scoreBefore + BigInt(1)); // PARTICIPATE_POINTS = 1
     });
   });
 
@@ -422,28 +368,28 @@ describe("ProofBet Platform", function () {
   describe("Proof Submission", function () {
     it("Should submit valid proof", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-      
+
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
-      
+
       await submitProof(bet, alice, "https://ipfs.io/ipfs/QmTest123");
-      
+
       expect(await bet.currentStatus()).to.equal(2); // VOTING
       expect(await bet.proofUrl()).to.equal("https://ipfs.io/ipfs/QmTest123");
     });
 
     it("Should fail with invalid proof URL", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-      
+
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
-      
+
       await expect(
         submitProof(bet, alice, "x")
       ).to.be.revertedWith("Proof URL too short");
@@ -451,13 +397,13 @@ describe("ProofBet Platform", function () {
 
     it("Should fail with HTTP scheme", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-      
+
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
-      
+
       await expect(
         submitProof(bet, alice, "http://example.com/proof")
       ).to.be.revertedWith("Invalid URL scheme (use https:// or ipfs://)");
@@ -471,31 +417,46 @@ describe("ProofBet Platform", function () {
   describe("Voting Phase", function () {
     it("Should cast a vote", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-      
+
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
-      
       await submitProof(bet, alice, "https://ipfs.io/ipfs/QmTest123");
-      
-      await vote(bet, dave, 1); // YES
-      
+
+      await vote(bet, dave, 1);
+
       expect(await bet.yesVotes()).to.equal(1);
+    });
+
+    it("Should increase trust score on vote", async function () {
+      const bet = await depositAndCreateBet(alice);
+
+      await placeBet(bet, bob, 1, "60000000");
+      await placeBet(bet, charlie, 2, "70000000");
+
+      await increaseTime(8 * 24 * 3600);
+      await bet.checkAndCloseBetting();
+      await submitProof(bet, alice, "https://ipfs.io/ipfs/QmTest123");
+
+      const scoreBefore = await trustScore.getScore(dave.address);
+      await vote(bet, dave, 1);
+      const scoreAfter = await trustScore.getScore(dave.address);
+
+      expect(scoreAfter).to.equal(scoreBefore + BigInt(1)); // VOTE_POINTS = 1
     });
 
     it("Should fail if bettor tries to vote", async function () {
       const bet = await depositAndCreateBet(alice);
-      
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-      
+
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
-      
       await submitProof(bet, alice, "https://ipfs.io/ipfs/QmTest123");
-      
+
       await expect(
         vote(bet, bob, 1)
       ).to.be.revertedWith("Bettors cannot vote");
@@ -503,27 +464,180 @@ describe("ProofBet Platform", function () {
   });
 
   // ============================================
-  // ATOMICITY TEST (Critical Fix Verification)
+  // TRUST SCORE TESTS
+  // ============================================
+
+  describe("Trust Score", function () {
+    it("Should start with zero score", async function () {
+      expect(await trustScore.getScore(alice.address)).to.equal(0);
+    });
+
+    it("Should apply penalty and reduce score", async function () {
+      // Give alice some score first via bet creation
+      await depositAndCreateBet(alice); // +2 points
+      const scoreBefore = await trustScore.getScore(alice.address);
+
+      await trustScore.connect(deployer).authorizeContract(deployer.address, true);
+      await trustScore.connect(deployer).applyPenalty(alice.address); // -5 points
+
+      const scoreAfter = await trustScore.getScore(alice.address);
+      expect(scoreAfter).to.equal(scoreBefore - BigInt(PENALTY_POINTS));
+    });
+
+    it("Should allow score to go negative", async function () {
+      await trustScore.authorizeContract(deployer.address, true);
+
+      // Apply 3 penalties on a fresh user (0 - 15 = -15)
+      await trustScore.applyPenalty(alice.address);
+      await trustScore.applyPenalty(alice.address);
+      await trustScore.applyPenalty(alice.address);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(-15);
+    });
+
+    it("Should return true from applyPenalty when ban threshold is crossed", async function () {
+      await trustScore.authorizeContract(deployer.address, true);
+
+      // Apply 4 penalties: 0 - 20 = -20 (hits threshold)
+      await trustScore.applyPenalty(alice.address);
+      await trustScore.applyPenalty(alice.address);
+      await trustScore.applyPenalty(alice.address);
+      const result = await trustScore.applyPenalty.staticCall(alice.address);
+      expect(result).to.be.true;
+    });
+
+    it("Should not decay score before DECAY_PERIOD", async function () {
+      await depositAndCreateBet(alice); // +2 points → score = 2
+
+      // Advance 29 days (less than DECAY_PERIOD)
+      await increaseTime(29 * 24 * 3600);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(2); // no decay yet
+    });
+
+    it("Should decay score by 1 after one DECAY_PERIOD", async function () {
+      await depositAndCreateBet(alice); // score = 2
+
+      // Advance exactly 30 days
+      await increaseTime(DECAY_PERIOD);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(1); // 2 - 1 decay
+    });
+
+    it("Should decay score by 2 after two DECAY_PERIODs", async function () {
+      await depositAndCreateBet(alice); // score = 2
+      await depositAndCreateBet(alice); // score = 4
+
+      // Advance 60 days (two full periods)
+      await increaseTime(2 * DECAY_PERIOD);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(2); // 4 - 2 decay
+    });
+
+    it("Should continue decaying below zero", async function () {
+      // Start alice at 0 (fresh), apply 2 penalties → score stored as -10
+      await trustScore.authorizeContract(deployer.address, true);
+      await trustScore.applyPenalty(alice.address); // -5
+      await trustScore.applyPenalty(alice.address); // -10
+
+      expect(await trustScore.scores(alice.address)).to.equal(-10);
+
+      // Advance 30 days — decay should bring it to -11
+      await increaseTime(DECAY_PERIOD);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(-11);
+    });
+
+    it("Should stop decay at BAN_THRESHOLD", async function () {
+      await trustScore.authorizeContract(deployer.address, true);
+
+      // Bring alice to -18 (3 penalties = -15, then manually set via repeated penalties)
+      // 4 penalties = -20, right at threshold — but let's use 3 then decay
+      await trustScore.applyPenalty(alice.address); // -5
+      await trustScore.applyPenalty(alice.address); // -10
+      await trustScore.applyPenalty(alice.address); // -15
+
+      // After 10 decay periods (300 days), score should not go below -20
+      await increaseTime(10 * DECAY_PERIOD);
+
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(BigInt(BAN_THRESHOLD));
+    });
+
+    it("Should reset decay timer on activity", async function () {
+      await depositAndCreateBet(alice); // score = 2
+
+      // Advance 20 days (no decay yet)
+      await increaseTime(20 * 24 * 3600);
+
+      // Create another bet — resets lastActivityTime, adds +2
+      await depositAndCreateBet(alice); // score = 4
+
+      // Advance 25 days from the second bet (total 45 days from first, but only 25 from last activity)
+      await increaseTime(25 * 24 * 3600);
+
+      // 25 days < DECAY_PERIOD, so no decay should have applied
+      const score = await trustScore.getScore(alice.address);
+      expect(score).to.equal(4);
+    });
+
+    it("Should apply decay correctly when writing score back via applyDecay", async function () {
+      await depositAndCreateBet(alice); // score = 2
+
+      await increaseTime(DECAY_PERIOD);
+
+      // getScore reflects decay virtually — stored score is still 2
+      expect(await trustScore.scores(alice.address)).to.equal(2);
+      expect(await trustScore.getScore(alice.address)).to.equal(1);
+
+      // applyDecay writes the decayed value to storage
+      await trustScore.applyDecay(alice.address);
+      expect(await trustScore.scores(alice.address)).to.equal(1);
+    });
+
+    it("Should not ban owner via applyPenalty", async function () {
+      await trustScore.authorizeContract(deployer.address, true);
+
+      // Apply many penalties to owner
+      for (let i = 0; i < 5; i++) {
+        await trustScore.applyPenalty(deployer.address);
+      }
+
+      // Owner score should remain 0 (skipped)
+      expect(await trustScore.getScore(deployer.address)).to.equal(0);
+    });
+
+    it("Should reset score to 0 on resetScore", async function () {
+      await depositAndCreateBet(alice); // score = 2
+      await trustScore.resetScore(alice.address);
+      expect(await trustScore.getScore(alice.address)).to.equal(0);
+    });
+  });
+
+  // ============================================
+  // ATOMICITY TEST
   // ============================================
 
   describe("Atomicity", function () {
     it("Should not lose collateral if initialize fails", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("100000000"));
-      await increaseTime(DEPOSIT_LOCK_PERIOD + 1);
-      
+
       const details = await createValidBetDetails();
-      details.title = ""; // Invalid - will cause initialize to fail
-      
+      details.title = "";
+
       const [balanceBefore] = await factory.getInternalBalances(alice.address);
-      
+
       await expect(
         factory.connect(alice).createBet(details)
       ).to.be.revertedWith("Empty title");
-      
+
       const [balanceAfter] = await factory.getInternalBalances(alice.address);
-      
-      // ✅ Critical: Collateral should NOT be deducted
       expect(balanceBefore).to.equal(balanceAfter);
     });
   });

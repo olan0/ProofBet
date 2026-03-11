@@ -3,11 +3,11 @@ import { ethers } from "ethers";
 // --- ACTION REQUIRED: PASTE YOUR DEPLOYED CONTRACT ADDRESSES HERE ---
 // You can get these from the output of the 'npx hardhat ignition deploy' command.
 export const CONTRACT_ADDRESSES = {
-  BetFactory: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
-  ProofToken: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-  TrustScore: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  BetFactory: "0x30F9bAac593f974c31d9aFD4D0915Cb5fbC6d1f5",
+  ProofToken: "0xC0383bf30268239Cae53aF9B98b7070813b9D3db",
+  TrustScore: "0xCB1a1d56f14F42278aDbe94361c8280B9B542D61",
   // This will be your MockUSDC address on localhost, or the real one on a testnet.
-  USDC: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" 
+  USDC: "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"
 };
 
 // --- ACTION REQUIRED: PASTE CONTRACT ABIs HERE ---
@@ -3064,6 +3064,29 @@ export const TRUST_SCORE_ABI =  [
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "banThreshold",
+      "outputs": [{ "internalType": "int16", "name": "", "type": "int16" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "int16", "name": "_threshold", "type": "int16" }],
+      "name": "setBanThreshold",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": false, "internalType": "int16", "name": "oldThreshold", "type": "int16" },
+        { "indexed": false, "internalType": "int16", "name": "newThreshold", "type": "int16" }
+      ],
+      "name": "BanThresholdUpdated",
+      "type": "event"
     }
   ];
 

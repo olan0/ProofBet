@@ -1,7 +1,12 @@
 // API client for REST endpoints
-const API_BASE_URL = typeof window !== 'undefined' && window.ENV?.API_BASE_URL 
-  ? window.ENV.API_BASE_URL 
-  : 'http://localhost:3000';
+const API_BASE_URL = typeof window !== 'undefined' && window.ENV?.API_BASE_URL
+  ? window.ENV.API_BASE_URL
+  : (import.meta.env?.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3000');
+
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  ...(import.meta.env?.VITE_API_KEY ? { 'x-api-key': import.meta.env.VITE_API_KEY } : {}),
+};
 
 /**
  * Fetch bets from REST API with filters, sorting, and pagination
@@ -28,7 +33,7 @@ export async function fetchBets(params = {}) {
   const url = `${API_BASE_URL}/api/bets${queryString ? `?${queryString}` : ''}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: API_HEADERS });
     if (!response.ok) {
       throw new Error(`API request failed: ${response.statusText}`);
     }
@@ -48,7 +53,7 @@ export async function fetchBet(id) {
   const url = `${API_BASE_URL}/api/bets/${id}`;
   
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: API_HEADERS });
     if (!response.ok) {
       throw new Error(`API request failed: ${response.statusText}`);
     }
@@ -83,7 +88,7 @@ export async function fetchActivity(params = {}) {
   const url = `${API_BASE_URL}/api/activity${queryString ? `?${queryString}` : ''}`;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: API_HEADERS });
     if (!response.ok) {
       throw new Error(`API request failed: ${response.statusText}`);
     }
@@ -95,7 +100,7 @@ export async function fetchActivity(params = {}) {
 }
 
 export async function fetchPlatformStats() {
-  const response = await fetch(`${API_BASE_URL}/api/stats/platform`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/platform`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch platform stats: ${response.statusText}`);
   }
@@ -103,7 +108,7 @@ export async function fetchPlatformStats() {
 }
 
 export async function fetchTopActive(limit = 5) {
-  const response = await fetch(`${API_BASE_URL}/api/stats/top-active?limit=${limit}`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-active?limit=${limit}`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch top active: ${response.statusText}`);
   }
@@ -111,7 +116,7 @@ export async function fetchTopActive(limit = 5) {
 }
 
 export async function fetchTopVolume(limit = 5) {
-  const response = await fetch(`${API_BASE_URL}/api/stats/top-volume?limit=${limit}`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-volume?limit=${limit}`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch top volume: ${response.statusText}`);
   }
@@ -119,7 +124,7 @@ export async function fetchTopVolume(limit = 5) {
 }
 
 export async function fetchRecent(limit = 5) {
-  const response = await fetch(`${API_BASE_URL}/api/stats/recent?limit=${limit}`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/recent?limit=${limit}`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch recent: ${response.statusText}`);
   }
@@ -127,7 +132,7 @@ export async function fetchRecent(limit = 5) {
 }
 
 export async function fetchTopCreators(limit = 5) {
-  const response = await fetch(`${API_BASE_URL}/api/stats/top-creators?limit=${limit}`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/top-creators?limit=${limit}`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch top creators: ${response.statusText}`);
   }
@@ -135,7 +140,7 @@ export async function fetchTopCreators(limit = 5) {
 }
 
 export async function fetchUserStats(walletAddress) {
-  const response = await fetch(`${API_BASE_URL}/api/stats/user/${walletAddress}`);
+  const response = await fetch(`${API_BASE_URL}/api/stats/user/${walletAddress}`, { headers: API_HEADERS });
   if (!response.ok) {
     throw new Error(`Failed to fetch user stats: ${response.statusText}`);
   }

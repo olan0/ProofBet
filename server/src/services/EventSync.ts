@@ -12,6 +12,8 @@ dotenv.config();
 const FACTORY_ADDRESS = process.env.FACTORY_ADDRESS!;
 const RPC_URL =  process.env.RPC_URL!;
 const CONFIRMATIONS = parseInt(process.env.CONFIRMATIONS || "0", 10); // blocks to wait for finality
+const DEPLOYMENT_BLOCK = parseInt(process.env.DEPLOYMENT_BLOCK || "0", 10);
+const CHUNK_SIZE = 2000; // Alchemy eth_getLogs max range per request
 
 const provider = new ethers.WebSocketProvider(RPC_URL);
 const factory = new ethers.Contract(FACTORY_ADDRESS, BetFactoryArtifact, provider);
@@ -28,7 +30,7 @@ async function updateLastBlock(blockNumber: number) {
 
 async function getLastProcessedBlock(): Promise<number> {
   const state = await SyncState.findOne({ contract: FACTORY_ADDRESS });
-  return state?.lastProcessedBlock ?? 0;
+  return state?.lastProcessedBlock ?? DEPLOYMENT_BLOCK;
 }
 
 async function getBlockTimestamp(blockNumber: number): Promise<Date> {
@@ -231,115 +233,136 @@ function decodeArgs<T extends any[]>(args: Result): T {
   return args as unknown as T;
 }
 
+async function processEventChunk(events: ethers.Log[]) {
+  const iface = new Interface(BetFactoryArtifact);
+  for (const ev of events) {
+    try {
+      const parsed = iface.parseLog(ev);
+      if (!parsed) {
+        console.warn("⚠️ Failed to parse event log: returned null");
+        continue;
+      }
+      const eventName = parsed.name;
+      const args = parsed.args as Result;
+
+      if (eventName === "BetCreated") {
+        const [betAddress, creator] = decodeArgs<[string, string]>(args);
+        await handleBetCreated(betAddress, creator, ev as any);
+      } else if (eventName === "BetStatusChanged") {
+        const [betAddress, newStatus] = decodeArgs<[string, number]>(args);
+        await handleStatusChanged(betAddress, newStatus, ev as any);
+      } else if (eventName === "BetParticipation") {
+        const [betAddress, participant, position, amountUsdc] = decodeArgs<[string, string, number, bigint]>(args);
+        await handleBetParticipation(betAddress, participant, position, amountUsdc, ev as any);
+      } else if (eventName === "BetVote") {
+        const [betAddress, voter, vote] = decodeArgs<[string, string, number]>(args);
+        await handleBetVote(betAddress, voter, vote, ev as any);
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to parse event log:", err);
+    }
+  }
+}
+
 export async function syncHistoricalEvents() {
   const lastProcessed = await getLastProcessedBlock();
   const latest = await provider.getBlockNumber();
 
-  console.log(
-    `⏳ Scanning historical events [${lastProcessed + 1} → ${latest}]`
-  );
+  if (lastProcessed >= latest) {
+    console.log("✅ Already up to date, no historical sync needed");
+    return;
+  }
 
-  const events = [
-    ...(await factory.queryFilter("BetCreated", lastProcessed + 1, latest)),
-    ...(await factory.queryFilter("BetStatusChanged", lastProcessed + 1, latest)),
-    ...(await factory.queryFilter("BetParticipation", lastProcessed + 1, latest)),
-    ...(await factory.queryFilter("BetVote", lastProcessed + 1, latest)),
-  ];
-const iface = new Interface(BetFactoryArtifact);
-for (const ev of events) {
+  console.log(`⏳ Scanning historical events [${lastProcessed + 1} → ${latest}] in ${CHUNK_SIZE}-block chunks`);
+
+  let totalEvents = 0;
+  for (let from = lastProcessed + 1; from <= latest; from += CHUNK_SIZE) {
+    const to = Math.min(from + CHUNK_SIZE - 1, latest);
+    try {
+      const events = [
+        ...(await factory.queryFilter("BetCreated", from, to)),
+        ...(await factory.queryFilter("BetStatusChanged", from, to)),
+        ...(await factory.queryFilter("BetParticipation", from, to)),
+        ...(await factory.queryFilter("BetVote", from, to)),
+      ];
+      if (events.length > 0) {
+        await processEventChunk(events);
+        totalEvents += events.length;
+      }
+      await updateLastBlock(to);
+      console.log(`  ✓ Chunk [${from} → ${to}] — ${events.length} events`);
+    } catch (err) {
+      console.error(`  ✗ Chunk [${from} → ${to}] failed, will retry on next start:`, err);
+      break;
+    }
+  }
+
+  console.log(`✅ Historical sync complete (${totalEvents} total events)`);
+}
+
+async function waitAndProcess(
+  txHash: string,
+  label: string,
+  handler: () => Promise<void>
+): Promise<void> {
   try {
-    const parsed = iface.parseLog(ev); // decode args + fragment safely
-    if (!parsed) {
-      console.warn("⚠️ Failed to parse event log: returned null");
-      continue;
+    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
+    if (!receipt || receipt.status !== 1) {
+      console.warn(`⚠️ ${label} not finalized (tx ${txHash})`);
+      return;
     }
-    const eventName = parsed.name;
-    const args = parsed.args as Result;
-
-    if (eventName === "BetCreated") {
-      const [betAddress, creator] =  decodeArgs<[string, string]>(args);
-      await handleBetCreated(betAddress, creator,  ev as any);
-    } else if (eventName === "BetStatusChanged") {
-      const [betAddress, newStatus] = decodeArgs<[string, number]>(args);
-      await handleStatusChanged(betAddress, newStatus, ev as any);
-    } else if (eventName === "BetParticipation") {
-      const [betAddress, participant, position, amountUsdc] = decodeArgs<[string, string, number, bigint]>(args);
-      await handleBetParticipation(betAddress, participant, position, amountUsdc, ev as any);
-    } else if (eventName === "BetVote") {
-      const [betAddress, voter, vote] = decodeArgs<[string, string, number]>(args);
-      await handleBetVote(betAddress, voter, vote, ev as any);
-    }
-    
+    await handler();
   } catch (err) {
-    console.warn("⚠️ Failed to parse event log:", err);
+    console.error(`❌ ${label} handler failed:`, err);
   }
 }
 
-  console.log(`✅ Historical sync complete (${events.length} events)`);
-}
-
 export function subscribeLiveEvents() {
-  // BetCreated
-  factory.on("BetCreated", async (betAddress, creator,  event) => {
-    console.log(`📡 Detected BetCreated: ${betAddress}`);
-    //console.log(`📡 Event block number : ${event.blockNumber}`);
-    // Wait for finality
-    const txHash = event.log.transactionHash;
-    console.log(`📡 Waiting for ${CONFIRMATIONS} confirmations for tx ${txHash}...`)  ;
-    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
-    if (!receipt || receipt.status !== 1) {
-      console.warn(`⚠️ BetCreated not finalized for ${betAddress}`);
-      return;
-    }
-    console.log(`receive ${receipt} `)
-    
-    //provider.once(event.blockNumber + CONFIRMATIONS, async () =>
-      handleBetCreated(betAddress, creator,  event as any )
-    //);
+  factory.on("BetCreated", async (betAddress, creator, event) => {
+    console.log(`📡 BetCreated: ${betAddress}`);
+    await waitAndProcess(event.log.transactionHash, "BetCreated", () =>
+      handleBetCreated(betAddress, creator, event as any)
+    );
   });
 
-  // StatusChanged
-  factory.on("BetStatusChanged", async (betAddress, newStatus, reason,event) => {
-    console.log(`📡 Detected StatusChanged → ${newStatus} with reason ${reason}`);
-    // Wait for finality
-    const txHash = event.log.transactionHash;
-    console.log(`📡 Waiting for ${CONFIRMATIONS} confirmations for tx ${txHash}...`)  ;
-    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
-    if (!receipt || receipt.status !== 1) {
-      console.warn(`⚠️ StatusChanged not finalized for ${betAddress}`);
-      return;
-    }
-    handleStatusChanged(betAddress, newStatus, event)
-    
+  factory.on("BetStatusChanged", async (betAddress, newStatus, reason, event) => {
+    console.log(`📡 StatusChanged → ${newStatus} (${reason})`);
+    await waitAndProcess(event.log.transactionHash, "BetStatusChanged", () =>
+      handleStatusChanged(betAddress, newStatus, event as any)
+    );
   });
-  // --- BetParticipation ---
+
   factory.on("BetParticipation", async (betAddress, participant, position, amountUsdc, event) => {
-    console.log(`📡 Detected BetParticipation: ${participant} bet ${amountUsdc}`);
-    const txHash = event.log.transactionHash;
-    console.log(`⏳ Waiting for ${CONFIRMATIONS} confirmations for tx ${txHash}...`);
-    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
-    if (!receipt || receipt.status !== 1) {
-      console.warn(`⚠️ BetParticipation not finalized for ${betAddress}`);
-      return;
-    }
-    await handleBetParticipation(betAddress, participant, position, amountUsdc, event as any);
+    console.log(`📡 BetParticipation: ${participant} bet ${amountUsdc}`);
+    await waitAndProcess(event.log.transactionHash, "BetParticipation", () =>
+      handleBetParticipation(betAddress, participant, position, amountUsdc, event as any)
+    );
   });
 
-  // --- BetVote ---
   factory.on("BetVote", async (betAddress, voter, vote, event) => {
-    console.log(`📡 Detected BetVote: ${voter} voted ${vote}`);
-    const txHash = event.log.transactionHash;
-    console.log(`⏳ Waiting for ${CONFIRMATIONS} confirmations for tx ${txHash}...`);
-    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
-    if (!receipt || receipt.status !== 1) {
-      console.warn(`⚠️ BetVote not finalized for ${betAddress}`);
-      return;
-    }
-    await handleBetVote(betAddress, voter, vote, event as any);
+    console.log(`📡 BetVote: ${voter} voted ${vote}`);
+    await waitAndProcess(event.log.transactionHash, "BetVote", () =>
+      handleBetVote(betAddress, voter, vote, event as any)
+    );
   });
 
+  // Periodically save the current block so restarts don't re-scan the whole chain
+  const HEARTBEAT_MS = 5 * 60 * 1000; // every 5 minutes
+  setInterval(async () => {
+    try {
+      const block = await provider.getBlockNumber();
+      await updateLastBlock(block);
+      console.log(`💓 Heartbeat: lastProcessedBlock saved as ${block}`);
+    } catch (err) {
+      console.warn("⚠️ Heartbeat block save failed:", err);
+    }
+  }, HEARTBEAT_MS);
 
-
+  // Detect WebSocket disconnection and reconnect
+  (provider.websocket as any).on?.("close", () => {
+    console.warn("⚠️ WebSocket closed — restarting EventSync in 5s...");
+    setTimeout(() => initEventSync(), 5000);
+  });
 
   console.log("🔔 Subscribed to BetFactory live events");
 }

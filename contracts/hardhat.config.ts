@@ -2,6 +2,8 @@ import type { HardhatUserConfig } from "hardhat/config";
 
 import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 import { configVariable } from "hardhat/config";
+import * as dotenv from "dotenv";
+dotenv.config();
 
 const config: HardhatUserConfig = {
   plugins: [hardhatToolboxMochaEthersPlugin],
@@ -54,7 +56,18 @@ const config: HardhatUserConfig = {
       type: "http",
       chainType: "l1",
       url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+      // Keys live in the Hardhat keystore — never in .env.
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY    (account 1: deployer / creator)
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_2  (account 2: bettor YES)
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_3  (account 3: bettor NO)
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_4  (account 4: voter 1)
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_5  (account 5: voter 2)
+      // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_6  (account 6: voter 3)
+      // Set SIGNER_COUNT=6 in .env to activate all six accounts.
+      accounts: (["SEPOLIA_PRIVATE_KEY","SEPOLIA_PRIVATE_KEY_2","SEPOLIA_PRIVATE_KEY_3","SEPOLIA_PRIVATE_KEY_4","SEPOLIA_PRIVATE_KEY_5","SEPOLIA_PRIVATE_KEY_6"]
+        .slice(0, parseInt(process.env.SIGNER_COUNT ?? "1", 10))
+        .map(k => configVariable(k))
+      ),
     },
   },
 };

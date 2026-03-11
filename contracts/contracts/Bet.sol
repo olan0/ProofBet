@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 
 interface ITrustScore {
-    function getScore(address user) external view returns (uint256);
+    function getScore(address user) external view returns (int16);
 }
 
 interface IBetFactory {
@@ -21,6 +21,7 @@ interface IBetFactory {
     function factoryLogBetParticipation(address participant,uint8 _position, uint256 _amountUsdc) external;
     function factoryLogVote(address voter, uint8 _vote ) external;
     function factoryLogBetCompletion(address creator,uint8 newStatus) external;
+    function factoryApplyPenalty(address user) external;
     function banCreator(address creator) external;
     function proofCollateralUsdc() external view returns (uint256);
     function notifyBetStatusChange(address betAddress,uint8 newStatus,string calldata reason) external;
@@ -293,10 +294,6 @@ contract Bet is ReentrancyGuard, Pausable {
         require(position == Side.YES || position == Side.NO, "Bad side");
         require(amountUsdc >= details.minimumBetAmount, "Stake too low");
 
-        if (details.minimumTrustScore > 0) {
-            require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust too low");
-        }
-
         (uint256 uUsdc, ) = betFactory.getInternalBalances(msg.sender);
         if (msg.sender == creator) {
             require(uUsdc >= amountUsdc * 2, "Creator needs extra collateral");
@@ -396,6 +393,7 @@ contract Bet is ReentrancyGuard, Pausable {
         if (block.timestamp < details.proofDeadline) return;
 
         _cancel(CancelReason.NO_PROOF, Side.NONE);
+        betFactory.factoryLogBetCompletion(creator, uint8(_status));
         betFactory.banCreator(creator);
     }
 
@@ -413,7 +411,7 @@ contract Bet is ReentrancyGuard, Pausable {
 
         VoterInfo storage info = voters[msg.sender];
         require(info.vote == Side.NONE, "Already voted");
-        require(trustScoreContract.getScore(msg.sender) >= details.minimumTrustScore, "Trust too low");
+        require(trustScoreContract.getScore(msg.sender) >= int16(uint16(details.minimumTrustScore)), "Trust too low");
 
         uint256 stakeAmt = betFactory.calculateRequiredStake(msg.sender);
      
@@ -654,16 +652,18 @@ contract Bet is ReentrancyGuard, Pausable {
 
                 uint256 winnersStakeTotal = (outcomeSide == Side.YES) ? snapTotalYesProofStake : snapTotalNoProofStake;
                 uint256 forfeitedProof = snapInvalidLosingVoterTotalStakeProof;
-                
+
                 if (winnersStakeTotal > 0 && forfeitedProof > 0) {
                     proofOut += (forfeitedProof * v.stakeProof) / winnersStakeTotal;
                 }
 
                 uint256 winnersCount = (outcomeSide == Side.YES) ? yesVotes : noVotes;
-                
+
                 if (winnersCount > 0 && snapVoterRewardPoolUsdc > 0) {
                     usdcOut += snapVoterRewardPoolUsdc / winnersCount;
                 }
+            } else {
+                betFactory.factoryApplyPenalty(msg.sender);
             }
 
         } else {
