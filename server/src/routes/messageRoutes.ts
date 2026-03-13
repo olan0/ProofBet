@@ -1,8 +1,17 @@
 import express from "express";
+import { ethers } from "ethers";
 import { MessageService } from "../services/MessageService";
 import { io } from "../server";
 
 const router = express.Router();
+
+const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+function verifySig(message: string, signature: string, timestamp: number, expected: string): boolean {
+  if (Date.now() - timestamp > MAX_AGE_MS) return false;
+  const recovered = ethers.verifyMessage(`${message}:${timestamp}`, signature).toLowerCase();
+  return recovered === expected.toLowerCase();
+}
 
 router.get("/", async (req, res) => {
   try {
@@ -30,8 +39,18 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
+    const { bet_address, sender_address, message, signature, timestamp } = req.body;
+
+    if (!signature || !timestamp) {
+      return res.status(401).json({ error: "Signature required" });
+    }
+
+    const payload = `proofbet:message:${bet_address}:${message}`;
+    if (!verifySig(payload, signature, Number(timestamp), sender_address)) {
+      return res.status(401).json({ error: "Invalid or expired signature" });
+    }
+
     const msg = await MessageService.createMessage(req.body);
-     // Emit to all connected clients
     io.emit("newMessage", msg);
     res.status(201).json(msg);
   } catch (err) {

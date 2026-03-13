@@ -2,9 +2,16 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Wallet, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Wallet, AlertCircle, Loader2, RefreshCw, Lock, Copy, Check, Link } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPageUrl } from "@/utils";
+import {
+  getPrivateKey,
+  extractKeyFromHash,
+  savePrivateKey,
+  encryptProofUrl,
+  buildInviteLink,
+} from "../utils/betCrypto";
 
 import BetDetailHeader from "../components/betting/BetDetailHeader";
 import BetStats from "../components/betting/BetStats";
@@ -104,6 +111,12 @@ export default function BetDetails() {
   const [isCreator, setIsCreator] = useState(false);
   const [appSettings, setAppSettings] = useState(null);
   const [isProcessingTx, setIsProcessingTx] = useState(false);
+  const [isPrivateBet, setIsPrivateBet] = useState(false);
+  const [privateKey, setPrivateKey] = useState(null);
+  const [isRegistered, setIsRegistered] = useState(false);
+
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [showInviteLink, setShowInviteLink] = useState(false);
   
   const betAddress = new URLSearchParams(location.search).get("address");
   const effectiveStatus = useMemo(() => getEffectiveStatus(bet), [bet]);
@@ -213,6 +226,23 @@ export default function BetDetails() {
         category: CATEGORY_MAP[Number(details.category)] || 'Other',
         proof_type: PROOF_TYPE_MAP[Number(details.proofType)] || 'Other',
       };
+      // ─── Private bet handling ────────────────────────────────────────
+      const betIsPrivate = await betContract.isPrivate();
+      if (betIsPrivate) {
+        setIsPrivateBet(true);
+        // Use connectedAddr (not walletAddress state, which may still be null)
+        let key = extractKeyFromHash();
+        if (key) savePrivateKey(address, key, connectedAddr);
+        else key = getPrivateKey(address, connectedAddr);
+        if (key) setPrivateKey(key);
+        // Check on-chain registration status for connected wallet
+        if (connectedAddr) {
+          const registered = await betContract.isRegistered(connectedAddr);
+          setIsRegistered(registered);
+        }
+      }
+      // ────────────────────────────────────────────────────────────────
+
       setBet(betData);
       setWalletAddress(connectedAddr);
       setIsCreator(connectedAddr && creatorAddress.toLowerCase() === connectedAddr.toLowerCase());
@@ -258,7 +288,11 @@ export default function BetDetails() {
     try {
       const betContract = getBetContract(bet.address, true);
       setIsProcessingTx(true);
-      const tx = await betContract.submitProof(proofUrl);
+      // Encrypt proof URL for private bets before submitting on-chain
+      const urlToSubmit = isPrivateBet && privateKey
+        ? await encryptProofUrl(proofUrl, privateKey)
+        : proofUrl;
+      const tx = await betContract.submitProof(urlToSubmit);
       await tx.wait();
       loadBetDetails(betAddress);
     } catch (err) {
@@ -267,6 +301,13 @@ export default function BetDetails() {
     } finally {
       setIsProcessingTx(false);
     }
+  };
+
+  const handleCopyInviteLink = () => {
+    if (!privateKey) return;
+    navigator.clipboard.writeText(buildInviteLink(betAddress, privateKey));
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2000);
   };
 
   const handleKeeperAction = async () => {
@@ -353,6 +394,7 @@ export default function BetDetails() {
     );
   }
 
+
   if (error || !bet) {
     return (
       <div className="min-h-screen bg-gray-900 p-6 text-center flex flex-col items-center justify-center">
@@ -382,6 +424,87 @@ export default function BetDetails() {
           </Button>
 
           <KeeperButton />
+
+          {/* Private bet banner */}
+          {isPrivateBet && (
+            <Card className="bg-purple-900/30 border-purple-700/50">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Lock className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-purple-200 font-medium text-sm">Private Bet</p>
+                      <p className="text-purple-400 text-xs">
+                        {isCreator
+                          ? "You created this private bet. Share the invite link with participants."
+                          : privateKey
+                            ? "You have the invite key — you can bet and vote."
+                            : "You need an invite link to participate. Paste the key or open the invite link."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    {isCreator && (
+                      <Button
+                        size="sm"
+                        onClick={() => setShowInviteLink(v => !v)}
+                        className="bg-purple-800 hover:bg-purple-700 text-white"
+                      >
+                        <Link className="w-4 h-4 mr-1" />
+                        {showInviteLink ? "Hide Link" : "Show Invite Link"}
+                      </Button>
+                    )}
+                    {!privateKey && walletAddress && !isCreator && (
+                      <input
+                        type="text"
+                        placeholder="Paste invite key..."
+                        className="text-xs bg-gray-800 border border-purple-700 rounded px-2 py-1 text-white w-48"
+                        onPaste={(e) => {
+                          const key = e.clipboardData.getData("text").trim();
+                          if (/^[0-9a-fA-F]{64}$/.test(key)) {
+                            savePrivateKey(betAddress, key, walletAddress);
+                            setPrivateKey(key);
+                          }
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Invite link panel — creator only */}
+                {isCreator && showInviteLink && (
+                  <div className="pt-1 space-y-2">
+                    {privateKey ? (
+                      <>
+                        <p className="text-xs text-purple-300">Invite link (contains the key — keep it private):</p>
+                        <div className="flex gap-2">
+                          <input
+                            readOnly
+                            value={buildInviteLink(betAddress, privateKey)}
+                            className="flex-1 text-xs bg-gray-900 border border-purple-700 rounded px-2 py-1 text-purple-200 font-mono"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={handleCopyInviteLink}
+                            className="bg-purple-700 hover:bg-purple-600 text-white flex-shrink-0"
+                          >
+                            {copiedInvite ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-purple-400">
+                          Raw key: <span className="font-mono">{privateKey.slice(0, 16)}…{privateKey.slice(-8)}</span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-yellow-400">
+                        Invite key not found in this browser. If you created this bet on another device, the key cannot be recovered here.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <BetDetailHeader bet={{ ...bet, effectiveStatus }} />
           
@@ -435,8 +558,12 @@ export default function BetDetails() {
                   walletConnected={!!walletAddress}
                   walletAddress={walletAddress}
                   onRequestWalletConnect={connectWallet}
-                  loadBetDetails={() => loadBetDetails(betAddress)} 
+                  loadBetDetails={() => loadBetDetails(betAddress)}
                   isProcessingTx={isProcessingTx}
+                  isPrivateBet={isPrivateBet}
+                  privateKey={privateKey}
+                  isRegistered={isRegistered}
+                  onRegistered={() => setIsRegistered(true)}
                 />
               )}
             </div>

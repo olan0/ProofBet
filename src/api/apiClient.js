@@ -1,4 +1,6 @@
 // API client for REST endpoints
+import axios from 'axios';
+
 const API_BASE_URL = typeof window !== 'undefined' && window.ENV?.API_BASE_URL
   ? window.ENV.API_BASE_URL
   : (import.meta.env?.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3000');
@@ -7,6 +9,9 @@ const API_HEADERS = {
   'Content-Type': 'application/json',
   ...(import.meta.env?.VITE_API_KEY ? { 'x-api-key': import.meta.env.VITE_API_KEY } : {}),
 };
+
+// Pre-configured axios instance with API key — use this instead of raw axios
+export const apiAxios = axios.create({ headers: API_HEADERS });
 
 /**
  * Fetch bets from REST API with filters, sorting, and pagination

@@ -24,7 +24,7 @@ export const io = new Server(server, {
   cors: { origin: allowedOrigin },
 });
 
-app.use(cors({ origin: allowedOrigin }));
+app.use(cors({ origin: allowedOrigin, allowedHeaders: ["Content-Type", "x-api-key"] }));
 app.use(express.json());
 app.use("/api", apiKeyMiddleware);
 

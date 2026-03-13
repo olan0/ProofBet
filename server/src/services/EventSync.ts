@@ -157,34 +157,42 @@ async function handleBetVote(
 async function handleBetCreated(
   betId: string,
   creator: string,
+  isPrivateBet: boolean,
+  inviteKeyHash: string,
   event: ethers.EventLog
 ) {
-  
+
   const createdAt = await getBlockTimestamp(event.blockNumber);
   const details = await fetchBetDetails(betId);
   await Bet.updateOne(
     { betId },
     {
-      betId,
-      creator: creator.toLowerCase(),
-      title: details.title,
-      description: details.description,
-      category: Number(details.category),
-      proofType: Number(details.proofType),
-      bettingDeadline: Number(details.bettingDeadline),
-      proofDeadline: Number(details.proofDeadline),
-      votingDeadline: Number(details.votingDeadline),
-      status: 0,
-      createdAt,
-      blockNumber: event.blockNumber,
-      txHash: event.transactionHash,
-      totalYesStake: 0,
-      totalNoStake: 0,
-      yesVotes: 0,
-      noVotes: 0,
-      invalidVotes: 0,
-      totalParticipants: 0,
-      totalVotes: 0
+      $set: {
+        betId,
+        creator: creator.toLowerCase(),
+        // For private bets the on-chain title is a placeholder; encrypted content
+        // is stored separately via POST /api/bets/:id/private-content
+        title: isPrivateBet ? "[PRIVATE]" : details.title,
+        description: isPrivateBet ? "[PRIVATE]" : details.description,
+        category: Number(details.category),
+        proofType: Number(details.proofType),
+        bettingDeadline: Number(details.bettingDeadline),
+        proofDeadline: Number(details.proofDeadline),
+        votingDeadline: Number(details.votingDeadline),
+        status: 0,
+        isPrivate: isPrivateBet,
+        inviteKeyHash: inviteKeyHash,
+        createdAt,
+        blockNumber: event.blockNumber,
+        txHash: event.transactionHash,
+        totalYesStake: 0,
+        totalNoStake: 0,
+        yesVotes: 0,
+        noVotes: 0,
+        invalidVotes: 0,
+        totalParticipants: 0,
+        totalVotes: 0
+      }
     },
     { upsert: true }
   );
@@ -246,8 +254,8 @@ async function processEventChunk(events: ethers.Log[]) {
       const args = parsed.args as Result;
 
       if (eventName === "BetCreated") {
-        const [betAddress, creator] = decodeArgs<[string, string]>(args);
-        await handleBetCreated(betAddress, creator, ev as any);
+        const [betAddress, creator, isPrivateBet, inviteKeyHash] = decodeArgs<[string, string, boolean, string]>(args);
+        await handleBetCreated(betAddress, creator, isPrivateBet, inviteKeyHash, ev as any);
       } else if (eventName === "BetStatusChanged") {
         const [betAddress, newStatus] = decodeArgs<[string, number]>(args);
         await handleStatusChanged(betAddress, newStatus, ev as any);
@@ -318,10 +326,10 @@ async function waitAndProcess(
 }
 
 export function subscribeLiveEvents() {
-  factory.on("BetCreated", async (betAddress, creator, event) => {
-    console.log(`📡 BetCreated: ${betAddress}`);
+  factory.on("BetCreated", async (betAddress, creator, isPrivateBet, inviteKeyHash, event) => {
+    console.log(`📡 BetCreated: ${betAddress} (private: ${isPrivateBet})`);
     await waitAndProcess(event.log.transactionHash, "BetCreated", () =>
-      handleBetCreated(betAddress, creator, event as any)
+      handleBetCreated(betAddress, creator, isPrivateBet, inviteKeyHash, event as any)
     );
   });
 

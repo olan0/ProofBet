@@ -108,6 +108,11 @@ contract Bet is ReentrancyGuard, Pausable {
     Status private _status;
     CancelReason public cancelReason;
 
+    // ======== PRIVATE BET ========
+    bool public isPrivate;
+    bytes32 public inviteKeyHash;
+    mapping(address => bool) public isRegistered;
+
     uint256 public totalYesStake;
     uint256 public totalNoStake;
     uint256 public participantsCount;
@@ -162,14 +167,25 @@ contract Bet is ReentrancyGuard, Pausable {
     // ======== INIT ========
     bool private initialized;
 
-  
+    modifier onlyAccessible() {
+        if (isPrivate) {
+            require(
+                isRegistered[msg.sender] || msg.sender == creator,
+                "Private bet: need invite key to participate"
+            );
+        }
+        _;
+    }
+
     function initialize(
         BetDetails memory _details,
         address _creator,
         address _betFactory,
         address _trustScore,
         address _usdcToken,
-        address _proofToken
+        address _proofToken,
+        bool _isPrivate,
+        bytes32 _inviteKeyHash
     ) external {
         require(!initialized, "Already initialized");
         initialized = true;
@@ -196,12 +212,18 @@ contract Bet is ReentrancyGuard, Pausable {
         require(_details.proofDeadline >= _details.bettingDeadline + 1 hours, "Proof phase too short");
         require(_details.votingDeadline >= _details.proofDeadline + 1 hours, "Voting phase too short");
         
+        if (_isPrivate) {
+            require(_inviteKeyHash != bytes32(0), "Private bet requires key hash");
+        }
+
         details = _details;
         creator = _creator;
         betFactory = IBetFactory(_betFactory);
         trustScoreContract = ITrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken);
+        isPrivate = _isPrivate;
+        inviteKeyHash = _inviteKeyHash;
 
         _status = Status.OPEN_FOR_BETS;
         cancelReason = CancelReason.NONE;
@@ -231,6 +253,19 @@ contract Bet is ReentrancyGuard, Pausable {
     function unpause() external {
         require(msg.sender == address(betFactory), "Only factory");
         _unpause();
+    }
+
+    // ======== PRIVATE BET REGISTRATION ========
+
+    /**
+     * @notice Self-register for a private bet by proving you know the invite key.
+     * @param key The raw 32-byte invite key (keccak256(key) must equal inviteKeyHash).
+     */
+    function registerWithKey(bytes32 key) external {
+        require(isPrivate, "Not a private bet");
+        require(!isRegistered[msg.sender], "Already registered");
+        require(keccak256(abi.encodePacked(key)) == inviteKeyHash, "Invalid invite key");
+        isRegistered[msg.sender] = true;
     }
 
     // ======== VIEW FUNCTIONS ========
@@ -288,7 +323,7 @@ contract Bet is ReentrancyGuard, Pausable {
     // ======== BETTING ========
     
   
-    function placeBet(Side position, uint256 amountUsdc) external nonReentrant whenNotPaused {
+    function placeBet(Side position, uint256 amountUsdc) external nonReentrant whenNotPaused onlyAccessible {
         require(_status == Status.OPEN_FOR_BETS, "Invalid status");
         require(block.timestamp < details.bettingDeadline, "Betting closed");
         require(position == Side.YES || position == Side.NO, "Bad side");
@@ -369,22 +404,30 @@ contract Bet is ReentrancyGuard, Pausable {
     function _isValidUrlScheme(bytes memory urlBytes) private pure returns (bool) {
         if (urlBytes.length >= 8) {
             // Check for "https://"
-            if (urlBytes[0] == 'h' && urlBytes[1] == 't' && urlBytes[2] == 't' && 
-                urlBytes[3] == 'p' && urlBytes[4] == 's' && urlBytes[5] == ':' && 
+            if (urlBytes[0] == 'h' && urlBytes[1] == 't' && urlBytes[2] == 't' &&
+                urlBytes[3] == 'p' && urlBytes[4] == 's' && urlBytes[5] == ':' &&
                 urlBytes[6] == '/' && urlBytes[7] == '/') {
                 return true;
             }
         }
-        
+
         if (urlBytes.length >= 7) {
             // Check for "ipfs://"
-            if (urlBytes[0] == 'i' && urlBytes[1] == 'p' && urlBytes[2] == 'f' && 
-                urlBytes[3] == 's' && urlBytes[4] == ':' && urlBytes[5] == '/' && 
+            if (urlBytes[0] == 'i' && urlBytes[1] == 'p' && urlBytes[2] == 'f' &&
+                urlBytes[3] == 's' && urlBytes[4] == ':' && urlBytes[5] == '/' &&
                 urlBytes[6] == '/') {
                 return true;
             }
         }
-        
+
+        if (urlBytes.length >= 6) {
+            // Check for "enc://" — encrypted proof URL for private bets
+            if (urlBytes[0] == 'e' && urlBytes[1] == 'n' && urlBytes[2] == 'c' &&
+                urlBytes[3] == ':' && urlBytes[4] == '/' && urlBytes[5] == '/') {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -400,7 +443,7 @@ contract Bet is ReentrancyGuard, Pausable {
     // ======== VOTING ========
     
   
-    function vote(Side v) external nonReentrant whenNotPaused {
+    function vote(Side v) external nonReentrant whenNotPaused onlyAccessible {
         require(_status == Status.VOTING, "Invalid status");
         require(block.timestamp < details.votingDeadline, "Voting closed");
         require(v == Side.YES || v == Side.NO || v == Side.INVALID, "Bad vote");

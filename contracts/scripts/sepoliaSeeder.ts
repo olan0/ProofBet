@@ -13,13 +13,15 @@
  * Scenarios created
  * ─────────────────
  *   1  OPEN               7-day betting deadline, active bets
- *   2  AWAITING_PROOF     betting closed, creator has not submitted proof yet
- *   3  VOTING             proof submitted, voting open
- *   4  COMPLETED YES      YES votes > NO → YES bettors win
- *   5  COMPLETED NO       NO  votes > YES → NO  bettors win
- *   6  CANCELLED NO_PROOF proof deadline passed, no proof submitted
- *   7  CANCELLED INVALID  majority voted INVALID (bad proof)
- *   8  CANCELLED TIE      YES votes = NO votes, no majority
+ *   2  OPEN               7-day betting deadline (PROOF coin market)
+ *   3  OPEN PRIVATE       7-day deadline, invite-key gated (key: "proofbet-secret-2026")
+ *   4  AWAITING_PROOF     betting closed, creator has not submitted proof yet
+ *   5  VOTING             proof submitted, voting open
+ *   6  COMPLETED YES      YES votes > NO → YES bettors win
+ *   7  COMPLETED NO       NO  votes > YES → NO  bettors win
+ *   8  CANCELLED NO_PROOF proof deadline passed, no proof submitted
+ *   9  CANCELLED INVALID  majority voted INVALID (bad proof)
+ *  10  CANCELLED TIE      YES votes = NO votes, no majority
  *
  * Prerequisites (contracts/.env)
  * ───────────────────────────────
@@ -46,14 +48,37 @@
 
 import { network } from "hardhat";
 import { ethers as ethersLib } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import * as dotenv from "dotenv";
 dotenv.config();
 
-// ─── Addresses ───────────────────────────────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
-const FACTORY_ADDRESS = "0x30F9bAac593f974c31d9aFD4D0915Cb5fbC6d1f5";
-const PROOF_ADDRESS   = "0xC0383bf30268239Cae53aF9B98b7070813b9D3db";
-const USDC_ADDRESS    = "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238";
+// ─── Addresses (read from Ignition deployment artifacts) ─────────────────────
+
+const deployedAddressesPath = path.join(
+  __dirname, "..", "ignition", "deployments", "chain-11155111", "deployed_addresses.json"
+);
+if (!fs.existsSync(deployedAddressesPath)) {
+  console.error(`\n❌ deployed_addresses.json not found at:\n   ${deployedAddressesPath}`);
+  console.error("\n   Deploy contracts first:");
+  console.error("   npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia");
+  process.exit(1);
+}
+const _deployed = JSON.parse(fs.readFileSync(deployedAddressesPath, "utf8"));
+
+const FACTORY_ADDRESS = _deployed["SepoliaProofBetModule#BetFactory"];
+const PROOF_ADDRESS   = _deployed["SepoliaProofBetModule#ProofToken"];
+const USDC_ADDRESS    = _deployed["SepoliaProofBetModule#IERC20"];
+
+if (!FACTORY_ADDRESS || !PROOF_ADDRESS || !USDC_ADDRESS) {
+  console.error("\n❌ One or more required addresses missing from deployed_addresses.json");
+  console.error(JSON.stringify(_deployed, null, 2));
+  process.exit(1);
+}
 
 // ─── Timing (seconds from market creation) ───────────────────────────────────
 
@@ -65,9 +90,7 @@ const BUFFER       = 30;           // extra buffer past each deadline
 
 // ─── Token amounts ───────────────────────────────────────────────────────────
 
-const USDC_PER_ACCOUNT  = ethersLib.parseUnits("100", 6);   // enough for all bets
-const PROOF_PER_ACCOUNT = ethersLib.parseEther("3000");     // enough for creation + voting
-const BET_SIZE          = ethersLib.parseUnits("10", 6);    // 10 USDC per bet
+const BET_SIZE = ethersLib.parseUnits("10", 6);    // 10 USDC per bet
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -108,7 +131,7 @@ async function main() {
   const [creator, bettorYes, bettorNo, voter1, voter2, voter3] = signers;
 
   console.log("\n════════════════════════════════════════════════════");
-  console.log("  ProofBet Sepolia Seeder — 4 accounts, 8 scenarios");
+  console.log("  ProofBet Sepolia Seeder — 6 accounts, 9 scenarios");
   console.log("════════════════════════════════════════════════════");
   console.log(`  Account 1 creator    ${creator.address}`);
   console.log(`  Account 2 bettorYes  ${bettorYes.address}`);
@@ -117,18 +140,17 @@ async function main() {
   console.log(`  Account 5 voter2     ${voter2.address}`);
   console.log(`  Account 6 voter3     ${voter3.address}`);
 
-  const factory    = await ethers.getContractAt("BetFactory", FACTORY_ADDRESS) as any;
-  const proofToken = await ethers.getContractAt("ProofToken", PROOF_ADDRESS)   as any;
-  const usdcToken  = await ethers.getContractAt("IERC20",     USDC_ADDRESS)    as any;
+  const factory = await ethers.getContractAt("BetFactory", FACTORY_ADDRESS) as any;
 
   // ── 4. Create all markets ─────────────────────────────────────────────────
   console.log("\n[4/6] Creating markets...");
 
-  // Raise the active-bet limit so the creator can open all 8 markets at once
+  // Raise the active-bet limit high enough for multiple seeder runs (each run adds ~3 long-lived bets)
+  const SEEDER_LIMIT = 30;
   const currentLimit = Number(await factory.maxActiveBetsPerUser());
-  if (currentLimit < 10) {
-    process.stdout.write("  Setting maxActiveBetsPerUser to 10...");
-    await (await factory.connect(creator).setMaxActiveBetsPerUser(10)).wait();
+  if (currentLimit < SEEDER_LIMIT) {
+    process.stdout.write(`  Setting maxActiveBetsPerUser to ${SEEDER_LIMIT}...`);
+    await (await factory.connect(creator).setMaxActiveBetsPerUser(SEEDER_LIMIT)).wait();
     process.stdout.write(" ✅\n");
   }
 
@@ -145,7 +167,7 @@ async function main() {
   const long  = { bettingDeadline: ts + 86400 * 7, proofDeadline: ts + 86400 * 8, votingDeadline: ts + 86400 * 9 };
 
   async function create(details: object): Promise<string> {
-    const tx = await factory.connect(creator).createBet(details);
+    const tx = await factory.connect(creator).createBet(details, false, ethers.ZeroHash);
     const r  = await tx.wait();
     return getBetAddress(factory, r);
   }
@@ -162,6 +184,26 @@ async function main() {
     return addr;
   }
 
+  async function createPrivateAndBet(label: string, details: object, inviteKey: string): Promise<string> {
+    const keyBytes = ethersLib.encodeBytes32String(inviteKey);
+    const keyHash  = ethersLib.keccak256(keyBytes);
+    process.stdout.write(`  Creating ${label}...`);
+    const tx = await factory.connect(creator).createBet(details, true, keyHash);
+    const r  = await tx.wait();
+    const addr = getBetAddress(factory, r);
+    process.stdout.write(` ✅ ${addr}\n`);
+    const bet = await ethers.getContractAt("Bet", addr) as any;
+    await (await bet.connect(bettorYes).registerWithKey(keyBytes)).wait();
+    await (await bet.connect(bettorNo ).registerWithKey(keyBytes)).wait();
+    await (await bet.connect(voter1   ).registerWithKey(keyBytes)).wait();
+    await (await bet.connect(voter2   ).registerWithKey(keyBytes)).wait();
+    await (await bet.connect(voter3   ).registerWithKey(keyBytes)).wait();
+    await (await bet.connect(bettorYes).placeBet(1, BET_SIZE)).wait();
+    await (await bet.connect(bettorNo ).placeBet(2, BET_SIZE)).wait();
+    console.log(`    🔒 key="${inviteKey}"  hash=${keyHash.slice(0, 10)}...`);
+    return addr;
+  }
+
   const betOpen = await createAndBet("Market 1: OPEN (7-day) cold shower", {
     ...base, ...long, category: 6, proofType: 2,
     title:       "Will @CoachMike complete a 30-day cold shower challenge and stream every morning?",
@@ -169,6 +211,12 @@ async function main() {
   });
 
   const addrs: Record<string, string> = {};
+
+  addrs.privateBet = await createPrivateAndBet("Market 3: OPEN PRIVATE (private challenge)", {
+    ...base, ...long, category: 6, proofType: 2,
+    title:       "Will @CryptoChad complete a 7-day no-social-media detox? (private)",
+    description: "A private challenge between friends. Chad has committed to zero social media usage for 7 days. Only invited participants can view and bet on this market.",
+  }, "proofbet-secret-2026");
 
   addrs.proofCoin = await createAndBet("Market 2: OPEN (7-day) PROOF coin", {
     ...base, ...long, category: 1, proofType: 4,
@@ -344,9 +392,12 @@ async function main() {
   console.log("  Seeding complete!");
   console.log("════════════════════════════════════════════════════");
 
+  console.log(`\n  🔒 Private bet invite key: "proofbet-secret-2026"`);
+
   const rows: [string, string][] = [
     ["OPEN cold shower",       betOpen],
     ["OPEN PROOF coin $1",     addrs.proofCoin],
+    ["OPEN PRIVATE",           addrs.privateBet],
     ["AWAITING_PROOF",         addrs.awaitingProof],
     ["VOTING",                 addrs.voting],
     ["COMPLETED YES",          addrs.completedYes],
@@ -358,6 +409,9 @@ async function main() {
   for (const [state, addr] of rows) {
     console.log(`  ${state.padEnd(22)} ${addr}`);
   }
+
+  // ABIs, addresses, and server/.env are synced automatically by the
+  // post-deploy hook in hardhat.config.ts when `ignition deploy` runs.
 }
 
 main().catch(err => {

@@ -8,11 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, Camera, AlertCircle, Info, Wallet, Plus, Loader2 } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, AlertCircle, Info, Wallet, Plus, Loader2, Lock, Copy, Check, Link } from "lucide-react";
 import { format } from "date-fns";
 import { ethers } from "ethers";
+
+import {
+  generateBetKey,
+  hexKeyToBytes32,
+  buildInviteLink,
+  savePrivateKey,
+} from "../utils/betCrypto";
 
 // Import contract utilities
 import {
@@ -20,7 +28,8 @@ import {
   getTrustScoreContract,
   connectWallet,
   getConnectedAddress,
-  formatAddress
+  formatAddress,
+  getBlockTimestamp,
 } from "../components/blockchain/contracts";
 
 export default function CreateBet() {
@@ -49,6 +58,7 @@ export default function CreateBet() {
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [dateErrors, setDateErrors] = useState({ bettingDeadline: "", proofDeadline: "", votingDeadline: "" });
   const [contractSettings, setContractSettings] = useState({
     creationFeeProof: 0,
     voteStakeAmountProof: 0,
@@ -66,6 +76,15 @@ export default function CreateBet() {
   const [userTrustScore, setUserTrustScore] = useState(null);
   const [banThreshold, setBanThreshold] = useState(-20);
 
+  // Block timestamp (may differ from wall-clock on local Hardhat after evm_increaseTime)
+  const [blockTime, setBlockTime] = useState(null);
+
+  // Private bet
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [inviteKey, setInviteKey] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
+
   // Check for wallet connection on mount AND listen for account changes
   useEffect(() => {
     const checkWallet = async () => {
@@ -76,6 +95,8 @@ export default function CreateBet() {
         await loadContractData(address);
         await checkBannedStatus(address);
       }
+      const bt = await getBlockTimestamp();
+      setBlockTime(bt);
       setLoading(false);
     };
     checkWallet();
@@ -215,6 +236,20 @@ export default function CreateBet() {
     }
   };
 
+  const handlePrivateToggle = (checked) => {
+    setIsPrivate(checked);
+    if (checked && !inviteKey) {
+      const key = generateBetKey();
+      setInviteKey(key);
+    }
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(inviteLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const handleConnectWallet = async () => {
     const address = await connectWallet();
     if (address) {
@@ -233,27 +268,81 @@ export default function CreateBet() {
 
   const combineDateAndTime = (date, timeStr) => {
     if (!date) return null;
-    const [hours, minutes] = timeStr.split(':').map(Number);
+    const parts = (timeStr || "23:59").split(':').map(Number);
+    const hours = Number.isFinite(parts[0]) ? parts[0] : 23;
+    const minutes = Number.isFinite(parts[1]) ? parts[1] : 59;
     const result = new Date(date);
     result.setHours(hours, minutes, 0, 0);
-    return result;
+    return isNaN(result.getTime()) ? null : result;
   };
 
   const handleDeadlineDateChange = (dateField, timeField, date) => {
-    setFormData(prev => ({
-      ...prev,
-      [dateField]: combineDateAndTime(date, prev[timeField]),
-    }));
+    setFormData(prev => {
+      const updated = { ...prev, [dateField]: combineDateAndTime(date, prev[timeField]) };
+      setDateErrors(validateDates(updated));
+      return updated;
+    });
     setError("");
   };
 
   const handleDeadlineTimeChange = (dateField, timeField, timeStr) => {
-    setFormData(prev => ({
-      ...prev,
-      [timeField]: timeStr,
-      [dateField]: combineDateAndTime(prev[dateField], timeStr),
-    }));
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [timeField]: timeStr,
+        [dateField]: combineDateAndTime(prev[dateField], timeStr),
+      };
+      setDateErrors(validateDates(updated));
+      return updated;
+    });
     setError("");
+  };
+
+  // Parse yyyy-MM-dd from <input type="date"> and combine with existing time
+  const handleDeadlineDirectInput = (dateField, timeField, rawValue) => {
+    if (!rawValue) {
+      setFormData(prev => {
+        const updated = { ...prev, [dateField]: null };
+        setDateErrors(validateDates(updated));
+        return updated;
+      });
+      return;
+    }
+    const [y, m, d] = rawValue.split("-").map(Number);
+    const parsed = new Date(y, m - 1, d);
+    setFormData(prev => {
+      const updated = { ...prev, [dateField]: combineDateAndTime(parsed, prev[timeField]) };
+      setDateErrors(validateDates(updated));
+      return updated;
+    });
+    setError("");
+  };
+
+  const validateDates = (data, refTime) => {
+    const errors = { bettingDeadline: "", proofDeadline: "", votingDeadline: "" };
+    const now = refTime || blockTime || new Date();
+    const HOUR_MS = 60 * 60 * 1000;
+
+    if (data.bettingDeadline && data.bettingDeadline <= now) {
+      errors.bettingDeadline = "Betting deadline must be in the future.";
+    }
+    if (data.proofDeadline && data.proofDeadline <= now) {
+      errors.proofDeadline = "Proof deadline must be in the future.";
+    }
+    if (data.votingDeadline && data.votingDeadline <= now) {
+      errors.votingDeadline = "Voting deadline must be in the future.";
+    }
+    if (data.bettingDeadline && data.proofDeadline) {
+      if (data.proofDeadline - data.bettingDeadline < HOUR_MS) {
+        errors.proofDeadline = "Proof deadline must be at least 1 hour after betting deadline.";
+      }
+    }
+    if (data.proofDeadline && data.votingDeadline) {
+      if (data.votingDeadline - data.proofDeadline < HOUR_MS) {
+        errors.votingDeadline = "Voting deadline must be at least 1 hour after proof deadline.";
+      }
+    }
+    return errors;
   };
 
   const handleSubmit = async (e) => {
@@ -288,10 +377,18 @@ export default function CreateBet() {
       return;
     }
 
-    // Note: formData.category and formData.proofType are collected but not passed to contract in betDetails struct.
-    // However, they are kept in validation as required fields for UI/future use.
     if (!formData.title || !formData.description || !formData.category || !formData.proofType || !formData.bettingDeadline || !formData.proofDeadline || !formData.votingDeadline) {
       setError("Please fill out all required fields.");
+      return;
+    }
+
+    // Re-fetch block timestamp at submit time to catch local Hardhat time drift
+    const freshBlockTime = await getBlockTimestamp();
+    setBlockTime(freshBlockTime);
+    const dErrors = validateDates(formData, freshBlockTime);
+    if (Object.values(dErrors).some(Boolean)) {
+      setDateErrors(dErrors);
+      setError("Please fix the date errors before submitting.");
       return;
     }
 
@@ -300,20 +397,12 @@ export default function CreateBet() {
 
     try {
       const factory = getBetFactoryContract(true); // with signer for transactions
-      
-      // REMOVED: The approval is no longer needed. The factory contract will
-      // deduct the fee from the user's internal balance directly.
-      // const proofToken = getProofTokenContract(true);
-      // const creationFeeWei = ethers.parseEther(contractSettings.creationFeeProof.toString());
-      // const approveTx = await proofToken.approve(await factory.getAddress(), creationFeeWei);
-      // await approveTx.wait();
 
       const bettingDeadlineTimestamp = Math.floor(formData.bettingDeadline.getTime() / 1000);
       const proofDeadlineTimestamp = Math.floor(formData.proofDeadline.getTime() / 1000);
       const votingDeadlineTimestamp = Math.floor(formData.votingDeadline.getTime() / 1000);
 
-      // Map category and proof type to enum values
-    const categoryMap = {
+      const categoryMap = {
         'crypto': 1, 'sports': 2, 'politics': 3, 'finance': 4,
         'entertainment': 5, 'personal': 6, 'other': 7
       };
@@ -321,15 +410,14 @@ export default function CreateBet() {
         'video': 1, 'livestream': 2, 'document': 3, 'oracle': 4, 'other': 5
       };
 
-      // Create the bet details struct with ALL required fields
       const betDetails = {
-        creator: walletAddress, // This will be overridden by the contract
+        creator: walletAddress,
         title: formData.title,
         description: formData.description,
         bettingDeadline: bettingDeadlineTimestamp,
         proofDeadline: proofDeadlineTimestamp,
         votingDeadline: votingDeadlineTimestamp,
-        minimumBetAmount: ethers.parseUnits(formData.minimumBetAmount, 6), // USDC has 6 decimals
+        minimumBetAmount: ethers.parseUnits(formData.minimumBetAmount, 6),
         minimumSideStake: ethers.parseUnits(formData.minimumSideStake, 6),
         minimumTrustScore: parseInt(formData.minimumTrustScore),
         minimumVotes: parseInt(formData.minimumVotes) || 3,
@@ -337,14 +425,41 @@ export default function CreateBet() {
         proofType: proofTypeMap[formData.proofType] || 5
       };
 
-      // Create the bet on the blockchain - The contract now handles the fee deduction.
-      const createTx = await factory.createBet(betDetails);
+      // Compute on-chain invite key hash (keccak256 of the raw 32-byte key)
+      const inviteKeyHash = isPrivate
+        ? ethers.keccak256(hexKeyToBytes32(inviteKey))
+        : ethers.ZeroHash;
+
+      const createTx = await factory.createBet(betDetails, isPrivate, inviteKeyHash);
       const receipt = await createTx.wait();
 
-      console.log("Bet created successfully:", receipt);
-      
-      // Navigate back to dashboard
-      navigate(createPageUrl("Dashboard"));
+      // Extract new bet address from BetCreated event
+      // betAddress is not indexed so it's in log.data, not topics — use interface.parseLog
+      const factoryIface = getBetFactoryContract().interface;
+      let newBetAddress = null;
+      for (const log of receipt.logs) {
+        try {
+          const parsed = factoryIface.parseLog(log);
+          if (parsed?.name === "BetCreated") {
+            newBetAddress = parsed.args.betAddress;
+            break;
+          }
+        } catch {}
+      }
+
+      if (isPrivate && newBetAddress) {
+        savePrivateKey(newBetAddress, inviteKey, walletAddress);
+        const link = buildInviteLink(newBetAddress, inviteKey);
+        setInviteLink(link);
+        setCreating(false);
+        return; // stay on page to show invite link
+      }
+
+      if (newBetAddress) {
+        navigate(`/BetDetails?address=${newBetAddress}`);
+      } else {
+        navigate(createPageUrl("Dashboard"));
+      }
 
     } catch (error) {
       console.error("Error creating bet:", error);
@@ -455,6 +570,16 @@ export default function CreateBet() {
           </Alert>
         )}
 
+        {/* Block time warning — shown when local node time diverges from wall clock */}
+        {blockTime && Math.abs(blockTime - new Date()) > 60_000 && (
+          <Alert className="mb-6 bg-yellow-900/20 border-yellow-500/50">
+            <AlertCircle className="h-4 w-4 text-yellow-400" />
+            <AlertDescription className="text-yellow-200 text-sm">
+              Local node time: <strong>{format(blockTime, 'yyyy-MM-dd HH:mm')}</strong> — deadlines must be after this time, not your system clock.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Insufficient funds guidance for both PROOF and USDC */}
         {walletConnected && hasInsufficientFunds && (
           <Card className="bg-yellow-900/20 border-yellow-500/50 mb-6">
@@ -487,6 +612,42 @@ export default function CreateBet() {
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Go to Wallet & Deposit Tokens
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Invite link — shown after private bet is created */}
+        {inviteLink && (
+          <Card className="bg-purple-900/30 border-purple-600 mb-6">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <Link className="w-6 h-6 text-purple-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-purple-200 mb-1">Private Bet Created!</h3>
+                  <p className="text-sm text-purple-300 mb-3">
+                    Share this invite link with people you want to participate. The key in the link is the only way to access the bet content — keep it safe.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={inviteLink}
+                      className="bg-gray-900 border-purple-600 text-purple-200 text-sm font-mono"
+                    />
+                    <Button
+                      onClick={copyInviteLink}
+                      className="bg-purple-700 hover:bg-purple-600 text-white flex-shrink-0"
+                    >
+                      {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    onClick={() => navigate(createPageUrl("Dashboard") + "?tab=private")}
+                    className="mt-3 bg-gray-700 hover:bg-gray-600 text-white"
+                  >
+                    Go to Private Tab
                   </Button>
                 </div>
               </div>
@@ -670,106 +831,92 @@ export default function CreateBet() {
                 </div>
               </div>
 
+              {/* Private Bet Toggle */}
+              <div className="flex items-start gap-4 p-4 bg-gray-750 border border-gray-600 rounded-lg">
+                <Lock className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-white font-medium">Private Bet</p>
+                      <p className="text-sm text-gray-400 mt-0.5">
+                        Content encrypted end-to-end. Only people with your invite link can view details, bet, and vote.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={isPrivate}
+                      onCheckedChange={handlePrivateToggle}
+                      className="ml-4"
+                    />
+                  </div>
+                  {isPrivate && (
+                    <div className="mt-3 p-3 bg-purple-900/30 border border-purple-700/50 rounded-md space-y-2">
+                      <p className="text-xs text-purple-300 font-medium">
+                        A unique invite key has been generated. Share the invite link after creating the bet.
+                      </p>
+                      <p className="text-xs text-gray-400 font-mono break-all">
+                        Key: {inviteKey.slice(0, 16)}...{inviteKey.slice(-8)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Deadlines */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Betting Closes *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.bettingDeadline ? format(formData.bettingDeadline, 'PPP HH:mm') : 'Select deadline'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={formData.bettingDeadline}
-                        onSelect={(date) => handleDeadlineDateChange('bettingDeadline', 'bettingTime', date)}
-                        disabled={(date) => date < new Date()}
-                        className="text-white"
-                      />
-                      <div className="p-3 border-t border-gray-600">
-                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
+                {[
+                  { label: 'Betting Closes', dateField: 'bettingDeadline', timeField: 'bettingTime' },
+                  { label: 'Proof Deadline', dateField: 'proofDeadline',   timeField: 'proofTime'    },
+                  { label: 'Voting Deadline', dateField: 'votingDeadline', timeField: 'votingTime'   },
+                ].map(({ label, dateField, timeField }) => {
+                  const today = new Date(); today.setHours(0, 0, 0, 0);
+                  const dateVal = formData[dateField] && !isNaN(formData[dateField].getTime())
+                    ? format(formData[dateField], 'yyyy-MM-dd')
+                    : '';
+                  return (
+                    <div key={dateField} className="space-y-2">
+                      <Label className="text-gray-300">{label} *</Label>
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={dateVal}
+                          min={format(today, 'yyyy-MM-dd')}
+                          onChange={(e) => handleDeadlineDirectInput(dateField, timeField, e.target.value)}
+                          className="flex-1 bg-gray-700 border border-gray-600 text-white rounded px-2 py-2 text-sm"
+                        />
                         <input
                           type="time"
-                          value={formData.bettingTime}
-                          onChange={(e) => handleDeadlineTimeChange('bettingDeadline', 'bettingTime', e.target.value)}
-                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
+                          value={formData[timeField]}
+                          onChange={(e) => handleDeadlineTimeChange(dateField, timeField, e.target.value)}
+                          className="w-24 bg-gray-700 border border-gray-600 text-white rounded px-2 py-2 text-sm"
                         />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 flex-shrink-0"
+                            >
+                              <CalendarIcon className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="end">
+                            <Calendar
+                              mode="single"
+                              selected={formData[dateField]}
+                              onSelect={(date) => handleDeadlineDateChange(dateField, timeField, date)}
+                              disabled={(date) => date < today}
+                              className="text-white"
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Proof Deadline *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.proofDeadline ? format(formData.proofDeadline, 'PPP HH:mm') : 'Select deadline'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={formData.proofDeadline}
-                        onSelect={(date) => handleDeadlineDateChange('proofDeadline', 'proofTime', date)}
-                        disabled={(date) => date < new Date()}
-                        className="text-white"
-                      />
-                      <div className="p-3 border-t border-gray-600">
-                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
-                        <input
-                          type="time"
-                          value={formData.proofTime}
-                          onChange={(e) => handleDeadlineTimeChange('proofDeadline', 'proofTime', e.target.value)}
-                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
-                        />
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Voting Deadline *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.votingDeadline ? format(formData.votingDeadline, 'PPP HH:mm') : 'Select deadline'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-gray-700 border-gray-600" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={formData.votingDeadline}
-                        onSelect={(date) => handleDeadlineDateChange('votingDeadline', 'votingTime', date)}
-                        disabled={(date) => date < new Date()}
-                        className="text-white"
-                      />
-                      <div className="p-3 border-t border-gray-600">
-                        <Label className="text-gray-300 text-xs mb-1 block">Time</Label>
-                        <input
-                          type="time"
-                          value={formData.votingTime}
-                          onChange={(e) => handleDeadlineTimeChange('votingDeadline', 'votingTime', e.target.value)}
-                          className="w-full bg-gray-600 border border-gray-500 text-white rounded px-2 py-1 text-sm"
-                        />
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                      {dateErrors[dateField] && (
+                        <p className="text-red-400 text-xs">{dateErrors[dateField]}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Submit Button */}

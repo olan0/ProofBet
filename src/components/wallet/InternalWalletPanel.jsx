@@ -16,10 +16,10 @@ import {
     ShieldCheck,
     User
 } from "lucide-react";
-import { getBetFactoryContract, getUsdcTokenContract, getProofTokenContract } from "../blockchain/contracts";
+import { getBetFactoryContract, getUsdcTokenContract, getProofTokenContract, signPayload } from "../blockchain/contracts";
 
 import { ethers } from "ethers";
-import axios from "axios";
+import { apiAxios } from "@/api/apiClient";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
 
@@ -74,7 +74,7 @@ export default function InternalWalletPanel({ walletAddress }) {
         if (!walletAddress) return;
         
         try {
-            const res = await axios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${walletAddress.toUpperCase()}`);
+            const res = await apiAxios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${walletAddress.toUpperCase()}`);
             setUserAlias(res.data.alias);;
             
         } catch (err) {
@@ -110,9 +110,12 @@ export default function InternalWalletPanel({ walletAddress }) {
         setSuccess("");
         
         try {
-                await axios.post(`${apiBaseUrl.replace("/api", "")}/api/users`, {
+                const { signature, timestamp } = await signPayload(`proofbet:alias:${walletAddress.toUpperCase()}:${trimmedAlias}`);
+                await apiAxios.post(`${apiBaseUrl.replace("/api", "")}/api/users`, {
                 wallet_address: walletAddress.toUpperCase(),
                 alias: trimmedAlias,
+                signature,
+                timestamp,
                 });
             
             

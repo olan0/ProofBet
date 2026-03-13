@@ -29,6 +29,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
     mapping(address => uint256) public internalProofBalance;
 
     uint256 public creationFeeProof;
+    uint256 public privateBetFeeProof;
     uint256 public voteStakeAmountProof;
     uint256 public minVoteStake; // FIX High #4: Minimum vote stake (can't be zero)
     uint8 public defaultVoterRewardPercentage;
@@ -50,8 +51,9 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     
     // Events
-    event BetCreated(address betAddress, address creator);
+    event BetCreated(address betAddress, address creator, bool isPrivate, bytes32 inviteKeyHash);
     event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
+    event PrivateBetFeeChanged(uint256 oldFee, uint256 newFee);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
     event DefaultVoterRewardChanged(uint8 oldPercentage, uint8 newPercentage);
     event DefaultPlatformFeeChanged(uint8 oldPercentage, uint8 newPercentage);
@@ -191,17 +193,18 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Bet creation =========
 
-    function createBet(Bet.BetDetails memory _details)
+    function createBet(Bet.BetDetails memory _details, bool _isPrivate, bytes32 _inviteKeyHash)
         external
         nonReentrant
         returns (address)
     {
         uint256 dynamicFee = calculateDynamicCreationFee(_details);
+        if (_isPrivate) dynamicFee += privateBetFeeProof;
         require(internalProofBalance[msg.sender] >= dynamicFee, "Insufficient PROOF");
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Too many active bets");
         require(!bannedCreators[msg.sender], "Creator is banned");
         require(internalUsdcBalance[msg.sender] >= proofCollateralUsdc, "Insufficient collateral");
-        
+
         unchecked { internalProofBalance[msg.sender] -= dynamicFee; }
 
         uint256 burnAmount = (dynamicFee * proofToken.feeBurnPercentage()) / 100;
@@ -224,7 +227,9 @@ contract BetFactory is Ownable, ReentrancyGuard {
             address(this),
             address(trustScoreContract),
             address(usdcToken),
-            address(proofToken)
+            address(proofToken),
+            _isPrivate,
+            _inviteKeyHash
         );
         
          if (proofCollateralUsdc > 0) {
@@ -241,7 +246,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         activeBetsCount[msg.sender]++;
         trustScoreContract.logBetCreation(msg.sender);
 
-        emit BetCreated(newBetAddress, msg.sender);
+        emit BetCreated(newBetAddress, msg.sender, _isPrivate, _inviteKeyHash);
         return newBetAddress;
     }
 
@@ -342,8 +347,14 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Admin functions =========
 
-    function setCreationFee(uint256 _newFee) external onlyOwner { 
-        creationFeeProof = _newFee; 
+    function setCreationFee(uint256 _newFee) external onlyOwner {
+        creationFeeProof = _newFee;
+    }
+
+    function setPrivateBetFee(uint256 _newFee) external onlyOwner {
+        uint256 oldFee = privateBetFeeProof;
+        privateBetFeeProof = _newFee;
+        emit PrivateBetFeeChanged(oldFee, _newFee);
     }
     
     function setFeeCollector(address _newCollector) external onlyOwner {
@@ -492,20 +503,20 @@ contract BetFactory is Ownable, ReentrancyGuard {
         view
         returns (
             uint256 creationFee,
+            uint256 privateBetFee,
             uint256 voteStakeAmount,
             uint8 voterRewardPct,
             uint8 platformFeePct,
             uint256 maxActive
-            
         )
     {
         return (
             creationFeeProof,
+            privateBetFeeProof,
             voteStakeAmountProof,
             defaultVoterRewardPercentage,
             defaultPlatformFeePercentage,
             maxActiveBetsPerUser
-    
         );
     }
 

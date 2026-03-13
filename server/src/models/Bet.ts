@@ -19,6 +19,11 @@ const BetSchema = new mongoose.Schema({
   invalidVotes: { type: Number, default: 0 },
   proofUrl: String,
   winningSide: String,
+  // Private bet fields
+  isPrivate: { type: Boolean, default: false, index: true },
+  inviteKeyHash: String,
+  encryptedTitle: String,
+  encryptedDescription: String,
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   resolvedAt: Date,

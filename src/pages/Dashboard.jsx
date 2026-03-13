@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LayoutGrid, List, Loader2, Wallet, Plus, ChevronRight } from "lucide-react";
+import { LayoutGrid, List, Loader2, Wallet, Plus, ChevronRight, Lock, Copy, Check } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ethers } from "ethers";
@@ -15,6 +15,11 @@ import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
 import SearchBar from "../components/betting/SearchBar";
 import { getBetFactoryContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
 import { fetchBets, fetchActivity } from "../api/apiClient";
+import {
+  getPrivateKey,
+  buildInviteLink,
+  removePrivateKey,
+} from "../utils/betCrypto";
 
 const ON_CHAIN_STATUS_MAP = {
   0: "open_for_bets",
@@ -68,6 +73,9 @@ export default function Dashboard() {
   const [apiCursor, setApiCursor] = useState(null);
   const [searchFilters, setSearchFilters] = useState({});
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
+  const [privateBets, setPrivateBets] = useState([]);
+  const [isLoadingPrivate, setIsLoadingPrivate] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(null); // betAddress of copied invite
   const ITEMS_PER_PAGE = 12;
 
   const handleConnectWallet = async () => {
@@ -161,13 +169,45 @@ export default function Dashboard() {
     }
   }, [ITEMS_PER_PAGE, activeTab]);
 
+  const loadPrivateBets = useCallback(async () => {
+    setIsLoadingPrivate(true);
+    try {
+      const response = await fetchBets({ isPrivate: true, limit: 50 });
+      const mappedBets = (response.data || []).map(bet => ({
+        address: bet.betId,
+        title: bet.title,
+        description: bet.description,
+        onChainStatus: ON_CHAIN_STATUS_MAP[bet.status] || 'open_for_bets',
+        bettingDeadline: Number(bet.bettingDeadline),
+        proofDeadline: Number(bet.proofDeadline),
+        votingDeadline: Number(bet.votingDeadline),
+        total_yes_stake_usd: parseFloat(ethers.formatUnits(bet.totalYesStake || '0', 6)),
+        total_no_stake_usd: parseFloat(ethers.formatUnits(bet.totalNoStake || '0', 6)),
+        participants_count: Number(bet.totalParticipants),
+        voters_count: Number(bet.totalVotes),
+        isPrivate: true,
+        inviteKey: getPrivateKey(bet.betId, walletAddress),
+      }));
+      setPrivateBets(mappedBets);
+    } catch (e) {
+      console.error('Error loading private bets:', e);
+      setPrivateBets([]);
+    } finally {
+      setIsLoadingPrivate(false);
+    }
+  }, [walletAddress]);
+
   const loadData = useCallback(() => {
     if (activeTab === 'my-activity') {
       if (walletAddress) loadActivityFromApi(null, false);
       return;
     }
+    if (activeTab === 'private') {
+      loadPrivateBets();
+      return;
+    }
     loadBetsFromApi(null, searchFilters, false);
-  }, [activeTab, walletAddress, searchFilters, loadBetsFromApi, loadActivityFromApi]);
+  }, [activeTab, walletAddress, searchFilters, loadBetsFromApi, loadActivityFromApi, loadPrivateBets]);
 
   // Reset and reload when tab, wallet, or activity filter changes
   useEffect(() => {
@@ -278,6 +318,92 @@ export default function Dashboard() {
     );
   };
 
+  const copyInviteForBet = (bet) => {
+    const link = buildInviteLink(bet.address, bet.inviteKey);
+    navigator.clipboard.writeText(link);
+    setCopiedInvite(bet.address);
+    setTimeout(() => setCopiedInvite(null), 2000);
+  };
+
+  const forgetPrivateBet = (bet) => {
+    removePrivateKey(bet.address, walletAddress);
+    setPrivateBets((prev) => prev.filter((b) => b.address !== bet.address));
+  };
+
+  const renderPrivateList = () => {
+    if (isLoadingPrivate) {
+      return (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+        </div>
+      );
+    }
+
+    if (privateBets.length === 0) {
+      return (
+        <Card className="bg-gray-800 border-gray-700">
+          <CardContent className="p-10 flex flex-col items-center text-center">
+            <Lock className="w-12 h-12 text-purple-400 mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">No Private Bets</h3>
+            <p className="text-gray-400">
+              Open an invite link to access a private bet, or create one via{' '}
+              <Link to={createPageUrl('CreateBet')} className="text-purple-400 hover:underline">
+                Create Market
+              </Link>
+              .
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    const listWithStatus = privateBets.map((bet) => ({
+      ...bet,
+      effectiveStatus: getEffectiveStatus(bet),
+    }));
+
+    const PrivateActions = ({ bet }) => (
+      <div className="absolute top-2 right-2 flex gap-1 z-10">
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Copy invite link"
+          onClick={() => copyInviteForBet(bet)}
+          className="bg-gray-900/80 hover:bg-purple-700 text-purple-300 px-2"
+        >
+          {copiedInvite === bet.address ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          title="Forget this private bet"
+          onClick={() => forgetPrivateBet(bet)}
+          className="bg-gray-900/80 hover:bg-red-700 text-red-400 px-2 text-xs"
+        >✕</Button>
+      </div>
+    );
+
+    return viewMode === 'grid' ? (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {listWithStatus.map((bet) => (
+          <div key={bet.address} className="relative">
+            <BetCard bet={bet} />
+            <PrivateActions bet={bet} />
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="space-y-4">
+        {listWithStatus.map((bet) => (
+          <div key={bet.address} className="relative">
+            <BetRow bet={bet} />
+            <PrivateActions bet={bet} />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderActivityList = () => {
     if (isLoading && activities.length === 0) {
       return (
@@ -340,7 +466,7 @@ export default function Dashboard() {
 
       {walletAddress ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-4 sm:grid-cols-8">
+          <TabsList className="bg-gray-800 border border-gray-700 flex flex-wrap w-full gap-0">
             <TabsTrigger value="my-activity" className="data-[state=active]:bg-purple-600">My Activity</TabsTrigger>
             <TabsTrigger value="all" className="data-[state=active]:bg-cyan-600">All</TabsTrigger>
             <TabsTrigger value="open-for-betting" className="data-[state=active]:bg-cyan-600">Open</TabsTrigger>
@@ -348,6 +474,9 @@ export default function Dashboard() {
             <TabsTrigger value="open-for-voting" className="data-[state=active]:bg-cyan-600">Voting</TabsTrigger>
             <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-600">Resolved</TabsTrigger>
             <TabsTrigger value="cancelled" className="data-[state=active]:bg-cyan-600">Cancelled</TabsTrigger>
+            <TabsTrigger value="private" className="data-[state=active]:bg-purple-700 flex items-center gap-1">
+              <Lock className="w-3 h-3" />Private
+            </TabsTrigger>
             <TabsTrigger value="wallet" className="data-[state=active]:bg-cyan-600">Wallet</TabsTrigger>
           </TabsList>
 
@@ -364,7 +493,17 @@ export default function Dashboard() {
                   <SelectItem value="3">Cast Votes</SelectItem>
                 </SelectContent>
               </Select>
-
+              <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
+                <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
+                  <LayoutGrid className="w-5 h-5"/>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setViewMode('list')} className={`px-3 ${viewMode === 'list' ? 'bg-cyan-600' : ''}`}>
+                  <List className="w-5 h-5"/>
+                </Button>
+              </div>
+            </div>
+          ) : activeTab === 'private' ? (
+            <div className="flex justify-end">
               <div className="inline-flex items-center rounded-md bg-gray-800 p-1 border border-gray-700">
                 <Button variant="ghost" size="sm" onClick={() => setViewMode('grid')} className={`px-3 ${viewMode === 'grid' ? 'bg-cyan-600' : ''}`}>
                   <LayoutGrid className="w-5 h-5"/>
@@ -397,6 +536,7 @@ export default function Dashboard() {
           <TabsContent value="open-for-voting">{renderBetList()}</TabsContent>
           <TabsContent value="completed">{renderBetList()}</TabsContent>
           <TabsContent value="cancelled">{renderBetList()}</TabsContent>
+          <TabsContent value="private">{renderPrivateList()}</TabsContent>
           <TabsContent value="wallet">
             <InternalWalletPanel walletAddress={walletAddress} />
           </TabsContent>

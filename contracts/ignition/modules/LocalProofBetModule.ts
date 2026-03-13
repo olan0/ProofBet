@@ -1,5 +1,5 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
-import ProofBetModule from "./ProofBetModule";
+import ProofBetModule from "./ProofBetModule.js";
 
 // Use this module for local/localhost deployments.
 // Usage: npx hardhat ignition deploy ./ignition/modules/LocalProofBetModule.ts --network localhost

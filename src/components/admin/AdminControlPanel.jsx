@@ -5,6 +5,7 @@ import { getBetFactoryContract, getTrustScoreContract } from '../blockchain/cont
 const FIELDS = [
   { key: 'proofCollateralUsdc',          label: 'USDC Collateral',  fn: 'setProofCollateralUsdc',          read: 'proofCollateralUsdc',          decimals: 6,  unit: 'USDC'  },
   { key: 'creationFeeProof',             label: 'Creation Fee',     fn: 'setCreationFee',                  read: 'creationFeeProof',             decimals: 18, unit: 'PROOF' },
+  { key: 'privateBetFeeProof',           label: 'Private Bet Fee',  fn: 'setPrivateBetFee',                read: 'privateBetFeeProof',           decimals: 18, unit: 'PROOF' },
   { key: 'voteStakeAmountProof',         label: 'Vote Stake',       fn: 'setVoteStakeAmount',              read: 'voteStakeAmountProof',         decimals: 18, unit: 'PROOF' },
   { key: 'maxActiveBetsPerUser',         label: 'Max Active Bets',  fn: 'setMaxActiveBetsPerUser',         read: 'maxActiveBetsPerUser',         decimals: 0,  unit: ''      },
   { key: 'defaultVoterRewardPercentage', label: 'Voter Reward',     fn: 'setDefaultVoterRewardPercentage', read: 'defaultVoterRewardPercentage', decimals: 0,  unit: '%'     },

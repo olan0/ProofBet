@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { UserProfile } from "@/api/entities";
+import { apiAxios, API_BASE_URL } from "@/api/apiClient";
+import { signPayload } from "@/components/blockchain/contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,24 +38,11 @@ export default function AliasManager({ walletAddress, userProfile, onProfileUpda
     return null;
   };
 
-  const checkAliasAvailability = async (aliasToCheck) => {
-    if (!aliasToCheck || aliasToCheck === originalAlias) return true;
-    
-    try {
-      const existingProfiles = await UserProfile.filter({ alias: aliasToCheck });
-      return existingProfiles.length === 0;
-    } catch (error) {
-      console.error("Error checking alias availability:", error);
-      return false;
-    }
-  };
-
   const handleSave = async () => {
     setLoading(true);
     setError("");
     setSuccess("");
 
-    // Validate format
     const validationError = validateAlias(alias);
     if (validationError) {
       setError(validationError);
@@ -62,33 +50,32 @@ export default function AliasManager({ walletAddress, userProfile, onProfileUpda
       return;
     }
 
-    // Check availability
-    const isAvailable = await checkAliasAvailability(alias);
-    if (!isAvailable) {
-      setError("This alias is already taken by another user");
-      setLoading(false);
-      return;
-    }
-
     try {
-      // Update profile
-      const updatedProfile = await UserProfile.update(userProfile.id, {
-        alias: alias.trim() || null // Store null if empty
+      const aliasValue = alias.trim() || null;
+      const { signature, timestamp } = await signPayload(`proofbet:alias:${walletAddress}:${aliasValue ?? ""}`);
+      await apiAxios.post(`${API_BASE_URL}/api/users`, {
+        wallet_address: walletAddress,
+        alias: aliasValue,
+        signature,
+        timestamp,
       });
-      
+
       setOriginalAlias(alias);
       setIsEditing(false);
       setSuccess(alias ? "Alias saved successfully!" : "Alias removed successfully!");
-      
-      // Notify parent component
+
       if (onProfileUpdate) {
         onProfileUpdate({ ...userProfile, alias: alias.trim() || null });
       }
-    } catch (error) {
-      console.error("Error saving alias:", error);
-      setError("Failed to save alias. Please try again.");
+    } catch (err) {
+      console.error("Error saving alias:", err);
+      if (err.response?.status === 409) {
+        setError("This alias is already taken by another user");
+      } else {
+        setError("Failed to save alias. Please try again.");
+      }
     }
-    
+
     setLoading(false);
     setTimeout(() => setSuccess(""), 3000);
   };

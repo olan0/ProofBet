@@ -1,5 +1,6 @@
 // src/routes/betsRoutes.ts
 import express from "express";
+import { ethers } from "ethers";
 import Bet from "../models/Bet";
 
 const router = express.Router();
@@ -47,6 +48,7 @@ const RESERVED_PARAMS = new Set([
   "cursor",
   "user",
   "activity",
+  "isPrivate",
 ]);
 
 function castByField(field: string, raw: unknown) {
@@ -125,7 +127,9 @@ function applyCursor(
 }
 
 function buildBaseMatch(query: any) {
-  const match: any = {};
+  const match: any = query.isPrivate === "true"
+    ? { isPrivate: true }
+    : { isPrivate: { $ne: true } };
 
   for (const [key, value] of Object.entries(query)) {
    
@@ -217,6 +221,49 @@ router.get("/", async (req, res) => {
      
   } catch (err: any) {
     console.error("❌ GET /api/bets failed:", err);
+    res.status(500).json({ error: err?.message ?? "Unknown error" });
+  }
+});
+
+// GET /api/bets/:id — fetch a single bet by contract address (for private tab / invite links)
+router.get("/:id", async (req, res) => {
+  try {
+    const bet = await Bet.findOne({ betId: req.params.id.toLowerCase() });
+    if (!bet) return res.status(404).json({ error: "Bet not found" });
+    res.json(bet);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Unknown error" });
+  }
+});
+
+// POST /api/bets/:id/private-content
+// Store encrypted title/description for a private bet.
+// Requires a wallet signature to verify the caller is the bet creator.
+router.post("/:id/private-content", async (req, res) => {
+  try {
+    const betId = req.params.id.toLowerCase();
+    const { encryptedTitle, encryptedDescription, signature, creator } = req.body;
+
+    if (!encryptedTitle || !encryptedDescription || !signature || !creator) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Verify wallet signature: signer must match the claimed creator
+    const message = `proofbet:private:content:${betId}`;
+    const recovered = ethers.verifyMessage(message, signature).toLowerCase();
+    if (recovered !== creator.toLowerCase()) {
+      return res.status(401).json({ error: "Signature mismatch" });
+    }
+
+    // Upsert — bet may not be in DB yet if EventSync hasn't caught up
+    await Bet.updateOne(
+      { betId },
+      { $set: { encryptedTitle, encryptedDescription, isPrivate: true } },
+      { upsert: true }
+    );
+
+    res.json({ ok: true });
+  } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "Unknown error" });
   }
 });

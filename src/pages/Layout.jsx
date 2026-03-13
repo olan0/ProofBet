@@ -15,7 +15,7 @@ import {
 import { getConnectedAddress, disconnectWallet, formatAddress, connectWallet, getUsdcTokenContract, getProofTokenContract, getBetFactoryContract } from "@/components/blockchain/contracts";
 import { TrustScoreManager } from "@/components/trust/TrustScoreManager";
 import { ethers } from "ethers";
-import axios from "axios";
+import { apiAxios } from "@/api/apiClient";
 
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
@@ -63,7 +63,7 @@ export default function Layout({ children }) {
   const fetchUserAlias = async (address) => {
       if(!address) return;
       try {
-        const res = await axios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
+        const res = await apiAxios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
         setUserAlias(res.data.alias);
          
       } catch (error) {

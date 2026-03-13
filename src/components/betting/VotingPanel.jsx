@@ -22,6 +22,10 @@ export default function VotingPanel({
   onRequestWalletConnect,
   loadBetDetails,
   isProcessingTx,
+  isPrivateBet = false,
+  privateKey = null,
+  isRegistered = false,
+  onRegistered,
 }) {
   const navigate = useNavigate(); 
   const [betAmount, setBetAmount] = useState(String(bet.minimum_bet_amount || 0.01));
@@ -102,6 +106,26 @@ export default function VotingPanel({
   const voteStakeAmount = appSettings?.vote_stake_amount_proof || 10;
   const hasSufficientProofForVote = internalBalances.proof >= voteStakeAmount;
 
+  // For private bets: register with the invite key before placing a bet or voting.
+  // Returns true if already registered or registration succeeded; false on failure.
+  const ensureRegistered = async () => {
+    if (!isPrivateBet || isRegistered || isCreator) return true;
+    if (!privateKey) {
+      setError("You need the invite key to participate in this private bet.");
+      return false;
+    }
+    try {
+      const betContract = getBetContract(bet.address, true);
+      const tx = await betContract.registerWithKey("0x" + privateKey);
+      await tx.wait();
+      if (onRegistered) onRegistered();
+      return true;
+    } catch (err) {
+      setError(err.reason || "Registration failed. Key may be invalid.");
+      return false;
+    }
+  };
+
   const handlePlaceBet = async (side) => {
     setError(null);
     if (!numericBet || numericBet < bet.minimum_bet_amount) {
@@ -122,8 +146,10 @@ export default function VotingPanel({
     }
     setIsLocalProcessing(true);
     try {
+      const ok = await ensureRegistered();
+      if (!ok) { setIsLocalProcessing(false); return; }
       const betContract = getBetContract(bet.address, true);
-      const sideEnum = side === 'yes' ? 1 : 2; // FIX: Use passed side parameter
+      const sideEnum = side === 'yes' ? 1 : 2;
       const amountInSmallestUnit = ethers.parseUnits(numericBet.toString(), 6);
       const tx = await betContract.placeBet(sideEnum, amountInSmallestUnit);
       await tx.wait();
@@ -158,6 +184,8 @@ export default function VotingPanel({
     }
     setIsLocalProcessing(true);
     try {
+      const ok = await ensureRegistered();
+      if (!ok) { setIsLocalProcessing(false); return; }
       const betContract = getBetContract(bet.address, true);
       const voteSideEnum = choice === 'yes' ? 1 : choice === 'no' ? 2 : 3; // 3 = INVALID
       const tx = await betContract.vote(voteSideEnum);
@@ -220,6 +248,11 @@ export default function VotingPanel({
               <Wallet className="w-4 h-4 mr-2" />
               Connect Wallet to Bet
             </Button>
+          ) : isPrivateBet && !privateKey && !isCreator ? (
+            <div className="flex items-center gap-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-md">
+              <AlertCircle className="w-5 h-5 text-purple-400" />
+              <p className="text-purple-300 text-sm">You need the invite link to participate in this private bet.</p>
+            </div>
           ) : isBanned ? (
             <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
               <AlertCircle className="w-5 h-5 text-red-400" />
@@ -274,7 +307,12 @@ export default function VotingPanel({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isBanned || isTrustBanned ? (
+          {isPrivateBet && !privateKey && !isCreator ? (
+            <div className="flex items-center gap-2 p-3 bg-purple-900/20 border border-purple-500/30 rounded-md">
+              <AlertCircle className="w-5 h-5 text-purple-400" />
+              <p className="text-purple-300 text-sm">You need the invite link to participate in this private bet.</p>
+            </div>
+          ) : isBanned || isTrustBanned ? (
             <div className="flex items-center gap-2 p-3 bg-red-900/20 border border-red-500/30 rounded-md">
               <AlertCircle className="w-5 h-5 text-red-400" />
               <p className="text-red-300">

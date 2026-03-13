@@ -129,7 +129,7 @@ describe("Debug ProofBet", function () {
 
     console.log("\nCreating bet...");
     try {
-      const tx = await factory.connect(alice).createBet(details);
+      const tx = await factory.connect(alice).createBet(details, false, ethers.ZeroHash);
       console.log("✓ Transaction sent:", tx.hash);
       
       const receipt = await tx.wait();

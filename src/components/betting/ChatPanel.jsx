@@ -8,7 +8,8 @@ import { formatDistanceToNow } from "date-fns";
 //import { Message } from "@/entities/Message";
 import AddressDisplay from "@/components/common/AddressDisplay";
 import { io } from "socket.io-client";
-import axios from "axios";
+import { apiAxios } from "@/api/apiClient";
+import { signPayload } from "@/components/blockchain/contracts";
 
 
 
@@ -32,7 +33,7 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
       if (search) params.search = search;
       if (walletAddress) params.walletAddress = walletAddress;
 
-      const res = await axios.get(`${apiBaseUrl}/messages`, { params });
+      const res = await apiAxios.get(`${apiBaseUrl}/messages`, { params });
       setMessages(res.data.messages); 
     } catch (error) {
       console.error("Error loading messages:", error);
@@ -79,10 +80,14 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
     try {
 
 
-      await axios.post(`${apiBaseUrl}/messages`, {
+      const text = newMessage.trim();
+      const { signature, timestamp } = await signPayload(`proofbet:message:${betAddress}:${text}`);
+      await apiAxios.post(`${apiBaseUrl}/messages`, {
         bet_address: betAddress,
         sender_address: walletAddress,
-        message: newMessage.trim(),
+        message: text,
+        signature,
+        timestamp,
       });
       
       setNewMessage("");
