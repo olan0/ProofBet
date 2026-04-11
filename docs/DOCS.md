@@ -84,7 +84,7 @@ Use the Wallet tab to deposit USDC and PROOF tokens from your personal wallet in
 
 Browse markets, place bets, create markets, and vote on outcomes using your internal balances.
 
-Internal Wallet Placing Bets Creating Markets Voting Resolution The Internal Wallet System
+Internal Wallet Placing Bets Creating Markets Private Bets Voting Resolution The Internal Wallet System
 
 To save on gas fees and improve user experience, ProofBet uses an internal wallet system. Instead of approving every single transaction, you deposit funds once into the platform's smart contract, and all subsequent actions (betting, creating, voting) use this internal balance.
 
@@ -124,6 +124,38 @@ The default base duration (D) is 7 days, configurable by the platform.
 {\[ "Navigate to 'Create Market' (requires wallet connection)", "Fill in the market title and a detailed description", "Set the category and the required proof type (e.g., video, photo)", "Configure financial parameters like minimum bet amount", "Set the three key deadlines for the market lifecycle", "Confirm the transaction. The PROOF fee will be deducted from your internal wallet.", "Your market goes live immediately for others to participate." \].map((step, index) => (
 
 ))}
+
+Private Bets
+
+Private bets are invite-only markets. Only participants who know the join key can request to join. The creator controls who gets in and can close the bet to new participants at any time.
+
+#### How the Join Key Works
+
+When creating a private bet the creator sets a plaintext key (e.g. a channel password). The platform hashes it with keccak256 and stores only the hash on-chain — the plaintext never touches the blockchain.
+
+When a participant enters the key and clicks **"Join with Key"**, the contract verifies `keccak256(input) == joinKeyHash`. If it matches, the request proceeds.
+
+#### Auto-Approve Mode
+
+Anyone with the correct key is instantly registered — no further action needed from the creator. Optionally set a participant cap (e.g. max 10 auto-approved).
+
+#### Manual Approval Mode
+
+The correct key queues the request. The creator must review each request and click **Approve** or **Reject**. Use **Accept All / Reject All** for bulk actions.
+
+#### Creator Flow
+
+{\[ "Enable 'Private Bet' when creating the market.", "Set a join key — share this with your community (Discord, Telegram, etc.).", "Choose Auto-Approve (instant access) or Manual Approval (review each request).", "On the bet page, view pending requests and approve or reject individually or in bulk.", "Toggle 'Accepting Participants' off to stop new join requests at any time." \].map((step, index) => (
+
+))}
+
+#### Participant Flow
+
+{\[ "Receive the join key from the creator (shared off-chain).", "Open the private bet page and enter the key in the 'Join with Key' field.", "In Auto-Approve mode you are instantly registered and can place bets.", "In Manual mode your request is queued — wait for creator approval, then register to finalise your spot.", "Rejected requests are blacklisted and cannot re-apply." \].map((step, index) => (
+
+))}
+
+**Important:** The join key is stored in your browser's local storage after creation. If you clear your browser data or switch devices, the key will not be visible on the bet page. Always save your join key somewhere safe before sharing it.
 
 Community Voting System
 
@@ -262,6 +294,6 @@ The higher your Trust Score and account age, the less PROOF you need to stake wh
 
 `Smart Contract Architecture```   ProofBet runs on a modular system of smart contracts, ensuring transparency, security, and trustless execution. The core logic is split between a central factory and individual market contracts.  {[ { name: "BetFactory.sol", purpose: "The central hub for creating and managing all prediction markets.", features: ["Creates new Bet contracts", "Manages internal USDC/PROOF wallets", "Sets platform-wide fees", "Maintains market registry"] }, { name: "Bet.sol", purpose: "An individual, self-contained contract for a single market.", features: ["Handles all betting logic", "Manages proof submission", "Counts votes & determines outcome", "Processes claims & refunds"] }, { name: "ProofToken.sol", purpose: "The platform's utility and governance token.", features: ["ERC-20 standard token", "Used for fees and voting stakes", "Future governance capabilities"] } ].map((contract) => (  {contract.features.map((feature) => (  ))}  ))}  Key Concepts  #### Internal Wallet System  - Internal wallet system: users deposit to `BetFactory`, then use internal balances for bets/votes.   - Each `Bet` contract sets `winningSide` to NONE/YES/NO or now **INVALID** when proof fails verification.   - In the INVALID PROOF scenario, creator collateral is forfeited and redistributed among bettors and voters, claimable on-chain.   - `getResolutionInfo()` returns `rewardPerWinningVoter` even in INVALID PROOF cases so frontend can display individual voter awards.  #### Keeper Functions  Functions like `checkAndCloseBetting` and `checkAndResolve` are public and can be called by anyone (a "keeper"). This allows for decentralized, automated maintenance of market statuses once deadlines have passed.       ``
 
-``)} {activeSection === "api" && (  Technical Specifications  ### Blockchain Details  Network: Ethereum Sepolia Testnet  Solidity Version: ^0.8.19  Token Standards: ERC-20  Security Audits: Planned  ### Contract Addresses (Sepolia)  USDC: `0x1c7d4b196cb0c7b01d743fbc6116a902379c7238`  PROOF: `0xC0383bf30268239Cae53aF9B98b7070813b9D3db`  BetFactory: `0x30F9bAac593f974c31d9aFD4D0915Cb5fbC6d1f5`  TrustScore: `0xCB1a1d56f14F42278aDbe94361c8280B9B542D61`  Frontend Integration  #### Required Libraries  -   • ethers.js v6 -   • react + react-dom -   • MetaMask or EIP-1193 compatible wallet  #### Key Functions  -   • createBet(...) -   • placeBet(betId, side, amount) -   • submitProof(betId, proofUrl) -   • vote(betId, voteChoice) — *voteChoice may be YES, NO or INVALID_PROOF -   • getResolutionInfo(betId) — returns status, winningSide (YES/NO/INVALID), rewardPerWinningVoter, etc.(betId)  )} {activeSection === "roadmap" && (  Development Roadmap {[ { phase: "Phase 1: Core Platform Launch", status: "Completed", color: "green", timeline: "Q3 2025", features: [ "Dual-token system (USDC & PROOF)", "Core bet creation, betting, and voting logic", "Internal wallet system for gasless actions", "Smart contract deployment on Sepolia testnet", "Web3 wallet connectivity and basic UI" ] }, { phase: "Phase 2: UX & Feature Polish", status: "In Progress", color: "blue", timeline: "Q4 2025", features: [ "Advanced market filtering and search capabilities", "Mobile-first responsive design improvements", "Social features (e.g., user aliases) and enhanced profiles", "Real-time UI updates for market status changes", "Comprehensive documentation portal" ] }, { phase: "Phase 3: DeFi & Scalability", status: "Planned", color: "purple", timeline: "Q1-Q2 2026", features: [ "PROOF token staking to earn yield from platform revenue", "Lending protocol integration to enable betting without selling assets", "Personalized analytics and statistics dashboard", "Live streaming integration for real-time proof", "Cross-chain support (e.g., Polygon, Arbitrum) for lower gas fees" ] }, { phase: "Phase 4: Decentralized Governance", status: "Vision", color: "orange", timeline: "Q3 2026 and beyond", features: [ "DAO formation for community governance", "On-chain voting with PROOF tokens for platform proposals", "Community-managed treasury", "Public API for third-party developers", "Expansion into enterprise prediction solutions" ] } ].map((phase) => (  {phase.features.map((feature) => (  ))}  ))}  )}``
+``)} {activeSection === "api" && (  Technical Specifications  ### Blockchain Details  Network: Ethereum Sepolia Testnet  Solidity Version: ^0.8.19  Token Standards: ERC-20  Security Audits: Planned  ### Contract Addresses (Sepolia)  USDC: `0x1c7d4b196cb0c7b01d743fbc6116a902379c7238`  PROOF: `0xC0383bf30268239Cae53aF9B98b7070813b9D3db`  BetFactory: `0x30F9bAac593f974c31d9aFD4D0915Cb5fbC6d1f5`  TrustScore: `0xCB1a1d56f14F42278aDbe94361c8280B9B542D61`  Frontend Integration  #### Required Libraries  -   • ethers.js v6 -   • react + react-dom -   • MetaMask or EIP-1193 compatible wallet  #### Key Functions  -   • createBet(...) -   • placeBet(betId, side, amount) -   • submitProof(betId, proofUrl) -   • vote(betId, voteChoice) — *voteChoice may be YES, NO or INVALID_PROOF -   • getResolutionInfo(betId) — returns status, winningSide (YES/NO/INVALID), rewardPerWinningVoter, etc.(betId)  )} {activeSection === "roadmap" && (  Development Roadmap {[ { phase: "Phase 1: Core Platform Launch", status: "Completed", color: "green", timeline: "Q4 2025", features: [ "Dual-token system (USDC & PROOF)", "Core bet creation, betting, and voting logic", "Internal wallet system for gasless actions", "Smart contract deployment on Sepolia testnet", "Web3 wallet connectivity and basic UI" ] }, { phase: "Phase 2: UX & Feature Polish", status: "In Progress", color: "blue", timeline: "Q1-Q2 2026", features: [ "Advanced market filtering and search capabilities", "Mobile-first responsive design improvements", "Social features (e.g., user aliases) and enhanced profiles", "Real-time UI updates for market status changes", "Comprehensive documentation portal" ] }, { phase: "Phase 3: DeFi & Scalability", status: "Planned", color: "purple", timeline: "Q3-Q4 2026", features: [ "PROOF token staking to earn yield from platform revenue", "Lending protocol integration to enable betting without selling assets", "Personalized analytics and statistics dashboard", "Live streaming integration for real-time proof", "Cross-chain support (e.g., Polygon, Arbitrum) for lower gas fees" ] }, { phase: "Phase 4: Decentralized Governance", status: "Vision", color: "orange", timeline: "2027 and beyond", features: [ "DAO formation for community governance", "On-chain voting with PROOF tokens for platform proposals", "Community-managed treasury", "Public API for third-party developers", "Expansion into enterprise prediction solutions" ] } ].map((phase) => (  {phase.features.map((feature) => (  ))}  ))}  )}``
 
 `); }`
