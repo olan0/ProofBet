@@ -23,7 +23,7 @@ if (!FACTORY_ADDRESS) console.warn("⚠️ FACTORY_ADDRESS is not configured —
 let provider: ethers.WebSocketProvider | null = null;
 let factory: ethers.Contract | null = null;
 
-function getProvider() {
+function getProvider(): ethers.WebSocketProvider {
   if (!provider) {
     if (!RPC_URL) {
       throw new Error("RPC_URL environment variable is not set. Blockchain sync is disabled.");
@@ -40,11 +40,11 @@ function getProvider() {
   return provider;
 }
 
-function getFactory() {
+function getFactory(): ethers.Contract {
   if (!factory) {
     getProvider(); // Ensure provider is initialized
   }
-  return factory;
+  return factory!;
 }
 
 // ----------- UTILITIES -----------
@@ -386,7 +386,7 @@ export function subscribeLiveEvents() {
   const HEARTBEAT_MS = 5 * 60 * 1000; // every 5 minutes
   setInterval(async () => {
     try {
-      const block = await provider.getBlockNumber();
+      const block = await getProvider().getBlockNumber();
       await updateLastBlock(block);
       console.log(`💓 Heartbeat: lastProcessedBlock saved as ${block}`);
     } catch (err) {
@@ -395,7 +395,8 @@ export function subscribeLiveEvents() {
   }, HEARTBEAT_MS);
 
   // Detect WebSocket disconnection and reconnect
-  (getProvider().websocket as any).on?.("close", () => {
+  const ws = getProvider().websocket as any;
+  ws.on?.("close", () => {
     console.warn("⚠️ WebSocket closed — restarting EventSync in 5s...");
     setTimeout(() => initEventSync(), 5000);
   });
