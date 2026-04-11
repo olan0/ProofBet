@@ -157,8 +157,8 @@ export default function Statistics() {
                   <p className="text-2xl font-bold text-white">{userStats.marketsCreated || userStats.betsCreated || 0}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-400">Total Volume</p>
-                  <p className="text-2xl font-bold text-green-400">${formatUSDC(userStats.totalVolumeCreated || userStats.totalVolume)}</p>
+                  <p className="text-sm text-gray-400">Total Staked</p>
+                  <p className="text-2xl font-bold text-green-400">${formatUSDC(userStats.totalStaked)}</p>
                 </div>
                 {userStats.betsPlaced !== undefined && (
                   <div>

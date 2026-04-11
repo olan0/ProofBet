@@ -2,16 +2,11 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Wallet, AlertCircle, Loader2, RefreshCw, Lock, Copy, Check, Link } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { ArrowLeft, Wallet, AlertCircle, Loader2, RefreshCw, Lock, Users, UserCheck, UserX, Clock, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPageUrl } from "@/utils";
-import {
-  getPrivateKey,
-  extractKeyFromHash,
-  savePrivateKey,
-  encryptProofUrl,
-  buildInviteLink,
-} from "../utils/betCrypto";
 
 import BetDetailHeader from "../components/betting/BetDetailHeader";
 import BetStats from "../components/betting/BetStats";
@@ -112,11 +107,20 @@ export default function BetDetails() {
   const [appSettings, setAppSettings] = useState(null);
   const [isProcessingTx, setIsProcessingTx] = useState(false);
   const [isPrivateBet, setIsPrivateBet] = useState(false);
-  const [privateKey, setPrivateKey] = useState(null);
   const [isRegistered, setIsRegistered] = useState(false);
-
-  const [copiedInvite, setCopiedInvite] = useState(false);
-  const [showInviteLink, setShowInviteLink] = useState(false);
+  const [joinRequested, setJoinRequested] = useState(false);
+  const [joinApproved, setJoinApproved] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [isJoinTxPending, setIsJoinTxPending] = useState(false);
+  const [autoApprove, setAutoApproveState] = useState(false);
+  const [maxAutoApprove, setMaxAutoApproveState] = useState(0);
+  const [autoApprovedCount, setAutoApprovedCount] = useState(0);
+  const [joinKeyHash, setJoinKeyHash] = useState(null);
+  const [acceptingParticipants, setAcceptingParticipants] = useState(true);
+  const [joinBlacklisted, setJoinBlacklisted] = useState(false);
+  const [joinKeyInput, setJoinKeyInput] = useState("");
+  const [creatorJoinKey, setCreatorJoinKey] = useState(""); // plaintext key shown to creator
+  const [showJoinKey, setShowJoinKey] = useState(false);
   
   const betAddress = new URLSearchParams(location.search).get("address");
   const effectiveStatus = useMemo(() => getEffectiveStatus(bet), [bet]);
@@ -230,15 +234,47 @@ export default function BetDetails() {
       const betIsPrivate = await betContract.isPrivate();
       if (betIsPrivate) {
         setIsPrivateBet(true);
-        // Use connectedAddr (not walletAddress state, which may still be null)
-        let key = extractKeyFromHash();
-        if (key) savePrivateKey(address, key, connectedAddr);
-        else key = getPrivateKey(address, connectedAddr);
-        if (key) setPrivateKey(key);
-        // Check on-chain registration status for connected wallet
+        const [aa, mac, aac, jkh, ap] = await Promise.all([
+          betContract.autoApprove(),
+          betContract.maxAutoApprove(),
+          betContract.autoApprovedCount(),
+          betContract.joinKeyHash(),
+          betContract.acceptingParticipants(),
+        ]);
+        setAutoApproveState(aa);
+        setMaxAutoApproveState(Number(mac));
+        setAutoApprovedCount(Number(aac));
+        setJoinKeyHash(jkh);
+        setAcceptingParticipants(ap);
+        // Load the key from localStorage for the creator
+        if (jkh && jkh !== ethers.ZeroHash && connectedAddr &&
+            creatorAddress.toLowerCase() === connectedAddr.toLowerCase()) {
+          const stored = localStorage.getItem(`joinKey:${address.toLowerCase()}`);
+          if (stored) setCreatorJoinKey(stored);
+        }
         if (connectedAddr) {
-          const registered = await betContract.isRegistered(connectedAddr);
+          const [registered, requested, approved, blacklisted] = await Promise.all([
+            betContract.isRegistered(connectedAddr),
+            betContract.joinRequested(connectedAddr),
+            betContract.joinApproved(connectedAddr),
+            betContract.joinBlacklisted(connectedAddr),
+          ]);
           setIsRegistered(registered);
+          setJoinRequested(requested);
+          setJoinApproved(approved);
+          setJoinBlacklisted(blacklisted);
+        }
+        // If creator: load pending join requests from events
+        if (connectedAddr && creatorAddress.toLowerCase() === connectedAddr.toLowerCase()) {
+          const joinEvents = await betContract.queryFilter(betContract.filters.JoinRequested());
+          const pending = [];
+          for (const ev of joinEvents) {
+            const addr = ev.args.participant;
+            const req = await betContract.joinRequested(addr);
+            const reg = await betContract.isRegistered(addr);
+            if (req && !reg) pending.push(addr);
+          }
+          setPendingRequests(pending);
         }
       }
       // ────────────────────────────────────────────────────────────────
@@ -288,11 +324,7 @@ export default function BetDetails() {
     try {
       const betContract = getBetContract(bet.address, true);
       setIsProcessingTx(true);
-      // Encrypt proof URL for private bets before submitting on-chain
-      const urlToSubmit = isPrivateBet && privateKey
-        ? await encryptProofUrl(proofUrl, privateKey)
-        : proofUrl;
-      const tx = await betContract.submitProof(urlToSubmit);
+      const tx = await betContract.submitProof(proofUrl);
       await tx.wait();
       loadBetDetails(betAddress);
     } catch (err) {
@@ -303,11 +335,105 @@ export default function BetDetails() {
     }
   };
 
-  const handleCopyInviteLink = () => {
-    if (!privateKey) return;
-    navigator.clipboard.writeText(buildInviteLink(betAddress, privateKey));
-    setCopiedInvite(true);
-    setTimeout(() => setCopiedInvite(false), 2000);
+  const handleRequestToJoin = async () => {
+    if (!joinKeyInput.trim()) {
+      setError("Enter the join key provided by the creator.");
+      return;
+    }
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.requestToJoin(joinKeyInput.trim());
+      await tx.wait();
+      setJoinRequested(true);
+      if (autoApprove) setIsRegistered(true); // auto-approve registers immediately
+      setJoinKeyInput("");
+    } catch (err) {
+      setError(err.reason || err.message || "Failed to request to join.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
+  };
+
+  const handleToggleAccepting = async () => {
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.setAcceptingParticipants(!acceptingParticipants);
+      await tx.wait();
+      setAcceptingParticipants(!acceptingParticipants);
+    } catch (err) {
+      setError(err.reason || err.message || "Failed to update participant acceptance.");
+    }
+  };
+
+  const handleRegister = async () => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.register();
+      await tx.wait();
+      setIsRegistered(true);
+    } catch (err) {
+      setError(err.reason || "Failed to register.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
+  };
+
+  const handleApprove = async (participant) => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.approveParticipant(participant);
+      await tx.wait();
+      setPendingRequests(prev => prev.filter(a => a !== participant));
+    } catch (err) {
+      setError(err.reason || "Failed to approve participant.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
+  };
+
+  const handleReject = async (participant) => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.rejectParticipant(participant);
+      await tx.wait();
+      setPendingRequests(prev => prev.filter(a => a !== participant));
+    } catch (err) {
+      setError(err.reason || "Failed to reject participant.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
+  };
+
+  const handleApproveAll = async () => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.approveAllParticipants(pendingRequests);
+      await tx.wait();
+      setPendingRequests([]);
+    } catch (err) {
+      setError(err.reason || "Failed to approve all.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
+  };
+
+  const handleRejectAll = async () => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.rejectAllParticipants(pendingRequests);
+      await tx.wait();
+      setPendingRequests([]);
+    } catch (err) {
+      setError(err.reason || "Failed to reject all.");
+    } finally {
+      setIsJoinTxPending(false);
+    }
   };
 
   const handleKeeperAction = async () => {
@@ -340,6 +466,21 @@ export default function BetDetails() {
         setError(err.reason || "Failed to update the market status.");
     } finally {
         setIsProcessingTx(false);
+    }
+  };
+
+  const handleSetAutoApprove = async (enabled, max) => {
+    setIsJoinTxPending(true);
+    try {
+      const betContract = getBetContract(betAddress, true);
+      const tx = await betContract.setAutoApprove(enabled, max);
+      await tx.wait();
+      setAutoApproveState(enabled);
+      setMaxAutoApproveState(max);
+    } catch (err) {
+      setError(err.reason || "Failed to update auto-approve setting.");
+    } finally {
+      setIsJoinTxPending(false);
     }
   };
 
@@ -429,76 +570,194 @@ export default function BetDetails() {
           {isPrivateBet && (
             <Card className="bg-purple-900/30 border-purple-700/50">
               <CardContent className="p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Lock className="w-5 h-5 text-purple-400 flex-shrink-0" />
-                    <div>
-                      <p className="text-purple-200 font-medium text-sm">Private Bet</p>
-                      <p className="text-purple-400 text-xs">
-                        {isCreator
-                          ? "You created this private bet. Share the invite link with participants."
-                          : privateKey
-                            ? "You have the invite key — you can bet and vote."
-                            : "You need an invite link to participate. Paste the key or open the invite link."}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    {isCreator && (
-                      <Button
-                        size="sm"
-                        onClick={() => setShowInviteLink(v => !v)}
-                        className="bg-purple-800 hover:bg-purple-700 text-white"
-                      >
-                        <Link className="w-4 h-4 mr-1" />
-                        {showInviteLink ? "Hide Link" : "Show Invite Link"}
-                      </Button>
-                    )}
-                    {!privateKey && walletAddress && !isCreator && (
-                      <input
-                        type="text"
-                        placeholder="Paste invite key..."
-                        className="text-xs bg-gray-800 border border-purple-700 rounded px-2 py-1 text-white w-48"
-                        onPaste={(e) => {
-                          const key = e.clipboardData.getData("text").trim();
-                          if (/^[0-9a-fA-F]{64}$/.test(key)) {
-                            savePrivateKey(betAddress, key, walletAddress);
-                            setPrivateKey(key);
-                          }
-                        }}
-                      />
-                    )}
+                <div className="flex items-center gap-3">
+                  <Lock className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-purple-200 font-medium text-sm">Private Bet</p>
+                    <p className="text-purple-400 text-xs">
+                      {isCreator
+                        ? joinKeyHash && joinKeyHash !== ethers.ZeroHash
+                          ? "Key-protected — share the join key with your audience."
+                          : "You created this private bet. Approve participants from the list below."
+                        : isRegistered
+                          ? "You are registered and can participate."
+                          : joinApproved
+                            ? "You have been approved! Click Register to join."
+                            : joinRequested
+                              ? "Your join request is pending creator approval."
+                              : joinKeyHash && joinKeyHash !== ethers.ZeroHash
+                                ? "This bet requires a join key. Enter it below to join instantly."
+                                : "Request to join — the creator must approve you before you can participate."}
+                    </p>
                   </div>
                 </div>
 
-                {/* Invite link panel — creator only */}
-                {isCreator && showInviteLink && (
-                  <div className="pt-1 space-y-2">
-                    {privateKey ? (
+                {/* Creator: show join key if key-protected */}
+                {isCreator && joinKeyHash && joinKeyHash !== ethers.ZeroHash && (
+                  <div className="flex items-center gap-2 p-2 bg-purple-800/30 border border-purple-600/40 rounded-md">
+                    <span className="text-xs text-purple-300 font-medium flex-shrink-0">Join key:</span>
+                    <code className={`flex-1 text-xs font-mono ${showJoinKey ? "text-yellow-300" : "text-transparent select-none bg-purple-400/20 rounded"}`}>
+                      {creatorJoinKey || "stored locally — open from the same browser you created it in"}
+                    </code>
+                    {creatorJoinKey && (
+                      <button
+                        onClick={() => setShowJoinKey(v => !v)}
+                        className="text-xs text-purple-400 hover:text-purple-200 flex-shrink-0 underline"
+                      >
+                        {showJoinKey ? "hide" : "show"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Non-creator: action buttons */}
+                {walletAddress && !isCreator && (
+                  <div className="flex gap-2 flex-wrap items-end">
+                    {joinBlacklisted && (
+                      <div className="flex items-center gap-2 text-xs text-red-400">
+                        <UserX className="w-4 h-4" />
+                        Your join request was rejected by the creator.
+                      </div>
+                    )}
+                    {!isRegistered && !joinRequested && !joinBlacklisted && (
                       <>
-                        <p className="text-xs text-purple-300">Invite link (contains the key — keep it private):</p>
-                        <div className="flex gap-2">
-                          <input
-                            readOnly
-                            value={buildInviteLink(betAddress, privateKey)}
-                            className="flex-1 text-xs bg-gray-900 border border-purple-700 rounded px-2 py-1 text-purple-200 font-mono"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={handleCopyInviteLink}
-                            className="bg-purple-700 hover:bg-purple-600 text-white flex-shrink-0"
-                          >
-                            {copiedInvite ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        <Input
+                          placeholder="Enter join key…"
+                          value={joinKeyInput}
+                          onChange={(e) => setJoinKeyInput(e.target.value)}
+                          className="bg-purple-900/50 border-purple-600 text-white placeholder-purple-400 h-8 text-sm w-48"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleRequestToJoin}
+                          disabled={isJoinTxPending || !acceptingParticipants}
+                          className="bg-purple-700 hover:bg-purple-600 text-white"
+                        >
+                          {isJoinTxPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Users className="w-4 h-4 mr-1" />}
+                          Join with Key
+                        </Button>
+                      </>
+                    )}
+                    {joinRequested && !joinApproved && !isRegistered && (
+                      <div className="flex items-center gap-2 text-xs text-yellow-300">
+                        <Clock className="w-4 h-4" />
+                        Waiting for creator approval…
+                      </div>
+                    )}
+                    {joinApproved && !isRegistered && (
+                      <Button
+                        size="sm"
+                        onClick={handleRegister}
+                        disabled={isJoinTxPending}
+                        className="bg-green-700 hover:bg-green-600 text-white"
+                      >
+                        {isJoinTxPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <UserCheck className="w-4 h-4 mr-1" />}
+                        Register
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Creator: pending requests */}
+                {isCreator && pendingRequests.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-purple-700/40">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-purple-300 font-medium">Pending join requests ({pendingRequests.length}):</p>
+                      {pendingRequests.length > 1 && (
+                        <div className="flex gap-1">
+                          <Button size="sm" onClick={handleApproveAll} disabled={isJoinTxPending}
+                            className="bg-green-800 hover:bg-green-700 text-white h-6 px-2 text-xs">
+                            <UserCheck className="w-3 h-3 mr-1" /> Accept All
+                          </Button>
+                          <Button size="sm" onClick={handleRejectAll} disabled={isJoinTxPending}
+                            className="bg-red-900 hover:bg-red-800 text-white h-6 px-2 text-xs">
+                            <UserX className="w-3 h-3 mr-1" /> Reject All
                           </Button>
                         </div>
-                        <p className="text-xs text-purple-400">
-                          Raw key: <span className="font-mono">{privateKey.slice(0, 16)}…{privateKey.slice(-8)}</span>
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-xs text-yellow-400">
-                        Invite key not found in this browser. If you created this bet on another device, the key cannot be recovered here.
-                      </p>
+                      )}
+                    </div>
+                    {pendingRequests.map(addr => (
+                      <div key={addr} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-mono text-gray-300 truncate">{addr}</span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApprove(addr)}
+                            disabled={isJoinTxPending}
+                            className="bg-green-800 hover:bg-green-700 text-white h-6 px-2 text-xs"
+                          >
+                            <UserCheck className="w-3 h-3 mr-1" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleReject(addr)}
+                            disabled={isJoinTxPending}
+                            className="bg-red-900 hover:bg-red-800 text-white h-6 px-2 text-xs"
+                          >
+                            <UserX className="w-3 h-3 mr-1" /> Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {isCreator && pendingRequests.length === 0 && !autoApprove && (
+                  <p className="text-xs text-purple-400/70">No pending join requests.</p>
+                )}
+
+                {/* Accepting participants status */}
+                <div className={`flex items-center justify-between p-2 rounded-md ${acceptingParticipants ? "bg-green-900/20 border border-green-700/40" : "bg-red-900/20 border border-red-700/40"}`}>
+                  <span className={`text-xs font-medium ${acceptingParticipants ? "text-green-300" : "text-red-300"}`}>
+                    {acceptingParticipants ? "Accepting new participants" : "Not accepting new participants"}
+                  </span>
+                  {isCreator && (
+                    <button
+                      onClick={handleToggleAccepting}
+                      className={`text-xs underline flex-shrink-0 ml-2 ${acceptingParticipants ? "text-red-400 hover:text-red-200" : "text-green-400 hover:text-green-200"}`}
+                    >
+                      {acceptingParticipants ? "Close" : "Open"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Creator: auto-approve controls */}
+                {isCreator && (
+                  <div className="pt-2 border-t border-purple-700/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Zap className={`w-3.5 h-3.5 ${autoApprove ? 'text-yellow-400' : 'text-gray-500'}`} />
+                        <span className="text-xs text-white font-medium">Auto-approve</span>
+                        {autoApprove && maxAutoApprove > 0 && (
+                          <span className="text-xs text-gray-400">
+                            ({autoApprovedCount}/{maxAutoApprove} used)
+                          </span>
+                        )}
+                        {autoApprove && maxAutoApprove === 0 && (
+                          <span className="text-xs text-gray-400">(unlimited)</span>
+                        )}
+                      </div>
+                      <Switch
+                        checked={autoApprove}
+                        onCheckedChange={(v) => handleSetAutoApprove(v, maxAutoApprove)}
+                        disabled={isJoinTxPending}
+                        className="scale-75"
+                      />
+                    </div>
+                    {autoApprove && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 flex-shrink-0">Cap:</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="0 = unlimited"
+                          defaultValue={maxAutoApprove || ""}
+                          onBlur={(e) => {
+                            const v = parseInt(e.target.value) || 0;
+                            if (v !== maxAutoApprove) handleSetAutoApprove(true, v);
+                          }}
+                          className="h-6 text-xs bg-gray-800 border-gray-600 text-white px-2 w-32"
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -561,9 +820,7 @@ export default function BetDetails() {
                   loadBetDetails={() => loadBetDetails(betAddress)}
                   isProcessingTx={isProcessingTx}
                   isPrivateBet={isPrivateBet}
-                  privateKey={privateKey}
                   isRegistered={isRegistered}
-                  onRegistered={() => setIsRegistered(true)}
                 />
               )}
             </div>

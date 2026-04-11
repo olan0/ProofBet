@@ -1,5 +1,4 @@
 import { ethers } from "ethers";
-import mongoose from "mongoose";
 import BetFactoryArtifact from "../abis/BetFactory.json";
 import BetArtifact from "../abis/Bet.json";
 import Bet from "../models/Bet";
@@ -158,7 +157,6 @@ async function handleBetCreated(
   betId: string,
   creator: string,
   isPrivateBet: boolean,
-  inviteKeyHash: string,
   event: ethers.EventLog
 ) {
 
@@ -181,12 +179,12 @@ async function handleBetCreated(
         votingDeadline: Number(details.votingDeadline),
         status: 0,
         isPrivate: isPrivateBet,
-        inviteKeyHash: inviteKeyHash,
         createdAt,
         blockNumber: event.blockNumber,
         txHash: event.transactionHash,
-        totalYesStake: 0,
-        totalNoStake: 0,
+        totalYesStake: "0",
+        totalNoStake: "0",
+        totalBet: 0,
         yesVotes: 0,
         noVotes: 0,
         invalidVotes: 0,
@@ -254,8 +252,8 @@ async function processEventChunk(events: ethers.Log[]) {
       const args = parsed.args as Result;
 
       if (eventName === "BetCreated") {
-        const [betAddress, creator, isPrivateBet, inviteKeyHash] = decodeArgs<[string, string, boolean, string]>(args);
-        await handleBetCreated(betAddress, creator, isPrivateBet, inviteKeyHash, ev as any);
+        const [betAddress, creator, isPrivateBet] = decodeArgs<[string, string, boolean]>(args);
+        await handleBetCreated(betAddress, creator, isPrivateBet, ev as any);
       } else if (eventName === "BetStatusChanged") {
         const [betAddress, newStatus] = decodeArgs<[string, number]>(args);
         await handleStatusChanged(betAddress, newStatus, ev as any);
@@ -326,10 +324,10 @@ async function waitAndProcess(
 }
 
 export function subscribeLiveEvents() {
-  factory.on("BetCreated", async (betAddress, creator, isPrivateBet, inviteKeyHash, event) => {
+  factory.on("BetCreated", async (betAddress, creator, isPrivateBet, event) => {
     console.log(`📡 BetCreated: ${betAddress} (private: ${isPrivateBet})`);
     await waitAndProcess(event.log.transactionHash, "BetCreated", () =>
-      handleBetCreated(betAddress, creator, isPrivateBet, inviteKeyHash, event as any)
+      handleBetCreated(betAddress, creator, isPrivateBet, event as any)
     );
   });
 

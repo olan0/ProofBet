@@ -110,8 +110,15 @@ contract Bet is ReentrancyGuard, Pausable {
 
     // ======== PRIVATE BET ========
     bool public isPrivate;
-    bytes32 public inviteKeyHash;
+    bool public acceptingParticipants; // creator can close the bet to new participants
+    bool public autoApprove;          // auto-approve join requests (after key verification)
+    uint256 public maxAutoApprove;    // 0 = unlimited
+    uint256 public autoApprovedCount;
+    bytes32 public joinKeyHash;       // keccak256 of join key; always required for private bets
     mapping(address => bool) public isRegistered;
+    mapping(address => bool) public joinRequested;
+    mapping(address => bool) public joinApproved;
+    mapping(address => bool) public joinBlacklisted; // rejected addresses cannot re-request
 
     uint256 public totalYesStake;
     uint256 public totalNoStake;
@@ -160,6 +167,11 @@ contract Bet is ReentrancyGuard, Pausable {
     event VoterClaimed(address indexed user, uint256 usdcAmount, uint256 proofAmount);
     event BettingClosed(uint256 timestamp); // FIX: Added missing event
     event VotingClosed(uint256 timestamp); // FIX: Added missing event
+    event JoinRequested(address indexed participant);
+    event ParticipantApproved(address indexed participant, bool wasAutoApproved);
+    event ParticipantRejected(address indexed participant);
+    event AutoApproveChanged(bool enabled, uint256 maxCount);
+    event AcceptingParticipantsChanged(bool accepting);
 
     // ======== CONSTANTS ========
     uint256 private constant MAX_DEADLINE_DURATION = 365 days; // FIX: Max bet duration
@@ -171,7 +183,7 @@ contract Bet is ReentrancyGuard, Pausable {
         if (isPrivate) {
             require(
                 isRegistered[msg.sender] || msg.sender == creator,
-                "Private bet: need invite key to participate"
+                "Private bet: not on participant list"
             );
         }
         _;
@@ -185,11 +197,13 @@ contract Bet is ReentrancyGuard, Pausable {
         address _usdcToken,
         address _proofToken,
         bool _isPrivate,
-        bytes32 _inviteKeyHash
+        bool _autoApprove,
+        uint256 _maxAutoApprove,
+        bytes32 _joinKeyHash
     ) external {
         require(!initialized, "Already initialized");
         initialized = true;
-       
+
         require(_creator != address(0) && _betFactory != address(0) && _trustScore != address(0), "Zero address");
         require(msg.sender == _betFactory, "Only factory can initialize");
         require(_details.category != Category.UNKNOWN, "Invalid category");
@@ -199,22 +213,18 @@ contract Bet is ReentrancyGuard, Pausable {
         require(_details.minimumBetAmount > 0, "Min bet must be > 0");
         require(_details.minimumSideStake > 0, "Min side stake must be > 0");
         require(_details.minimumVotes > 0, "Min votes must be > 0");
-        
+
         // FIX Critical #4: Validate deadlines are in the FUTURE
         require(_details.bettingDeadline > block.timestamp, "Betting deadline must be future");
         require(_details.bettingDeadline < _details.proofDeadline, "Proof must be after betting");
         require(_details.proofDeadline < _details.votingDeadline, "Voting must be after proof");
-        
+
         // FIX: Add maximum duration limit to prevent griefing
         require(_details.votingDeadline <= block.timestamp + MAX_DEADLINE_DURATION, "Max 1 year duration");
-        
+
         // FIX: Minimum time between phases (prevents instant resolution)
         require(_details.proofDeadline >= _details.bettingDeadline + 1 hours, "Proof phase too short");
         require(_details.votingDeadline >= _details.proofDeadline + 1 hours, "Voting phase too short");
-        
-        if (_isPrivate) {
-            require(_inviteKeyHash != bytes32(0), "Private bet requires key hash");
-        }
 
         details = _details;
         creator = _creator;
@@ -222,8 +232,12 @@ contract Bet is ReentrancyGuard, Pausable {
         trustScoreContract = ITrustScore(_trustScore);
         usdcToken = IERC20(_usdcToken);
         proofToken = IERC20(_proofToken);
+        if (_isPrivate) require(_joinKeyHash != bytes32(0), "Private bet requires a join key");
         isPrivate = _isPrivate;
-        inviteKeyHash = _inviteKeyHash;
+        acceptingParticipants = true;
+        autoApprove = _autoApprove;
+        maxAutoApprove = _maxAutoApprove;
+        joinKeyHash = _joinKeyHash;
 
         _status = Status.OPEN_FOR_BETS;
         cancelReason = CancelReason.NONE;
@@ -258,14 +272,125 @@ contract Bet is ReentrancyGuard, Pausable {
     // ======== PRIVATE BET REGISTRATION ========
 
     /**
-     * @notice Self-register for a private bet by proving you know the invite key.
-     * @param key The raw 32-byte invite key (keccak256(key) must equal inviteKeyHash).
+     * @notice Request to join a private bet.
+     *
+     * A join key is always required. The contract verifies keccak256(key) == joinKeyHash.
+     *
+     * If autoApprove is enabled (and under cap), the caller is immediately registered.
+     * Otherwise the request is queued and the creator must call approveParticipant().
      */
-    function registerWithKey(bytes32 key) external {
+    function requestToJoin(string calldata key) external {
         require(isPrivate, "Not a private bet");
+        require(acceptingParticipants, "Creator is not accepting new participants");
+        require(msg.sender != creator, "Creator is already a participant");
         require(!isRegistered[msg.sender], "Already registered");
-        require(keccak256(abi.encodePacked(key)) == inviteKeyHash, "Invalid invite key");
+        require(!joinRequested[msg.sender], "Already requested");
+
+        require(!joinBlacklisted[msg.sender], "Your request was rejected");
+        // Key is always required for private bets
+        require(keccak256(bytes(key)) == joinKeyHash, "Invalid join key");
+
+        joinRequested[msg.sender] = true;
+        emit JoinRequested(msg.sender);
+
+        // Auto-approve or queue for manual creator approval
+        bool underCap = maxAutoApprove == 0 || autoApprovedCount < maxAutoApprove;
+        if (autoApprove && underCap) {
+            joinApproved[msg.sender] = true;
+            isRegistered[msg.sender] = true;
+            autoApprovedCount++;
+            emit ParticipantApproved(msg.sender, true);
+        }
+    }
+
+    /**
+     * @notice Creator approves a join request, adding the address to the allowlist.
+     */
+    function approveParticipant(address participant) external {
+        require(msg.sender == creator, "Only creator");
+        require(isPrivate, "Not a private bet");
+        require(!isRegistered[participant], "Already registered");
+        joinApproved[participant] = true;
+        joinRequested[participant] = true; // ensure flagged in case of direct approval
+        emit ParticipantApproved(participant, false);
+    }
+
+    /**
+     * @notice Creator rejects a join request.
+     */
+    function rejectParticipant(address participant) external {
+        require(msg.sender == creator, "Only creator");
+        require(joinRequested[participant], "No join request");
+        joinRequested[participant] = false;
+        joinApproved[participant] = false;
+        joinBlacklisted[participant] = true;
+        emit ParticipantRejected(participant);
+    }
+
+    /**
+     * @notice Approve multiple pending join requests in one transaction.
+     */
+    function approveAllParticipants(address[] calldata participants) external {
+        require(msg.sender == creator, "Only creator");
+        require(isPrivate, "Not a private bet");
+        for (uint256 i = 0; i < participants.length; i++) {
+            address p = participants[i];
+            if (!isRegistered[p]) {
+                joinApproved[p] = true;
+                joinRequested[p] = true;
+                emit ParticipantApproved(p, false);
+            }
+        }
+    }
+
+    /**
+     * @notice Reject and blacklist multiple pending join requests in one transaction.
+     */
+    function rejectAllParticipants(address[] calldata participants) external {
+        require(msg.sender == creator, "Only creator");
+        for (uint256 i = 0; i < participants.length; i++) {
+            address p = participants[i];
+            if (joinRequested[p]) {
+                joinRequested[p] = false;
+                joinApproved[p] = false;
+                joinBlacklisted[p] = true;
+                emit ParticipantRejected(p);
+            }
+        }
+    }
+
+    /**
+     * @notice Approved participant finalizes registration.
+     *         Not needed when autoApprove registered the caller automatically.
+     */
+    function register() external {
+        require(isPrivate, "Not a private bet");
+        require(joinApproved[msg.sender], "Not approved by creator");
+        require(!isRegistered[msg.sender], "Already registered");
         isRegistered[msg.sender] = true;
+    }
+
+    /**
+     * @notice Creator toggles auto-approve mode and optional participant cap.
+     * @param _enabled  true = auto-approve new requests; false = manual review
+     * @param _maxCount max participants to auto-approve (0 = unlimited)
+     */
+    function setAutoApprove(bool _enabled, uint256 _maxCount) external {
+        require(msg.sender == creator, "Only creator");
+        require(isPrivate, "Not a private bet");
+        autoApprove = _enabled;
+        maxAutoApprove = _maxCount;
+        emit AutoApproveChanged(_enabled, _maxCount);
+    }
+
+    /**
+     * @notice Creator opens or closes the bet to new join requests.
+     */
+    function setAcceptingParticipants(bool _accepting) external {
+        require(msg.sender == creator, "Only creator");
+        require(isPrivate, "Not a private bet");
+        acceptingParticipants = _accepting;
+        emit AcceptingParticipantsChanged(_accepting);
     }
 
     // ======== VIEW FUNCTIONS ========

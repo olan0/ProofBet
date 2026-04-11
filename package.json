@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:server": "cd server && npm install && npm run build",
+    "build:prod": "npm run build && npm run build:server",
+    "start:prod": "node server/dist/server.js",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",

@@ -118,12 +118,6 @@
         "internalType": "bool",
         "name": "isPrivate",
         "type": "bool"
-      },
-      {
-        "indexed": false,
-        "internalType": "bytes32",
-        "name": "inviteKeyHash",
-        "type": "bytes32"
       }
     ],
     "name": "BetCreated",
@@ -767,8 +761,18 @@
         "type": "bool"
       },
       {
+        "internalType": "bool",
+        "name": "_autoApprove",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxAutoApprove",
+        "type": "uint256"
+      },
+      {
         "internalType": "bytes32",
-        "name": "_inviteKeyHash",
+        "name": "_joinKeyHash",
         "type": "bytes32"
       }
     ],

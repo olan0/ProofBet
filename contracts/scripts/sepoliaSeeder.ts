@@ -65,7 +65,7 @@ const deployedAddressesPath = path.join(
 if (!fs.existsSync(deployedAddressesPath)) {
   console.error(`\n❌ deployed_addresses.json not found at:\n   ${deployedAddressesPath}`);
   console.error("\n   Deploy contracts first:");
-  console.error("   npx hardhat ignition deploy ./ignition/modules/ProofBetModule.ts --network sepolia");
+  console.error("   npx hardhat ignition deploy ./ignition/modules/SepoliaProofBetModule.ts --network sepolia");
   process.exit(1);
 }
 const _deployed = JSON.parse(fs.readFileSync(deployedAddressesPath, "utf8"));
@@ -140,8 +140,121 @@ async function main() {
   console.log(`  Account 5 voter2     ${voter2.address}`);
   console.log(`  Account 6 voter3     ${voter3.address}`);
 
-  const factory = await ethers.getContractAt("BetFactory", FACTORY_ADDRESS) as any;
+  const factory    = await ethers.getContractAt("BetFactory",  FACTORY_ADDRESS) as any;
+  const proofToken = await ethers.getContractAt("ProofToken",  PROOF_ADDRESS)   as any;
+  const usdc       = await ethers.getContractAt("IERC20",       USDC_ADDRESS)    as any;
 
+  const factoryAddr = await factory.getAddress();
+
+  // ── 1. Display ETH / token balances + internal factory balances ──────────
+  console.log("\n[1/6] Account balances (wallet → internal factory):");
+  for (const [label, signer] of [
+    ["creator  ", creator], ["bettorYes", bettorYes], ["bettorNo ", bettorNo],
+    ["voter1   ", voter1],  ["voter2   ", voter2],    ["voter3   ", voter3],
+  ] as const) {
+    const eth   = ethersLib.formatEther(await ethers.provider.getBalance(signer.address));
+    const proof = ethersLib.formatEther(await proofToken.balanceOf(signer.address));
+    const usdcB = ethersLib.formatUnits(await usdc.balanceOf(signer.address), 6);
+    const [intUsdc, intProof] = await factory.getInternalBalances(signer.address);
+    const intU = ethersLib.formatUnits(intUsdc, 6);
+    const intP = ethersLib.formatEther(intProof);
+    console.log(
+      `  ${label}  ETH ${Number(eth).toFixed(4)}` +
+      `  PROOF ${Number(proof).toFixed(1)} (int: ${Number(intP).toFixed(1)})` +
+      `  USDC ${Number(usdcB).toFixed(2)} (int: ${Number(intU).toFixed(2)})`
+    );
+  }
+  // ── 2. Distribute PROOF + USDC to secondary accounts ─────────────────────
+  console.log("\n[2/6] Distributing tokens...");
+
+  // Each voter needs PROOF for vote stakes (~30 PROOF per vote × 4 votes max + buffer)
+  const VOTER_PROOF   = ethersLib.parseEther("150");
+  // Each bettor needs USDC: BET_SIZE × 10 markets + small buffer
+  const BETTOR_USDC   = ethersLib.parseUnits("120", 6);
+
+  for (const voter of [voter1, voter2, voter3]) {
+    const [, intProofBal] = await factory.getInternalBalances(voter.address);
+    if (intProofBal >= VOTER_PROOF) {
+      console.log(`  ${voter.address.slice(0, 10)} already has enough PROOF in internal balance`);
+      continue;
+    }
+    const walletBal = await proofToken.balanceOf(voter.address);
+    const totalAvail = walletBal + intProofBal;
+    if (totalAvail < VOTER_PROOF) {
+      process.stdout.write(`  Sending PROOF to ${voter.address.slice(0, 10)}...`);
+      await (await proofToken.connect(creator).transfer(voter.address, VOTER_PROOF - totalAvail)).wait();
+      process.stdout.write(" ✅\n");
+    } else {
+      console.log(`  ${voter.address.slice(0, 10)} already has enough PROOF`);
+    }
+  }
+  for (const bettor of [bettorYes, bettorNo]) {
+    const [intUsdcBal] = await factory.getInternalBalances(bettor.address);
+    if (intUsdcBal >= BETTOR_USDC) {
+      console.log(`  ${bettor.address.slice(0, 10)} already has enough USDC in internal balance`);
+      continue;
+    }
+    const walletBal = await usdc.balanceOf(bettor.address);
+    const totalAvail = walletBal + intUsdcBal;
+    if (totalAvail < BETTOR_USDC) {
+      process.stdout.write(`  Sending USDC to ${bettor.address.slice(0, 10)}...`);
+      await (await usdc.connect(creator).transfer(bettor.address, BETTOR_USDC - totalAvail)).wait();
+      process.stdout.write(" ✅\n");
+    } else {
+      console.log(`  ${bettor.address.slice(0, 10)} already has enough USDC`);
+    }
+  }
+
+  // ── 3. Approve + deposit to factory ───────────────────────────────────────
+  console.log("\n[3/6] Depositing to factory...");
+
+  // Creator: PROOF for creation fees (10 markets × ~200 PROOF max dynamic fee) + buffer
+  const CREATOR_PROOF_DEPOSIT = ethersLib.parseEther("2500");
+  // Creator: USDC collateral (proofCollateralUsdc × 10 markets) — read from contract
+  const collateralPerBet      = await factory.proofCollateralUsdc();
+  const CREATOR_USDC_DEPOSIT  = collateralPerBet * 10n;
+
+  async function ensureDeposited(
+    signer: any, label: string,
+    proofAmt: bigint, usdcAmt: bigint
+  ) {
+    const [usdcBal, proofBal] = await factory.getInternalBalances(signer.address);
+    if (proofAmt > 0n && proofBal < proofAmt) {
+      const need = proofAmt - proofBal;
+      const walletBal = await proofToken.balanceOf(signer.address);
+      if (walletBal < need) {
+        console.log(`  ${label}: internal PROOF ${ethersLib.formatEther(proofBal)} — wallet only has ${ethersLib.formatEther(walletBal)}, skipping top-up`);
+      } else {
+        process.stdout.write(`  ${label}: approve + depositProof ${ethersLib.formatEther(need)} PROOF...`);
+        await (await proofToken.connect(signer).approve(factoryAddr, need)).wait();
+        await (await factory.connect(signer).depositProof(need)).wait();
+        process.stdout.write(" ✅\n");
+      }
+    } else if (proofAmt > 0n) {
+      console.log(`  ${label}: PROOF already deposited (${ethersLib.formatEther(proofBal)})`);
+    }
+    if (usdcAmt > 0n && usdcBal < usdcAmt) {
+      const need = usdcAmt - usdcBal;
+      const walletBal = await usdc.balanceOf(signer.address);
+      if (walletBal < need) {
+        console.log(`  ${label}: internal USDC ${ethersLib.formatUnits(usdcBal, 6)} — wallet only has ${ethersLib.formatUnits(walletBal, 6)}, skipping top-up`);
+      } else {
+        process.stdout.write(`  ${label}: approve + depositUsdc ${ethersLib.formatUnits(need, 6)} USDC...`);
+        await (await usdc.connect(signer).approve(factoryAddr, need)).wait();
+        await (await factory.connect(signer).depositUsdc(need)).wait();
+        process.stdout.write(" ✅\n");
+      }
+    } else if (usdcAmt > 0n) {
+      console.log(`  ${label}: USDC already deposited (${ethersLib.formatUnits(usdcBal, 6)})`);
+    }
+  }
+
+  await ensureDeposited(creator,   "creator  ", CREATOR_PROOF_DEPOSIT, CREATOR_USDC_DEPOSIT);
+  await ensureDeposited(bettorYes, "bettorYes", 0n, BETTOR_USDC);
+  await ensureDeposited(bettorNo,  "bettorNo ", 0n, BETTOR_USDC);
+  await ensureDeposited(voter1,    "voter1   ", VOTER_PROOF, 0n);
+  await ensureDeposited(voter2,    "voter2   ", VOTER_PROOF, 0n);
+  await ensureDeposited(voter3,    "voter3   ", VOTER_PROOF, 0n);
   // ── 4. Create all markets ─────────────────────────────────────────────────
   console.log("\n[4/6] Creating markets...");
 
@@ -167,7 +280,7 @@ async function main() {
   const long  = { bettingDeadline: ts + 86400 * 7, proofDeadline: ts + 86400 * 8, votingDeadline: ts + 86400 * 9 };
 
   async function create(details: object): Promise<string> {
-    const tx = await factory.connect(creator).createBet(details, false, ethers.ZeroHash);
+    const tx = await factory.connect(creator).createBet(details, false, false, 0, ethersLib.ZeroHash);
     const r  = await tx.wait();
     return getBetAddress(factory, r);
   }
@@ -184,23 +297,23 @@ async function main() {
     return addr;
   }
 
-  async function createPrivateAndBet(label: string, details: object, inviteKey: string): Promise<string> {
-    const keyBytes = ethersLib.encodeBytes32String(inviteKey);
-    const keyHash  = ethersLib.keccak256(keyBytes);
+  async function createPrivateAndBet(label: string, details: object): Promise<string> {
     process.stdout.write(`  Creating ${label}...`);
-    const tx = await factory.connect(creator).createBet(details, true, keyHash);
+    const SEEDER_JOIN_KEY = "proofbet-secret-2026";
+    const joinKeyHash = ethersLib.keccak256(ethersLib.toUtf8Bytes(SEEDER_JOIN_KEY));
+    // autoApprove=true: correct key → immediate registration (no manual approval needed)
+    const tx = await factory.connect(creator).createBet(details, true, true, 0, joinKeyHash);
     const r  = await tx.wait();
     const addr = getBetAddress(factory, r);
     process.stdout.write(` ✅ ${addr}\n`);
     const bet = await ethers.getContractAt("Bet", addr) as any;
-    await (await bet.connect(bettorYes).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(bettorNo ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter1   ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter2   ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter3   ).registerWithKey(keyBytes)).wait();
+    // Key-protected: requestToJoin auto-registers participants with correct key
+    for (const participant of [bettorYes, bettorNo, voter1, voter2, voter3]) {
+      await (await bet.connect(participant).requestToJoin(SEEDER_JOIN_KEY)).wait();
+    }
     await (await bet.connect(bettorYes).placeBet(1, BET_SIZE)).wait();
     await (await bet.connect(bettorNo ).placeBet(2, BET_SIZE)).wait();
-    console.log(`    🔒 key="${inviteKey}"  hash=${keyHash.slice(0, 10)}...`);
+    console.log(`    🔒 ${[bettorYes, bettorNo, voter1, voter2, voter3].length} participants joined via key`);
     return addr;
   }
 
@@ -215,8 +328,8 @@ async function main() {
   addrs.privateBet = await createPrivateAndBet("Market 3: OPEN PRIVATE (private challenge)", {
     ...base, ...long, category: 6, proofType: 2,
     title:       "Will @CryptoChad complete a 7-day no-social-media detox? (private)",
-    description: "A private challenge between friends. Chad has committed to zero social media usage for 7 days. Only invited participants can view and bet on this market.",
-  }, "proofbet-secret-2026");
+    description: "A private challenge between friends. Chad has committed to zero social media usage for 7 days. Only creator-approved participants can view and bet on this market.",
+  });
 
   addrs.proofCoin = await createAndBet("Market 2: OPEN (7-day) PROOF coin", {
     ...base, ...long, category: 1, proofType: 4,
@@ -416,5 +529,17 @@ async function main() {
 
 main().catch(err => {
   console.error("\n❌ Seeder failed:", err?.message ?? err);
+
+  // Ethers v6 revert reason
+  if (err?.revert?.args)       console.error("   Revert args:  ", err.revert.args);
+  if (err?.revert?.name)       console.error("   Custom error: ", err.revert.name);
+  if (err?.reason)             console.error("   Reason:       ", err.reason);
+  if (err?.data)               console.error("   Data:         ", err.data);
+
+  // Full stack for unexpected errors
+  if (err?.stack && !err?.reason && !err?.revert) {
+    console.error(err.stack);
+  }
+
   process.exitCode = 1;
 });

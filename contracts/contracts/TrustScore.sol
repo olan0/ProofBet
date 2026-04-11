@@ -141,6 +141,10 @@ contract TrustScore is Ownable {
         emit ScoreUpdated(_user, oldScore, banThreshold);
     }
 
+    function resetScoreOnUnban(address _user) external onlyAuthorized {
+        _resetScore(_user);
+    }
+
     function _resetScore(address _user) internal {
         int16 oldScore = scores[_user];
         scores[_user] = 0;

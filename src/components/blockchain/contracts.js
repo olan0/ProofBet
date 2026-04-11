@@ -7,9 +7,9 @@ import TrustScoreAbiData from "../../abi/TrustScore.json";
 
 // Contract addresses are auto-patched by the seeder scripts.
 export const CONTRACT_ADDRESSES = {
-  BetFactory: "0xAc58bF171A2ef03F0674620FFd96693a5c6b1B74",
-  ProofToken: "0xfaB32c9b6736E5Bc6D44a591DAa267d8D723c83D",
-  TrustScore: "0x2e9542955D70c51fcd00A9a95f0418D7E6500eD6",
+  BetFactory: "0xD612C6028a669B2d19f238334b01Fd661F1Ba081",
+  ProofToken: "0xE3864B749E9C71FBCbd45657c369BB06C589255f",
+  TrustScore: "0xA1C8ede60c29B2D41A06f518A61ED8025f67d9ea",
   USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
 };
 

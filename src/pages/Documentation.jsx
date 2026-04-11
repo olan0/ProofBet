@@ -417,10 +417,11 @@ export default function DocumentationPage() {
                 </Card>
 
                 <Tabs defaultValue="wallet" className="space-y-6">
-                  <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-5">
+                  <TabsList className="bg-gray-800 border border-gray-700 grid w-full grid-cols-6">
                     <TabsTrigger value="wallet">Internal Wallet</TabsTrigger>
                     <TabsTrigger value="betting">Placing Bets</TabsTrigger>
                     <TabsTrigger value="creating">Creating Markets</TabsTrigger>
+                    <TabsTrigger value="private">Private Bets</TabsTrigger>
                     <TabsTrigger value="voting">Voting</TabsTrigger>
                     <TabsTrigger value="resolution">Resolution</TabsTrigger>
                   </TabsList>
@@ -533,6 +534,93 @@ export default function DocumentationPage() {
                               <p className="text-gray-300">{step}</p>
                             </div>
                           ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="private">
+                    <Card className="bg-gray-800 border-gray-700">
+                      <CardHeader>
+                        <CardTitle className="text-white flex items-center gap-2">
+                          <Shield className="w-5 h-5 text-purple-400" />
+                          Private Bets
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <p className="text-gray-300">
+                          Private bets are invite-only markets. Only participants who know the join key can request to join. The creator controls who gets in and can close the bet to new participants at any time.
+                        </p>
+
+                        {/* How the key works */}
+                        <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg space-y-2">
+                          <h4 className="font-semibold text-white mb-1">How the Join Key Works</h4>
+                          <p className="text-gray-300 text-sm">
+                            When creating a private bet the creator sets a plaintext key (e.g. a channel password). The platform hashes it with keccak256 and stores only the hash on-chain — the plaintext never touches the blockchain.
+                          </p>
+                          <p className="text-gray-300 text-sm">
+                            When a participant enters the key and clicks <strong>"Join with Key"</strong>, the contract verifies <code className="text-purple-300">keccak256(input) == joinKeyHash</code>. If it matches, the request proceeds.
+                          </p>
+                        </div>
+
+                        {/* Approval modes */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-2">
+                            <h4 className="font-semibold text-white">Auto-Approve Mode</h4>
+                            <p className="text-gray-300 text-sm">
+                              Anyone with the correct key is instantly registered — no further action needed from the creator. Optionally set a participant cap (e.g. max 10 auto-approved).
+                            </p>
+                          </div>
+                          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg space-y-2">
+                            <h4 className="font-semibold text-white">Manual Approval Mode</h4>
+                            <p className="text-gray-300 text-sm">
+                              The correct key queues the request. The creator must review each request and click <strong>Approve</strong> or <strong>Reject</strong>. Use <strong>Accept All / Reject All</strong> for bulk actions.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Creator flow */}
+                        <div className="space-y-3">
+                          <h4 className="font-semibold text-white">Creator Flow</h4>
+                          {[
+                            "Enable 'Private Bet' when creating the market.",
+                            "Set a join key — share this with your community (Discord, Telegram, etc.).",
+                            "Choose Auto-Approve (instant access) or Manual Approval (review each request).",
+                            "On the bet page, view pending requests and approve or reject individually or in bulk.",
+                            "Toggle 'Accepting Participants' off to stop new join requests at any time."
+                          ].map((step, index) => (
+                            <div key={index} className="flex items-start gap-3">
+                              <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
+                                {index + 1}
+                              </div>
+                              <p className="text-gray-300 text-sm">{step}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Participant flow */}
+                        <div className="space-y-3">
+                          <h4 className="font-semibold text-white">Participant Flow</h4>
+                          {[
+                            "Receive the join key from the creator (shared off-chain).",
+                            "Open the private bet page and enter the key in the 'Join with Key' field.",
+                            "In Auto-Approve mode you are instantly registered and can place bets.",
+                            "In Manual mode your request is queued — wait for creator approval, then register to finalise your spot.",
+                            "Rejected requests are blacklisted and cannot re-apply."
+                          ].map((step, index) => (
+                            <div key={index} className="flex items-start gap-3">
+                              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5">
+                                {index + 1}
+                              </div>
+                              <p className="text-gray-300 text-sm">{step}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                          <p className="text-red-300 text-sm">
+                            <strong>Important:</strong> The join key is stored in your browser's local storage after creation. If you clear your browser data or switch devices, the key will not be visible on the bet page. Always save your join key somewhere safe before sharing it.
+                          </p>
                         </div>
                       </CardContent>
                     </Card>
@@ -929,7 +1017,7 @@ export default function DocumentationPage() {
                         phase: "Phase 1: Core Platform Launch",
                         status: "Completed",
                         color: "green",
-                        timeline: "Q3 2025",
+                        timeline: "Q4 2025",
                         features: [
                           "Dual-token system (USDC & PROOF)",
                           "Core bet creation, betting, and voting logic",
@@ -942,7 +1030,7 @@ export default function DocumentationPage() {
                         phase: "Phase 2: UX & Feature Polish", 
                         status: "In Progress",
                         color: "blue",
-                        timeline: "Q4 2025",
+                        timeline: "Q1-Q2 2026",
                         features: [
                           "Advanced market filtering and search capabilities",
                           "Mobile-first responsive design improvements",
@@ -955,7 +1043,7 @@ export default function DocumentationPage() {
                         phase: "Phase 3: DeFi & Scalability",
                         status: "Planned",
                         color: "purple", 
-                        timeline: "Q1-Q2 2026",
+                        timeline: "Q3-Q4 2026",
                         features: [
                           "PROOF token staking to earn yield from platform revenue",
                           "Lending protocol integration to enable betting without selling assets",
@@ -968,7 +1056,7 @@ export default function DocumentationPage() {
                         phase: "Phase 4: Decentralized Governance",
                         status: "Vision",
                         color: "orange",
-                        timeline: "Q3 2026 and beyond",
+                        timeline: "2027 and beyond",
                         features: [
                           "DAO formation for community governance",
                           "On-chain voting with PROOF tokens for platform proposals",

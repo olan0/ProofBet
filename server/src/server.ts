@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import path from "path";
 import messageRoutes from "./routes/messageRoutes";
 import userRoutes from "./routes/userRoutes";
 import betRoutes from "./routes/betRoutes";
@@ -53,6 +54,13 @@ initEventSync().catch(console.error);
 io.on("connection", (socket) => {
   console.log("🟢 Client connected:", socket.id);
   socket.on("disconnect", () => console.log("🔴 Client disconnected:", socket.id));
+});
+
+// Serve frontend in production
+const distPath = path.join(__dirname, "../../dist");
+app.use(express.static(distPath));
+app.get("/{*path}", (_req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
 });
 
 // Start server

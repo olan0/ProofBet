@@ -100,9 +100,9 @@ async function main() {
 
   const deployed = JSON.parse(fs.readFileSync(deployedAddressesPath, "utf8"));
 
-  const factoryAddress    = deployed["SepoliaProofBetModule#BetFactory"];
-  const proofTokenAddress = deployed["SepoliaProofBetModule#ProofToken"];
-  const trustScoreAddress = deployed["SepoliaProofBetModule#TrustScore"];
+  const factoryAddress    = deployed["LocalProofBetModule#BetFactory"];
+  const proofTokenAddress = deployed["LocalProofBetModule#ProofToken"];
+  const trustScoreAddress = deployed["LocalProofBetModule#TrustScore"];
   const usdcAddress       = deployed["LocalProofBetModule#MockERC20"];
 
   if (!factoryAddress || !proofTokenAddress || !trustScoreAddress || !usdcAddress) {
@@ -125,32 +125,56 @@ async function main() {
   console.log("\n[2/4] Funding accounts...");
 
   // Mint USDC to all participants
+  console.log("  Minting USDC...");
   for (const acct of [creator, bettorYes, bettorNo, voter1, voter2, voter3]) {
-    await (await usdc.mint(acct.address, USDC_MINT)).wait();
+    try {
+      await (await usdc.mint(acct.address, USDC_MINT)).wait();
+      console.log(`    ✅ minted USDC to ${acct.address}`);
+    } catch (e: any) {
+      console.error(`    ❌ USDC mint failed for ${acct.address}: ${e?.message}`);
+      throw e;
+    }
   }
   console.log("  ✅ USDC minted to all accounts");
 
   // Transfer PROOF from deployer (who got initial supply)
+  console.log("  Transferring PROOF...");
+  const deployerProofBalance = await proofToken.balanceOf(deployer.address);
+  console.log(`    deployer PROOF balance: ${deployerProofBalance.toString()}`);
   for (const acct of [creator, bettorYes, bettorNo, voter1, voter2, voter3]) {
-    await (await proofToken.transfer(acct.address, PROOF_MINT)).wait();
+    try {
+      await (await proofToken.transfer(acct.address, PROOF_MINT)).wait();
+      console.log(`    ✅ transferred PROOF to ${acct.address}`);
+    } catch (e: any) {
+      console.error(`    ❌ PROOF transfer failed for ${acct.address}: ${e?.message}`);
+      throw e;
+    }
   }
   console.log("  ✅ PROOF transferred to all accounts");
 
   // Approve factory for all accounts
+  console.log("  Setting approvals...");
   for (const acct of [creator, bettorYes, bettorNo, voter1, voter2, voter3]) {
-    await (await usdc.connect(acct).approve(factoryAddress, ethers.MaxUint256)).wait();
-    await (await proofToken.connect(acct).approve(factoryAddress, ethers.MaxUint256)).wait();
+    try {
+      await (await usdc.connect(acct).approve(factoryAddress, ethers.MaxUint256)).wait();
+      await (await proofToken.connect(acct).approve(factoryAddress, ethers.MaxUint256)).wait();
+      console.log(`    ✅ approvals set for ${acct.address}`);
+    } catch (e: any) {
+      console.error(`    ❌ approval failed for ${acct.address}: ${e?.message}`);
+      throw e;
+    }
   }
   console.log("  ✅ Approvals set");
 
   // Deposit into factory internal wallets
-  await (await factory.connect(creator).depositUsdc(2_000_000_000n)).wait();    // 2000 USDC
-  await (await factory.connect(creator).depositProof(PROOF_MINT)).wait();       // 50 000 PROOF
-  await (await factory.connect(bettorYes).depositUsdc(500_000_000n)).wait();    // 500 USDC
-  await (await factory.connect(bettorNo).depositUsdc(500_000_000n)).wait();     // 500 USDC
-  await (await factory.connect(voter1).depositProof(5_000n * 10n**18n)).wait(); // 5 000 PROOF
-  await (await factory.connect(voter2).depositProof(5_000n * 10n**18n)).wait();
-  await (await factory.connect(voter3).depositProof(5_000n * 10n**18n)).wait();
+  console.log("  Depositing into factory...");
+  try { await (await factory.connect(creator).depositUsdc(2_000_000_000n)).wait(); console.log("    ✅ creator depositUsdc 2000"); } catch (e: any) { console.error(`    ❌ creator depositUsdc: ${e?.message}`); throw e; }
+  try { await (await factory.connect(creator).depositProof(PROOF_MINT)).wait(); console.log("    ✅ creator depositProof 50k"); } catch (e: any) { console.error(`    ❌ creator depositProof: ${e?.message}`); throw e; }
+  try { await (await factory.connect(bettorYes).depositUsdc(500_000_000n)).wait(); console.log("    ✅ bettorYes depositUsdc 500"); } catch (e: any) { console.error(`    ❌ bettorYes depositUsdc: ${e?.message}`); throw e; }
+  try { await (await factory.connect(bettorNo).depositUsdc(500_000_000n)).wait(); console.log("    ✅ bettorNo depositUsdc 500"); } catch (e: any) { console.error(`    ❌ bettorNo depositUsdc: ${e?.message}`); throw e; }
+  try { await (await factory.connect(voter1).depositProof(5_000n * 10n**18n)).wait(); console.log("    ✅ voter1 depositProof 5k"); } catch (e: any) { console.error(`    ❌ voter1 depositProof: ${e?.message}`); throw e; }
+  try { await (await factory.connect(voter2).depositProof(5_000n * 10n**18n)).wait(); console.log("    ✅ voter2 depositProof 5k"); } catch (e: any) { console.error(`    ❌ voter2 depositProof: ${e?.message}`); throw e; }
+  try { await (await factory.connect(voter3).depositProof(5_000n * 10n**18n)).wait(); console.log("    ✅ voter3 depositProof 5k"); } catch (e: any) { console.error(`    ❌ voter3 depositProof: ${e?.message}`); throw e; }
   console.log("  ✅ Internal wallet deposits done");
 
   // ── 3. Create markets ────────────────────────────────────────────────────
@@ -174,38 +198,53 @@ async function main() {
   };
 
   async function create(details: object): Promise<string> {
-    const tx = await factory.connect(creator).createBet(details, false, ethers.ZeroHash);
+    const tx = await factory.connect(creator).createBet(details, false, false, 0, ethers.ZeroHash);
     const r  = await tx.wait();
     return getBetAddress(factory, r);
   }
 
   async function createAndBet(label: string, details: object): Promise<string> {
     process.stdout.write(`  Creating ${label}...`);
-    const addr = await create(details);
+    let addr: string;
+    try {
+      addr = await create(details);
+    } catch (e: any) {
+      console.error(`\n    ❌ createBet failed for "${label}": ${e?.message}`);
+      throw e;
+    }
     process.stdout.write(` ${addr}\n`);
     const bet = await ethers.getContractAt("Bet", addr) as any;
-    await (await bet.connect(bettorYes).placeBet(1, BET_SIZE)).wait();
-    await (await bet.connect(bettorNo ).placeBet(2, BET_SIZE)).wait();
+    try {
+      await (await bet.connect(bettorYes).placeBet(1, BET_SIZE)).wait();
+    } catch (e: any) {
+      console.error(`    ❌ placeBet YES failed for "${label}": ${e?.message}`);
+      throw e;
+    }
+    try {
+      await (await bet.connect(bettorNo).placeBet(2, BET_SIZE)).wait();
+    } catch (e: any) {
+      console.error(`    ❌ placeBet NO failed for "${label}": ${e?.message}`);
+      throw e;
+    }
     return addr;
   }
 
-  async function createPrivateAndBet(label: string, details: object, inviteKey: string): Promise<string> {
-    const keyBytes  = ethersLib.encodeBytes32String(inviteKey);
-    const keyHash   = ethersLib.keccak256(keyBytes);
+  async function createPrivateAndBet(label: string, details: object): Promise<string> {
     process.stdout.write(`  Creating ${label}...`);
-    const tx = await factory.connect(creator).createBet(details, true, keyHash);
+    const SEEDER_JOIN_KEY = "proofbet-secret-2026";
+    const joinKeyHash = ethersLib.keccak256(ethersLib.toUtf8Bytes(SEEDER_JOIN_KEY));
+    const tx = await factory.connect(creator).createBet(details, true, true, 0, joinKeyHash);
     const r  = await tx.wait();
     const addr = getBetAddress(factory, r);
     process.stdout.write(` ${addr}\n`);
     const bet = await ethers.getContractAt("Bet", addr) as any;
-    await (await bet.connect(bettorYes).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(bettorNo ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter1   ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter2   ).registerWithKey(keyBytes)).wait();
-    await (await bet.connect(voter3   ).registerWithKey(keyBytes)).wait();
+    for (const participant of [bettorYes, bettorNo, voter1, voter2, voter3]) {
+      // Key-protected: requestToJoin auto-registers on correct key
+      await (await bet.connect(participant).requestToJoin(SEEDER_JOIN_KEY)).wait();
+    }
     await (await bet.connect(bettorYes).placeBet(1, BET_SIZE)).wait();
     await (await bet.connect(bettorNo ).placeBet(2, BET_SIZE)).wait();
-    console.log(`    🔒 key="${inviteKey}"  hash=${keyHash.slice(0, 10)}...`);
+    console.log(`    🔒 ${[bettorYes, bettorNo, voter1, voter2, voter3].length} participants approved`);
     return addr;
   }
 
@@ -240,8 +279,8 @@ async function main() {
   addrs.privateBet = await createPrivateAndBet("10. OPEN PRIVATE (private challenge)", {
     ...base, ...long, category: 6, proofType: 2,
     title: "Will @CryptoChad complete a 7-day no-social-media detox? (private)",
-    description: "A private challenge between friends. Chad has committed to zero social media usage for 7 days. Only invited participants can view and bet on this market.",
-  }, "proofbet-secret-2026");
+    description: "A private challenge between friends. Chad has committed to zero social media usage for 7 days. Only creator-approved participants can view and bet on this market.",
+  });
 
   addrs.proofCoin = await createAndBet("2. OPEN PROOF coin", {
     ...base, ...long, category: 1, proofType: 4,
@@ -409,5 +448,8 @@ async function main() {
 main().catch(err => {
   console.error("\n❌ Seeder failed:", err?.message ?? err);
   if (err?.data) console.error("   Error data:", err.data);
+  if (err?.stack) console.error("   Stack:", err.stack);
+  if (err?.info) console.error("   Info:", JSON.stringify(err.info, null, 2));
+  if (err?.error) console.error("   Inner error:", err.error?.message ?? err.error);
   process.exitCode = 1;
 });

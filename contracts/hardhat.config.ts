@@ -36,8 +36,9 @@ const postDeployHook = overrideTask(["ignition", "deploy"])
 
     const deployed = JSON.parse(fs.readFileSync(deployedPath, "utf8"));
 
-    // Resolve addresses — try both module name prefixes used in this project.
+    // Resolve addresses — try all module name prefixes used in this project.
     const find = (suffix: string): string | undefined =>
+      deployed[`LocalProofBetModule#${suffix}`] ??
       deployed[`SepoliaProofBetModule#${suffix}`] ??
       deployed[`ProofBetModule#${suffix}`];
 
@@ -189,6 +190,7 @@ const config: HardhatUserConfig = {
       type: "http",
       chainType: "l1",
       url: configVariable("SEPOLIA_RPC_URL"),
+      gasMultiplier: 1.5,   // 50% buffer on gas estimates (multi-hop calls: Bet → Factory → TrustScore)
       // Keys live in the Hardhat keystore — never in .env.
       // npx hardhat keystore set SEPOLIA_PRIVATE_KEY    (account 1: deployer / creator)
       // npx hardhat keystore set SEPOLIA_PRIVATE_KEY_2  (account 2: bettor YES)

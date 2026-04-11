@@ -51,7 +51,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     
     // Events
-    event BetCreated(address betAddress, address creator, bool isPrivate, bytes32 inviteKeyHash);
+    event BetCreated(address betAddress, address creator, bool isPrivate);
     event FeeProcessed(address indexed payer, uint256 totalFee, uint256 burnAmount, uint256 keepAmount);
     event PrivateBetFeeChanged(uint256 oldFee, uint256 newFee);
     event VoteStakeAmountChanged(uint256 oldAmount, uint256 newAmount);
@@ -193,7 +193,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     // ========= Bet creation =========
 
-    function createBet(Bet.BetDetails memory _details, bool _isPrivate, bytes32 _inviteKeyHash)
+    function createBet(Bet.BetDetails memory _details, bool _isPrivate, bool _autoApprove, uint256 _maxAutoApprove, bytes32 _joinKeyHash)
         external
         nonReentrant
         returns (address)
@@ -204,6 +204,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         require(activeBetsCount[msg.sender] < maxActiveBetsPerUser, "Too many active bets");
         require(!bannedCreators[msg.sender], "Creator is banned");
         require(internalUsdcBalance[msg.sender] >= proofCollateralUsdc, "Insufficient collateral");
+        if (_isPrivate) require(_joinKeyHash != bytes32(0), "Private bet requires a join key");
 
         unchecked { internalProofBalance[msg.sender] -= dynamicFee; }
 
@@ -229,7 +230,9 @@ contract BetFactory is Ownable, ReentrancyGuard {
             address(usdcToken),
             address(proofToken),
             _isPrivate,
-            _inviteKeyHash
+            _autoApprove,
+            _maxAutoApprove,
+            _isPrivate ? _joinKeyHash : bytes32(0)
         );
         
          if (proofCollateralUsdc > 0) {
@@ -246,7 +249,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
         activeBetsCount[msg.sender]++;
         trustScoreContract.logBetCreation(msg.sender);
 
-        emit BetCreated(newBetAddress, msg.sender, _isPrivate, _inviteKeyHash);
+        emit BetCreated(newBetAddress, msg.sender, _isPrivate);
         return newBetAddress;
     }
 
@@ -421,6 +424,7 @@ contract BetFactory is Ownable, ReentrancyGuard {
 
     function unbanCreator(address _creator) external onlyOwner {
         bannedCreators[_creator] = false;
+        trustScoreContract.resetScoreOnUnban(_creator);
     }
 
     // ========= View helpers =========

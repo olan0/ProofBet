@@ -120,7 +120,7 @@ describe("ProofBet Platform", function () {
     await factory.connect(user).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
     const details = await createValidBetDetails();
-    const tx = await factory.connect(user).createBet(details, false, ethers.ZeroHash);
+    const tx = await factory.connect(user).createBet(details, false, false, 0, ethers.ZeroHash);
     const receipt = await tx.wait();
 
     const event = receipt.logs.find(log => {
@@ -251,7 +251,7 @@ describe("ProofBet Platform", function () {
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
       const details = await createValidBetDetails();
-      await expect(factory.connect(alice).createBet(details, false, ethers.ZeroHash))
+      await expect(factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash))
         .to.emit(factory, "BetCreated");
     });
 
@@ -260,7 +260,7 @@ describe("ProofBet Platform", function () {
 
       const details = await createValidBetDetails();
       await expect(
-        factory.connect(alice).createBet(details, false, ethers.ZeroHash)
+        factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash)
       ).to.be.revertedWith("Insufficient collateral");
     });
 
@@ -274,7 +274,7 @@ describe("ProofBet Platform", function () {
       details.bettingDeadline = now - 1;
 
       await expect(
-        factory.connect(alice).createBet(details, false, ethers.ZeroHash)
+        factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash)
       ).to.be.revertedWith("Betting deadline must be future");
     });
 
@@ -286,7 +286,7 @@ describe("ProofBet Platform", function () {
       details.title = "";
 
       await expect(
-        factory.connect(alice).createBet(details, false, ethers.ZeroHash)
+        factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash)
       ).to.be.revertedWith("Empty title");
     });
 
@@ -311,7 +311,7 @@ describe("ProofBet Platform", function () {
 
       const details = await createValidBetDetails();
       const dynamicFee = await factory.calculateDynamicCreationFee(details);
-      await factory.connect(alice).createBet(details, false, ethers.ZeroHash);
+      await factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash);
 
       const totalSupplyAfter = await proofToken.totalSupply();
       const feeCollectorBalAfter = await proofToken.balanceOf(feeCollectorAddr);
@@ -643,7 +643,7 @@ describe("ProofBet Platform", function () {
       const [balanceBefore] = await factory.getInternalBalances(alice.address);
 
       await expect(
-        factory.connect(alice).createBet(details, false, ethers.ZeroHash)
+        factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash)
       ).to.be.revertedWith("Empty title");
 
       const [balanceAfter] = await factory.getInternalBalances(alice.address);
@@ -657,36 +657,40 @@ describe("ProofBet Platform", function () {
 
   describe("Private Bets", function () {
 
+    const JOIN_KEY  = "test-join-key-2026";
+    const WRONG_KEY = "wrong-key";
+    let JOIN_KEY_HASH;
+    before(() => {
+      JOIN_KEY_HASH = ethers.keccak256(ethers.toUtf8Bytes(JOIN_KEY));
+    });
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    /** Generate a random 32-byte invite key and its on-chain hash. */
-    function makeKey() {
-      const inviteKey = ethers.hexlify(ethers.randomBytes(32));
-      const inviteKeyHash = ethers.keccak256(inviteKey);
-      return { inviteKey, inviteKeyHash };
-    }
+    /**
+     * Deposit funds and create a PRIVATE bet (manual-approve by default).
+     * @param {object} opts  { autoApprove: bool, maxAutoApprove: number }
+     */
+    async function depositAndCreatePrivateBet(user, opts = {}) {
+      const autoApprove    = opts.autoApprove    ?? false;
+      const maxAutoApprove = opts.maxAutoApprove ?? 0;
 
-    /** Deposit funds and create a PRIVATE bet as `user`, returning { bet, inviteKey }. */
-    async function depositAndCreatePrivateBet(user) {
       await factory.connect(user).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(user).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
-      const { inviteKey, inviteKeyHash } = makeKey();
       const details = await createValidBetDetails();
-      details.title = "[PRIVATE]";
+      details.title       = "[PRIVATE]";
       details.description = "[PRIVATE]";
 
-      const tx = await factory.connect(user).createBet(details, true, inviteKeyHash);
+      const tx      = await factory.connect(user).createBet(details, true, autoApprove, maxAutoApprove, JOIN_KEY_HASH);
       const receipt = await tx.wait();
 
       const event = receipt.logs.find(log => {
-        try {
-          return factory.interface.parseLog(log)?.name === "BetCreated";
-        } catch { return false; }
+        try { return factory.interface.parseLog(log)?.name === "BetCreated"; }
+        catch { return false; }
       });
       const betAddress = factory.interface.parseLog(event).args[0];
       const bet = await ethers.getContractAt("Bet", betAddress);
-      return { bet, inviteKey, inviteKeyHash };
+      return { bet };
     }
 
     // ─── Creation ─────────────────────────────────────────────────────────────
@@ -694,11 +698,6 @@ describe("ProofBet Platform", function () {
     it("Should create a private bet with isPrivate = true", async function () {
       const { bet } = await depositAndCreatePrivateBet(alice);
       expect(await bet.isPrivate()).to.equal(true);
-    });
-
-    it("Should store the correct inviteKeyHash on-chain", async function () {
-      const { inviteKeyHash, bet } = await depositAndCreatePrivateBet(alice);
-      expect(await bet.inviteKeyHash()).to.equal(inviteKeyHash);
     });
 
     it("Should create a public bet with isPrivate = false", async function () {
@@ -709,89 +708,223 @@ describe("ProofBet Platform", function () {
     it("Should emit BetCreated with isPrivate = true", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
-
-      const { inviteKeyHash } = makeKey();
       const details = await createValidBetDetails();
       details.title = "[PRIVATE]";
-      details.description = "[PRIVATE]";
 
       await expect(
-        factory.connect(alice).createBet(details, true, inviteKeyHash)
+        factory.connect(alice).createBet(details, true, false, 0, JOIN_KEY_HASH)
       ).to.emit(factory, "BetCreated").withArgs(
         (v) => v !== ethers.ZeroAddress,
         alice.address,
-        true,
-        inviteKeyHash
+        true
       );
     });
 
-    it("Should reject private bet creation with zero keyHash", async function () {
+    it("Creating a private bet without a join key reverts", async function () {
       await factory.connect(alice).depositProof(BigInt(CREATION_FEE) + BigInt("100000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
-
       const details = await createValidBetDetails();
       details.title = "[PRIVATE]";
 
       await expect(
-        factory.connect(alice).createBet(details, true, ethers.ZeroHash)
-      ).to.be.revertedWith("Private bet requires key hash");
+        factory.connect(alice).createBet(details, true, false, 0, ethers.ZeroHash)
+      ).to.be.revertedWith("Private bet requires a join key");
     });
 
-    // ─── Registration ─────────────────────────────────────────────────────────
+    it("autoApprove and maxAutoApprove default to false / 0", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      expect(await bet.autoApprove()).to.equal(false);
+      expect(await bet.maxAutoApprove()).to.equal(0);
+    });
 
-    it("Should allow self-registration with the correct key", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
+    // ─── Manual-approve flow ──────────────────────────────────────────────────
 
+    it("requestToJoin with correct key sets joinRequested", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      expect(await bet.joinRequested(bob.address)).to.equal(false);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.joinRequested(bob.address)).to.equal(true);
+    });
+
+    it("requestToJoin with wrong key reverts", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(bob).requestToJoin(WRONG_KEY))
+        .to.be.revertedWith("Invalid join key");
+    });
+
+    it("requestToJoin with empty string reverts", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(bob).requestToJoin(""))
+        .to.be.revertedWith("Invalid join key");
+    });
+
+    it("requestToJoin emits JoinRequested", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(bob).requestToJoin(JOIN_KEY))
+        .to.emit(bet, "JoinRequested").withArgs(bob.address);
+    });
+
+    it("Creator cannot requestToJoin their own bet", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(alice).requestToJoin(JOIN_KEY))
+        .to.be.revertedWith("Creator is already a participant");
+    });
+
+    it("Double requestToJoin is rejected", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(bob).requestToJoin(JOIN_KEY))
+        .to.be.revertedWith("Already requested");
+    });
+
+    it("requestToJoin does NOT auto-register when autoApprove = false", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
       expect(await bet.isRegistered(bob.address)).to.equal(false);
-      await bet.connect(bob).registerWithKey(inviteKey);
+    });
+
+    it("approveParticipant sets joinApproved", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveParticipant(bob.address);
+      expect(await bet.joinApproved(bob.address)).to.equal(true);
+    });
+
+    it("Only creator can approveParticipant", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(charlie).approveParticipant(bob.address))
+        .to.be.revertedWith("Only creator");
+    });
+
+    it("register succeeds after approval", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveParticipant(bob.address);
+      await bet.connect(bob).register();
       expect(await bet.isRegistered(bob.address)).to.equal(true);
     });
 
-    it("Should reject registration with a wrong key", async function () {
+    it("register fails without prior approval", async function () {
       const { bet } = await depositAndCreatePrivateBet(alice);
-      const wrongKey = ethers.hexlify(ethers.randomBytes(32));
-
-      await expect(
-        bet.connect(bob).registerWithKey(wrongKey)
-      ).to.be.revertedWith("Invalid invite key");
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(bob).register())
+        .to.be.revertedWith("Not approved by creator");
     });
 
-    it("Should reject double registration", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
-
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await expect(
-        bet.connect(bob).registerWithKey(inviteKey)
-      ).to.be.revertedWith("Already registered");
+    it("rejectParticipant clears joinRequested and joinApproved", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).rejectParticipant(bob.address);
+      expect(await bet.joinRequested(bob.address)).to.equal(false);
+      expect(await bet.joinApproved(bob.address)).to.equal(false);
     });
 
-    it("Should reject registerWithKey on a public bet", async function () {
-      const bet = await depositAndCreateBet(alice);
-      const { inviteKey } = makeKey();
+    it("rejectParticipant reverts when there is no request", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(alice).rejectParticipant(bob.address))
+        .to.be.revertedWith("No join request");
+    });
 
-      await expect(
-        bet.connect(bob).registerWithKey(inviteKey)
-      ).to.be.revertedWith("Not a private bet");
+    it("Only creator can rejectParticipant", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(charlie).rejectParticipant(bob.address))
+        .to.be.revertedWith("Only creator");
+    });
+
+    it("Rejected user is blacklisted and cannot re-request", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).rejectParticipant(bob.address);
+      await expect(bet.connect(bob).requestToJoin(JOIN_KEY))
+        .to.be.revertedWith("Your request was rejected");
+    });
+
+    // ─── Bulk operations ──────────────────────────────────────────────────────
+
+    it("approveAllParticipants approves every pending address", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(charlie).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveAllParticipants([bob.address, charlie.address]);
+      expect(await bet.joinApproved(bob.address)).to.equal(true);
+      expect(await bet.joinApproved(charlie.address)).to.equal(true);
+    });
+
+    it("rejectAllParticipants blacklists every pending address", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(charlie).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).rejectAllParticipants([bob.address, charlie.address]);
+      expect(await bet.joinBlacklisted(bob.address)).to.equal(true);
+      expect(await bet.joinBlacklisted(charlie.address)).to.equal(true);
+      expect(await bet.joinRequested(bob.address)).to.equal(false);
+      expect(await bet.joinRequested(charlie.address)).to.equal(false);
+    });
+
+    it("Only creator can approveAllParticipants", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(charlie).approveAllParticipants([bob.address]))
+        .to.be.revertedWith("Only creator");
+    });
+
+    it("Only creator can rejectAllParticipants", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await expect(bet.connect(charlie).rejectAllParticipants([bob.address]))
+        .to.be.revertedWith("Only creator");
+    });
+
+    // ─── acceptingParticipants ────────────────────────────────────────────────
+
+    it("acceptingParticipants defaults to true", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      expect(await bet.acceptingParticipants()).to.equal(true);
+    });
+
+    it("Creator can close participation", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(alice).setAcceptingParticipants(false);
+      expect(await bet.acceptingParticipants()).to.equal(false);
+    });
+
+    it("requestToJoin reverts when participation is closed", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(alice).setAcceptingParticipants(false);
+      await expect(bet.connect(bob).requestToJoin(JOIN_KEY))
+        .to.be.revertedWith("Creator is not accepting new participants");
+    });
+
+    it("Creator can re-open participation", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(alice).setAcceptingParticipants(false);
+      await bet.connect(alice).setAcceptingParticipants(true);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.joinRequested(bob.address)).to.equal(true);
+    });
+
+    it("Only creator can call setAcceptingParticipants", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(bob).setAcceptingParticipants(false))
+        .to.be.revertedWith("Only creator");
     });
 
     // ─── Access control ───────────────────────────────────────────────────────
 
-    it("Should block an unregistered user from placing a bet", async function () {
+    it("Unregistered user cannot place a bet", async function () {
       const { bet } = await depositAndCreatePrivateBet(alice);
       await factory.connect(bob).depositUsdc("200000000");
-
-      await expect(
-        bet.connect(bob).placeBet(1, "50000000")
-      ).to.be.revertedWith("Private bet: need invite key to participate");
+      await expect(bet.connect(bob).placeBet(1, "50000000"))
+        .to.be.revertedWith("Private bet: not on participant list");
     });
 
-    it("Should allow a registered user to place a bet", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
-
-      // Bob registers
-      await bet.connect(bob).registerWithKey(inviteKey);
-
-      // Bob places a bet
+    it("Registered user can place a bet", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveParticipant(bob.address);
+      await bet.connect(bob).register();
       await placeBet(bet, bob, 1, "60000000");
       expect(await bet.totalYesStake()).to.equal("60000000");
     });
@@ -802,79 +935,132 @@ describe("ProofBet Platform", function () {
       expect(await bet.totalYesStake()).to.equal("60000000");
     });
 
-    it("Should block an unregistered user from voting", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
+    it("Unregistered user cannot vote", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
 
-      // Set up: bob and charlie register and bet so the round can reach voting
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await bet.connect(charlie).registerWithKey(inviteKey);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveParticipant(bob.address);
+      await bet.connect(bob).register();
+
+      await bet.connect(charlie).requestToJoin(JOIN_KEY);
+      await bet.connect(alice).approveParticipant(charlie.address);
+      await bet.connect(charlie).register();
+
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
       await submitProof(bet, alice, "https://ipfs.io/ipfs/QmPrivateProof");
 
-      // dave is NOT registered
       await factory.connect(dave).depositProof("100000000000000000000");
-      await expect(
-        bet.connect(dave).vote(1)
-      ).to.be.revertedWith("Private bet: need invite key to participate");
+      await expect(bet.connect(dave).vote(1))
+        .to.be.revertedWith("Private bet: not on participant list");
     });
 
-    it("Should allow a registered user to vote", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
-
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await bet.connect(charlie).registerWithKey(inviteKey);
-      await bet.connect(dave).registerWithKey(inviteKey);
-
+    it("Registered user can vote", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      for (const user of [bob, charlie, dave]) {
+        await bet.connect(user).requestToJoin(JOIN_KEY);
+        await bet.connect(alice).approveParticipant(user.address);
+        await bet.connect(user).register();
+      }
       await placeBet(bet, bob, 1, "60000000");
       await placeBet(bet, charlie, 2, "70000000");
-
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
       await submitProof(bet, alice, "https://ipfs.io/ipfs/QmPrivateProof");
-
       await vote(bet, dave, 1);
       expect(await bet.yesVotes()).to.equal(1);
     });
 
-    // ─── Encrypted proof URL ──────────────────────────────────────────────────
+    // ─── Auto-approve ─────────────────────────────────────────────────────────
 
-    it("Should accept an enc:// proof URL for a private bet", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
-
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await bet.connect(charlie).registerWithKey(inviteKey);
-      await placeBet(bet, bob, 1, "60000000");
-      await placeBet(bet, charlie, 2, "70000000");
-
-      await increaseTime(8 * 24 * 3600);
-      await bet.checkAndCloseBetting();
-
-      // enc:// is a valid scheme for encrypted private-bet proofs
-      const encProofUrl = "enc://SGVsbG9Xb3JsZEFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=";
-      await submitProof(bet, alice, encProofUrl);
-
-      expect(await bet.currentStatus()).to.equal(2); // VOTING
-      expect(await bet.proofUrl()).to.equal(encProofUrl);
+    it("Auto-approve: requestToJoin immediately registers the caller", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true });
+      expect(await bet.autoApprove()).to.equal(true);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.isRegistered(bob.address)).to.equal(true);
+      expect(await bet.joinApproved(bob.address)).to.equal(true);
     });
 
-    it("Should reject a plain http:// proof URL even on a private bet", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
+    it("Auto-approve: emits ParticipantApproved(addr, true)", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true });
+      await expect(bet.connect(bob).requestToJoin(JOIN_KEY))
+        .to.emit(bet, "ParticipantApproved").withArgs(bob.address, true);
+    });
 
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await bet.connect(charlie).registerWithKey(inviteKey);
-      await placeBet(bet, bob, 1, "60000000");
-      await placeBet(bet, charlie, 2, "70000000");
+    it("Auto-approve: autoApprovedCount increments per join", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true });
+      expect(await bet.autoApprovedCount()).to.equal(0);
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.autoApprovedCount()).to.equal(1);
+      await bet.connect(charlie).requestToJoin(JOIN_KEY);
+      expect(await bet.autoApprovedCount()).to.equal(2);
+    });
 
-      await increaseTime(8 * 24 * 3600);
-      await bet.checkAndCloseBetting();
+    it("Auto-approve cap: requests under cap are auto-approved", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true, maxAutoApprove: 1 });
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.isRegistered(bob.address)).to.equal(true);
+    });
 
-      await expect(
-        submitProof(bet, alice, "http://example.com/proof")
-      ).to.be.revertedWith("Invalid URL scheme (use https:// or ipfs://)");
+    it("Auto-approve cap: requests over cap are NOT auto-approved", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true, maxAutoApprove: 1 });
+      await bet.connect(bob).requestToJoin(JOIN_KEY);     // auto-approved
+      await bet.connect(charlie).requestToJoin(JOIN_KEY); // cap reached → manual
+
+      expect(await bet.isRegistered(charlie.address)).to.equal(false);
+      expect(await bet.joinRequested(charlie.address)).to.equal(true);
+    });
+
+    it("Auto-approve cap: creator can still manually approve requests over the cap", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true, maxAutoApprove: 1 });
+      await bet.connect(bob).requestToJoin(JOIN_KEY);     // auto-approved
+      await bet.connect(charlie).requestToJoin(JOIN_KEY); // cap exceeded — manual required
+
+      await bet.connect(alice).approveParticipant(charlie.address);
+      await bet.connect(charlie).register();
+      expect(await bet.isRegistered(charlie.address)).to.equal(true);
+    });
+
+    it("setAutoApprove: creator can switch from manual to auto", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      expect(await bet.autoApprove()).to.equal(false);
+      await bet.connect(alice).setAutoApprove(true, 0);
+      expect(await bet.autoApprove()).to.equal(true);
+    });
+
+    it("setAutoApprove: creator can switch from auto to manual", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true });
+      await bet.connect(alice).setAutoApprove(false, 0);
+      expect(await bet.autoApprove()).to.equal(false);
+      // New requests are no longer auto-registered
+      await bet.connect(bob).requestToJoin(JOIN_KEY);
+      expect(await bet.isRegistered(bob.address)).to.equal(false);
+    });
+
+    it("setAutoApprove: emits AutoApproveChanged", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(alice).setAutoApprove(true, 5))
+        .to.emit(bet, "AutoApproveChanged").withArgs(true, 5);
+    });
+
+    it("setAutoApprove: non-creator is rejected", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      await expect(bet.connect(bob).setAutoApprove(true, 0))
+        .to.be.revertedWith("Only creator");
+    });
+
+    it("setAutoApprove: reverts on a public bet", async function () {
+      const bet = await depositAndCreateBet(alice);
+      await expect(bet.connect(alice).setAutoApprove(true, 0))
+        .to.be.revertedWith("Not a private bet");
+    });
+
+    it("setAutoApprove: creator can update cap without toggling mode", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true, maxAutoApprove: 2 });
+      await bet.connect(alice).setAutoApprove(true, 10);
+      expect(await bet.maxAutoApprove()).to.equal(10);
     });
 
     // ─── Private bet fee ──────────────────────────────────────────────────────
@@ -897,120 +1083,126 @@ describe("ProofBet Platform", function () {
     it("Non-owner cannot set the private bet fee", async function () {
       await expect(
         factory.connect(alice).setPrivateBetFee(PRIVATE_BET_FEE)
-      ).to.be.revert(ethers);
+      ).to.be.revertedWithCustomError(factory, "OwnableUnauthorizedAccount");
     });
 
     it("Private bet charges dynamic fee + privateBetFeeProof", async function () {
       await factory.connect(deployer).setPrivateBetFee(PRIVATE_BET_FEE);
-
       const details = await createValidBetDetails();
-      details.title = "[PRIVATE]";
+      details.title       = "[PRIVATE]";
       details.description = "[PRIVATE]";
-      const dynamicFee = await factory.calculateDynamicCreationFee(details);
+      const dynamicFee    = await factory.calculateDynamicCreationFee(details);
       const expectedTotal = BigInt(dynamicFee) + BigInt(PRIVATE_BET_FEE);
 
-      const depositAmount = expectedTotal + BigInt("50000000000000000000");
-      await factory.connect(alice).depositProof(depositAmount);
+      await factory.connect(alice).depositProof(expectedTotal + BigInt("50000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
       const [, proofBefore] = await factory.getInternalBalances(alice.address);
-      const { inviteKeyHash } = makeKey();
-      await factory.connect(alice).createBet(details, true, inviteKeyHash);
-      const [, proofAfter] = await factory.getInternalBalances(alice.address);
+      await factory.connect(alice).createBet(details, true, false, 0, JOIN_KEY_HASH);
+      const [, proofAfter]  = await factory.getInternalBalances(alice.address);
 
       expect(proofBefore - proofAfter).to.equal(expectedTotal);
     });
 
     it("Public bet does not charge privateBetFeeProof", async function () {
       await factory.connect(deployer).setPrivateBetFee(PRIVATE_BET_FEE);
-
-      const details = await createValidBetDetails();
+      const details    = await createValidBetDetails();
       const dynamicFee = await factory.calculateDynamicCreationFee(details);
 
-      const depositAmount = BigInt(dynamicFee) + BigInt("50000000000000000000");
-      await factory.connect(alice).depositProof(depositAmount);
+      await factory.connect(alice).depositProof(BigInt(dynamicFee) + BigInt("50000000000000000000"));
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
       const [, proofBefore] = await factory.getInternalBalances(alice.address);
-      await factory.connect(alice).createBet(details, false, ethers.ZeroHash);
-      const [, proofAfter] = await factory.getInternalBalances(alice.address);
+      await factory.connect(alice).createBet(details, false, false, 0, ethers.ZeroHash);
+      const [, proofAfter]  = await factory.getInternalBalances(alice.address);
 
       expect(proofBefore - proofAfter).to.equal(dynamicFee);
     });
 
     it("Fails to create private bet when PROOF balance is short by privateBetFeeProof", async function () {
       await factory.connect(deployer).setPrivateBetFee(PRIVATE_BET_FEE);
-
-      const details = await createValidBetDetails();
-      details.title = "[PRIVATE]";
-      details.description = "[PRIVATE]";
+      const details    = await createValidBetDetails();
+      details.title    = "[PRIVATE]";
       const dynamicFee = await factory.calculateDynamicCreationFee(details);
 
-      // Deposit only enough for the base dynamic fee, not the private fee
-      await factory.connect(alice).depositProof(BigInt(dynamicFee));
+      await factory.connect(alice).depositProof(BigInt(dynamicFee)); // exactly enough for base fee only
       await factory.connect(alice).depositUsdc(BigInt(PROOF_COLLATERAL) + BigInt("500000000"));
 
-      const { inviteKeyHash } = makeKey();
       await expect(
-        factory.connect(alice).createBet(details, true, inviteKeyHash)
+        factory.connect(alice).createBet(details, true, false, 0, JOIN_KEY_HASH)
       ).to.be.revertedWith("Insufficient PROOF");
     });
 
-    it("getFactoryConfig returns updated privateBetFee after setPrivateBetFee", async function () {
+    it("getFactoryConfig returns updated privateBetFee", async function () {
       await factory.connect(deployer).setPrivateBetFee(PRIVATE_BET_FEE);
       const cfg = await factory.getFactoryConfig();
       expect(cfg.privateBetFee).to.equal(PRIVATE_BET_FEE);
     });
 
-    // ─── Full private flow ────────────────────────────────────────────────────
+    // ─── Full manual flow ─────────────────────────────────────────────────────
 
-    it("Full flow: create → register → bet → enc:// proof → vote → resolve", async function () {
-      const { bet, inviteKey } = await depositAndCreatePrivateBet(alice);
+    it("Full flow (manual): create → request → approve → register → bet → proof → vote → resolve", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice);
+      const voter3 = signers[6];
+      await proofToken.transfer(voter3.address, INITIAL_PROOF_SUPPLY);
+      await proofToken.connect(voter3).approve(await factory.getAddress(), ethers.MaxUint256);
 
-      // Invite and register bob, charlie, dave
-      await bet.connect(bob).registerWithKey(inviteKey);
-      await bet.connect(charlie).registerWithKey(inviteKey);
-      await bet.connect(dave).registerWithKey(inviteKey);
-      await bet.connect(eve).registerWithKey(inviteKey);
+      for (const user of [bob, charlie, dave, eve, voter3]) {
+        await bet.connect(user).requestToJoin(JOIN_KEY);
+        await bet.connect(alice).approveParticipant(user.address);
+        await bet.connect(user).register();
+      }
 
-      // Betting phase
-      await placeBet(bet, bob, 1, "60000000");    // YES
+      await placeBet(bet, bob,     1, "60000000"); // YES
       await placeBet(bet, charlie, 2, "70000000"); // NO
 
-      // Close betting
       await increaseTime(8 * 24 * 3600);
       await bet.checkAndCloseBetting();
       expect(await bet.currentStatus()).to.equal(1); // AWAITING_PROOF
 
-      // Proof (encrypted)
-      const encProofUrl = "enc://U29tZUVuY3J5cHRlZFByb29mQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQ==";
-      await submitProof(bet, alice, encProofUrl);
+      const proofUrl = "https://ipfs.io/ipfs/QmPrivateProof123";
+      await submitProof(bet, alice, proofUrl);
       expect(await bet.currentStatus()).to.equal(2); // VOTING
-      expect(await bet.proofUrl()).to.equal(encProofUrl);
 
-      // Set up frank (signers[6]) who is not in the global beforeEach
-      const frank = signers[6];
-      await proofToken.transfer(frank.address, "100000000000000000000");
-      await proofToken.connect(frank).approve(await factory.getAddress(), ethers.MaxUint256);
-      await usdc.mint(frank.address, "500000000");
-      await usdc.connect(frank).approve(await factory.getAddress(), ethers.MaxUint256);
+      await vote(bet, dave,   1);  // YES
+      await vote(bet, eve,    1);  // YES
+      await vote(bet, voter3, 1);  // YES
 
-      // Voting phase — dave and eve vote YES, frank votes NO
-      await bet.connect(frank).registerWithKey(inviteKey);
-      await vote(bet, dave, 1);
-      await vote(bet, eve, 1);
-      await vote(bet, frank, 2);
-
-      // Resolve
       await increaseTime(15 * 24 * 3600);
       await bet.checkAndResolve();
       expect(await bet.currentStatus()).to.equal(3); // COMPLETED
+      expect(await bet.outcomeSide()).to.equal(1);   // Side.YES
+    });
 
-      // YES wins (2 vs 1 votes)
-      expect(await bet.outcomeSide()).to.equal(1); // Side.YES
+    // ─── Full auto-approve flow ───────────────────────────────────────────────
 
-      // Winners (bob) can claim
-      expect(await bet.hasBettor(bob.address)).to.equal(true);
+    it("Full flow (auto-approve): requestToJoin → immediately registered → bet → proof → vote → resolve", async function () {
+      const { bet } = await depositAndCreatePrivateBet(alice, { autoApprove: true });
+      const voter3 = signers[6];
+      await proofToken.transfer(voter3.address, INITIAL_PROOF_SUPPLY);
+      await proofToken.connect(voter3).approve(await factory.getAddress(), ethers.MaxUint256);
+
+      // Key verified → immediately registered, no manual approval needed
+      for (const user of [bob, charlie, dave, eve, voter3]) {
+        await bet.connect(user).requestToJoin(JOIN_KEY);
+        expect(await bet.isRegistered(user.address)).to.equal(true);
+      }
+
+      await placeBet(bet, bob,     1, "60000000");
+      await placeBet(bet, charlie, 2, "70000000");
+
+      await increaseTime(8 * 24 * 3600);
+      await bet.checkAndCloseBetting();
+      await submitProof(bet, alice, "https://ipfs.io/ipfs/QmAutoProof");
+
+      await vote(bet, dave,   1); // YES
+      await vote(bet, eve,    1); // YES
+      await vote(bet, voter3, 2); // NO  →  2-1 YES wins
+
+      await increaseTime(15 * 24 * 3600);
+      await bet.checkAndResolve();
+      expect(await bet.currentStatus()).to.equal(3); // COMPLETED
+      expect(await bet.outcomeSide()).to.equal(1);   // Side.YES
     });
   });
 });

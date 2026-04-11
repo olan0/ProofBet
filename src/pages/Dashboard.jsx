@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LayoutGrid, List, Loader2, Wallet, Plus, ChevronRight, Lock, Copy, Check } from "lucide-react";
+import { LayoutGrid, List, Loader2, Wallet, Plus, ChevronRight, Lock } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { ethers } from "ethers";
@@ -15,11 +15,6 @@ import InternalWalletPanel from "../components/wallet/InternalWalletPanel";
 import SearchBar from "../components/betting/SearchBar";
 import { getBetFactoryContract, connectWallet, getConnectedAddress } from "../components/blockchain/contracts";
 import { fetchBets, fetchActivity } from "../api/apiClient";
-import {
-  getPrivateKey,
-  buildInviteLink,
-  removePrivateKey,
-} from "../utils/betCrypto";
 
 const ON_CHAIN_STATUS_MAP = {
   0: "open_for_bets",
@@ -75,7 +70,6 @@ export default function Dashboard() {
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
   const [privateBets, setPrivateBets] = useState([]);
   const [isLoadingPrivate, setIsLoadingPrivate] = useState(false);
-  const [copiedInvite, setCopiedInvite] = useState(null); // betAddress of copied invite
   const ITEMS_PER_PAGE = 12;
 
   const handleConnectWallet = async () => {
@@ -186,7 +180,6 @@ export default function Dashboard() {
         participants_count: Number(bet.totalParticipants),
         voters_count: Number(bet.totalVotes),
         isPrivate: true,
-        inviteKey: getPrivateKey(bet.betId, walletAddress),
       }));
       setPrivateBets(mappedBets);
     } catch (e) {
@@ -318,17 +311,6 @@ export default function Dashboard() {
     );
   };
 
-  const copyInviteForBet = (bet) => {
-    const link = buildInviteLink(bet.address, bet.inviteKey);
-    navigator.clipboard.writeText(link);
-    setCopiedInvite(bet.address);
-    setTimeout(() => setCopiedInvite(null), 2000);
-  };
-
-  const forgetPrivateBet = (bet) => {
-    removePrivateKey(bet.address, walletAddress);
-    setPrivateBets((prev) => prev.filter((b) => b.address !== bet.address));
-  };
 
   const renderPrivateList = () => {
     if (isLoadingPrivate) {
@@ -346,7 +328,7 @@ export default function Dashboard() {
             <Lock className="w-12 h-12 text-purple-400 mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">No Private Bets</h3>
             <p className="text-gray-400">
-              Open an invite link to access a private bet, or create one via{' '}
+              Private bets you've been approved for will appear here. Create one via{' '}
               <Link to={createPageUrl('CreateBet')} className="text-purple-400 hover:underline">
                 Create Market
               </Link>
@@ -367,17 +349,8 @@ export default function Dashboard() {
         <Button
           size="sm"
           variant="ghost"
-          title="Copy invite link"
-          onClick={() => copyInviteForBet(bet)}
-          className="bg-gray-900/80 hover:bg-purple-700 text-purple-300 px-2"
-        >
-          {copiedInvite === bet.address ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          title="Forget this private bet"
-          onClick={() => forgetPrivateBet(bet)}
+          title="Remove from list"
+          onClick={() => setPrivateBets(prev => prev.filter(b => b.address !== bet.address))}
           className="bg-gray-900/80 hover:bg-red-700 text-red-400 px-2 text-xs"
         >✕</Button>
       </div>

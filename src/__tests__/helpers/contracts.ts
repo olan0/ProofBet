@@ -11,18 +11,21 @@ import { ethers } from 'ethers';
 
 // For now, we'll use minimal ABIs for testing
 // You should replace these with your actual ABIs
+const BET_DETAILS_TUPLE = 'tuple(string title, string description, uint256 bettingDeadline, uint256 proofDeadline, uint256 votingDeadline, uint256 minimumBetAmount, uint256 minimumSideStake, uint8 minimumTrustScore, uint256 minimumVotes, uint8 category, uint8 proofType)';
+
 const FactoryABI = [
-  'function createBet(tuple(string title, string description, uint256 bettingDeadline, uint256 proofDeadline, uint256 votingDeadline, uint256 minimumBetAmount, uint256 minimumSideStake, uint8 minimumTrustScore, uint256 minimumVotes, uint8 category, uint8 proofType) details) returns (address)',
+  `function createBet(${BET_DETAILS_TUPLE} details, bool isPrivate, bool autoApprove, uint256 maxAutoApprove, bytes32 joinKeyHash) returns (address)`,
   'function depositProof(uint256 amount)',
   'function depositUsdc(uint256 amount)',
   'function withdrawProof(uint256 amount)',
   'function withdrawUsdc(uint256 amount)',
   'function getInternalBalances(address user) view returns (uint256 usdcBalance, uint256 proofBalance)',
-  'function calculateDynamicCreationFee(tuple(string title, string description, uint256 bettingDeadline, uint256 proofDeadline, uint256 votingDeadline, uint256 minimumBetAmount, uint256 minimumSideStake, uint8 minimumTrustScore, uint256 minimumVotes, uint8 category, uint8 proofType) details) view returns (uint256)',
+  `function calculateDynamicCreationFee(${BET_DETAILS_TUPLE} details) view returns (uint256)`,
   'function isBetFromFactory(address bet) view returns (bool)',
   'function creationFeeProof() view returns (uint256)',
   'function proofCollateralUsdc() view returns (uint256)',
-  'event BetCreated(address betAddress, address creator)',
+  'function privateBetFeeProof() view returns (uint256)',
+  'event BetCreated(address betAddress, address creator, bool isPrivate)',
 ];
 
 const ProofTokenABI = [
@@ -53,6 +56,29 @@ const BetABI = [
   'function totalNoStake() view returns (uint256)',
   'function creator() view returns (address)',
   'function details() view returns (string title, string description, uint256 bettingDeadline, uint256 proofDeadline, uint256 votingDeadline, uint256 minimumBetAmount, uint256 minimumSideStake, uint8 minimumTrustScore, uint256 minimumVotes, uint8 category, uint8 proofType)',
+  // ── Private bet ──
+  'function isPrivate() view returns (bool)',
+  'function acceptingParticipants() view returns (bool)',
+  'function autoApprove() view returns (bool)',
+  'function maxAutoApprove() view returns (uint256)',
+  'function autoApprovedCount() view returns (uint256)',
+  'function joinKeyHash() view returns (bytes32)',
+  'function joinRequested(address) view returns (bool)',
+  'function joinApproved(address) view returns (bool)',
+  'function joinBlacklisted(address) view returns (bool)',
+  'function isRegistered(address) view returns (bool)',
+  'function requestToJoin(string key)',
+  'function approveParticipant(address participant)',
+  'function rejectParticipant(address participant)',
+  'function approveAllParticipants(address[] participants)',
+  'function rejectAllParticipants(address[] participants)',
+  'function register()',
+  'function setAutoApprove(bool enabled, uint256 maxCount)',
+  'function setAcceptingParticipants(bool accepting)',
+  'event JoinRequested(address indexed participant)',
+  'event ParticipantApproved(address indexed participant, bool wasAutoApproved)',
+  'event ParticipantRejected(address indexed participant)',
+  'event AutoApproveChanged(bool enabled, uint256 maxCount)',
 ];
 
 export interface ContractSetup {

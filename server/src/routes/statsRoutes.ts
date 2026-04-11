@@ -205,7 +205,7 @@ router.get("/user/:wallet", async (req, res) => {
         $group: {
           _id: "$role",
           count: { $sum: 1 },
-          totalUsdc: { $sum: "$amountUsdc" }
+          totalUsdc: { $sum: { $toDouble: { $ifNull: ["$amountUsdc", "0"] } } }
         }
       }
     ]);

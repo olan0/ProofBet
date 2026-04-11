@@ -11,16 +11,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { ArrowLeft, Calendar as CalendarIcon, AlertCircle, Info, Wallet, Plus, Loader2, Lock, Copy, Check, Link } from "lucide-react";
+import { ArrowLeft, Calendar as CalendarIcon, AlertCircle, Info, Wallet, Plus, Loader2, Lock, Users, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import { ethers } from "ethers";
-
-import {
-  generateBetKey,
-  hexKeyToBytes32,
-  buildInviteLink,
-  savePrivateKey,
-} from "../utils/betCrypto";
 
 // Import contract utilities
 import {
@@ -81,9 +74,11 @@ export default function CreateBet() {
 
   // Private bet
   const [isPrivate, setIsPrivate] = useState(false);
-  const [inviteKey, setInviteKey] = useState("");
-  const [inviteLink, setInviteLink] = useState("");
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [privateBetFeeProof, setPrivateBetFeeProof] = useState(0);
+  const [showPrivateConfirm, setShowPrivateConfirm] = useState(false);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [maxAutoApprove, setMaxAutoApprove] = useState(""); // "" = unlimited
+  const [joinKey, setJoinKey] = useState(""); // optional key-based access
 
   // Check for wallet connection on mount AND listen for account changes
   useEffect(() => {
@@ -158,12 +153,13 @@ export default function CreateBet() {
       const factory = getBetFactoryContract();
       
       // Get creation fee, vote stake amount, default percentages and collateral from BetFactory
-      const [creationFee, voteStake, defaultVoterReward, defaultPlatformFee, proofCollateral, internalBalances] = await Promise.all([
+      const [creationFee, voteStake, defaultVoterReward, defaultPlatformFee, proofCollateral, privateFee, internalBalances] = await Promise.all([
         factory.creationFeeProof(),
         factory.voteStakeAmountProof(),
         factory.defaultVoterRewardPercentage(),
         factory.defaultPlatformFeePercentage(),
         factory.proofCollateralUsdc(),
+        factory.privateBetFeeProof(),
         factory.getInternalBalances(address),
       ]);
 
@@ -176,6 +172,7 @@ export default function CreateBet() {
         defaultPlatformFeePercentage: Number(defaultPlatformFee),
         proofCollateralUsdc: parseFloat(ethers.formatUnits(proofCollateral, 6))
       });
+      setPrivateBetFeeProof(parseFloat(ethers.formatEther(privateFee)));
 
       // Get user's INTERNAL token balances
       setUserBalances({
@@ -237,17 +234,20 @@ export default function CreateBet() {
   };
 
   const handlePrivateToggle = (checked) => {
-    setIsPrivate(checked);
-    if (checked && !inviteKey) {
-      const key = generateBetKey();
-      setInviteKey(key);
+    if (checked) {
+      setShowPrivateConfirm(true);
+    } else {
+      setIsPrivate(false);
+      setShowPrivateConfirm(false);
+      setAutoApprove(false);
+      setMaxAutoApprove("");
+      setJoinKey("");
     }
   };
 
-  const copyInviteLink = () => {
-    navigator.clipboard.writeText(inviteLink);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const confirmPrivate = () => {
+    setIsPrivate(true);
+    setShowPrivateConfirm(false);
   };
 
   const handleConnectWallet = async () => {
@@ -370,10 +370,11 @@ export default function CreateBet() {
       return;
     }
 
-    // Check PROOF for dynamic fee
-    if (userBalances.proof < dynamicFeeProof) {
-      const depositAmount = dynamicFeeProof - userBalances.proof;
-      setError(`You need ${dynamicFeeProof.toFixed(2)} PROOF tokens but only have ${userBalances.proof.toFixed(2)} deposited. You need ${depositAmount.toFixed(2)} more PROOF tokens.`);
+    // Check PROOF for dynamic fee + optional private fee
+    const totalProofNeeded = dynamicFeeProof + (isPrivate ? privateBetFeeProof : 0);
+    if (userBalances.proof < totalProofNeeded) {
+      const depositAmount = totalProofNeeded - userBalances.proof;
+      setError(`You need ${totalProofNeeded.toFixed(2)} PROOF tokens but only have ${userBalances.proof.toFixed(2)} deposited. You need ${depositAmount.toFixed(2)} more PROOF tokens.`);
       return;
     }
 
@@ -425,16 +426,21 @@ export default function CreateBet() {
         proofType: proofTypeMap[formData.proofType] || 5
       };
 
-      // Compute on-chain invite key hash (keccak256 of the raw 32-byte key)
-      const inviteKeyHash = isPrivate
-        ? ethers.keccak256(hexKeyToBytes32(inviteKey))
+      if (isPrivate && !joinKey.trim()) {
+        setError("A join key is required for private bets.");
+        return;
+      }
+      const joinKeyHash = isPrivate
+        ? ethers.keccak256(ethers.toUtf8Bytes(joinKey.trim()))
         : ethers.ZeroHash;
-
-      const createTx = await factory.createBet(betDetails, isPrivate, inviteKeyHash);
+      const effectiveAutoApprove = isPrivate && autoApprove;
+      const maxAutoNum = effectiveAutoApprove && maxAutoApprove !== ""
+        ? parseInt(maxAutoApprove)
+        : 0;
+      const createTx = await factory.createBet(betDetails, isPrivate, effectiveAutoApprove, maxAutoNum, joinKeyHash);
       const receipt = await createTx.wait();
 
       // Extract new bet address from BetCreated event
-      // betAddress is not indexed so it's in log.data, not topics — use interface.parseLog
       const factoryIface = getBetFactoryContract().interface;
       let newBetAddress = null;
       for (const log of receipt.logs) {
@@ -447,15 +453,11 @@ export default function CreateBet() {
         } catch {}
       }
 
-      if (isPrivate && newBetAddress) {
-        savePrivateKey(newBetAddress, inviteKey, walletAddress);
-        const link = buildInviteLink(newBetAddress, inviteKey);
-        setInviteLink(link);
-        setCreating(false);
-        return; // stay on page to show invite link
-      }
-
       if (newBetAddress) {
+        // Persist the plaintext join key so the creator can see it on the detail page
+        if (isPrivate && joinKey.trim()) {
+          localStorage.setItem(`joinKey:${newBetAddress.toLowerCase()}`, joinKey.trim());
+        }
         navigate(`/BetDetails?address=${newBetAddress}`);
       } else {
         navigate(createPageUrl("Dashboard"));
@@ -523,7 +525,8 @@ export default function CreateBet() {
     );
   }
 
-  const hasInsufficientFunds = userBalances.usdc < contractSettings.proofCollateralUsdc || userBalances.proof < dynamicFeeProof;
+  const totalProofRequired = dynamicFeeProof + (isPrivate ? privateBetFeeProof : 0);
+  const hasInsufficientFunds = userBalances.usdc < contractSettings.proofCollateralUsdc || userBalances.proof < totalProofRequired;
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -599,11 +602,11 @@ export default function CreateBet() {
                       You need <strong>{(contractSettings.proofCollateralUsdc - userBalances.usdc).toFixed(2)} more USDC</strong>.
                     </p>
                   )}
-                  {userBalances.proof < dynamicFeeProof && (
+                  {userBalances.proof < totalProofRequired && (
                     <p className="text-yellow-200 mb-2">
-                      You need <strong>{dynamicFeeProof.toFixed(2)} PROOF tokens</strong> for the creation fee, 
+                      You need <strong>{totalProofRequired.toFixed(2)} PROOF tokens</strong> for the creation fee{isPrivate ? " (includes private bet fee)" : ""},
                       but you only have <strong>{userBalances.proof.toFixed(2)} PROOF</strong> in your internal wallet.
-                      You need <strong>{(dynamicFeeProof - userBalances.proof).toFixed(2)} more PROOF</strong>.
+                      You need <strong>{(totalProofRequired - userBalances.proof).toFixed(2)} more PROOF</strong>.
                     </p>
                   )}
                   <Button 
@@ -619,41 +622,7 @@ export default function CreateBet() {
           </Card>
         )}
 
-        {/* Invite link — shown after private bet is created */}
-        {inviteLink && (
-          <Card className="bg-purple-900/30 border-purple-600 mb-6">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <Link className="w-6 h-6 text-purple-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-purple-200 mb-1">Private Bet Created!</h3>
-                  <p className="text-sm text-purple-300 mb-3">
-                    Share this invite link with people you want to participate. The key in the link is the only way to access the bet content — keep it safe.
-                  </p>
-                  <div className="flex gap-2">
-                    <Input
-                      readOnly
-                      value={inviteLink}
-                      className="bg-gray-900 border-purple-600 text-purple-200 text-sm font-mono"
-                    />
-                    <Button
-                      onClick={copyInviteLink}
-                      className="bg-purple-700 hover:bg-purple-600 text-white flex-shrink-0"
-                    >
-                      {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                  <Button
-                    onClick={() => navigate(createPageUrl("Dashboard") + "?tab=private")}
-                    className="mt-3 bg-gray-700 hover:bg-gray-600 text-white"
-                  >
-                    Go to Private Tab
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+
 
         <Card className="bg-gray-800 border-gray-700">
           <CardHeader>
@@ -676,12 +645,12 @@ export default function CreateBet() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-400">Internal PROOF Balance:</p>
-                  <p className={`text-lg font-bold ${userBalances.proof >= dynamicFeeProof ? 'text-purple-400' : 'text-yellow-400'}`}>
+                  <p className={`text-lg font-bold ${userBalances.proof >= totalProofRequired ? 'text-purple-400' : 'text-yellow-400'}`}>
                     {userBalances.proof.toFixed(2)} PROOF
                   </p>
-                  {dynamicFeeProof > 0 && userBalances.proof < dynamicFeeProof && (
+                  {totalProofRequired > 0 && userBalances.proof < totalProofRequired && (
                     <p className="text-xs text-yellow-400">
-                      Needed: {dynamicFeeProof.toFixed(2)} PROOF
+                      Needed: {totalProofRequired.toFixed(2)} PROOF
                     </p>
                   )}
                 </div>
@@ -802,14 +771,14 @@ export default function CreateBet() {
                     <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
-                      <SelectItem value="crypto">Crypto</SelectItem>
-                      <SelectItem value="sports">Sports</SelectItem>
-                      <SelectItem value="politics">Politics</SelectItem>
-                      <SelectItem value="finance">Finance</SelectItem>
-                      <SelectItem value="entertainment">Entertainment</SelectItem>
-                      <SelectItem value="personal">Personal</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                    <SelectContent className="bg-gray-800 border-gray-600">
+                      <SelectItem value="crypto" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Crypto</SelectItem>
+                      <SelectItem value="sports" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Sports</SelectItem>
+                      <SelectItem value="politics" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Politics</SelectItem>
+                      <SelectItem value="finance" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Finance</SelectItem>
+                      <SelectItem value="entertainment" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Entertainment</SelectItem>
+                      <SelectItem value="personal" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Personal</SelectItem>
+                      <SelectItem value="other" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -820,12 +789,12 @@ export default function CreateBet() {
                     <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
                       <SelectValue placeholder="How will you prove it?" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
-                      <SelectItem value="video">Video</SelectItem>
-                      <SelectItem value="livestream">Live Stream</SelectItem>
-                      <SelectItem value="document">Document</SelectItem>
-                      <SelectItem value="oracle">Oracle</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                    <SelectContent className="bg-gray-800 border-gray-600">
+                      <SelectItem value="video" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Video</SelectItem>
+                      <SelectItem value="livestream" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Live Stream</SelectItem>
+                      <SelectItem value="document" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Document</SelectItem>
+                      <SelectItem value="oracle" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Oracle</SelectItem>
+                      <SelectItem value="other" className="text-white hover:bg-gray-700 focus:bg-gray-700 focus:text-white">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -839,7 +808,8 @@ export default function CreateBet() {
                     <div>
                       <p className="text-white font-medium">Private Bet</p>
                       <p className="text-sm text-gray-400 mt-0.5">
-                        Content encrypted end-to-end. Only people with your invite link can view details, bet, and vote.
+                        Restrict participation. Approve joiners manually or enable auto-approve below.
+                        {privateBetFeeProof > 0 && <span className="text-purple-300"> +{privateBetFeeProof.toFixed(2)} PROOF fee.</span>}
                       </p>
                     </div>
                     <Switch
@@ -848,14 +818,92 @@ export default function CreateBet() {
                       className="ml-4"
                     />
                   </div>
-                  {isPrivate && (
-                    <div className="mt-3 p-3 bg-purple-900/30 border border-purple-700/50 rounded-md space-y-2">
-                      <p className="text-xs text-purple-300 font-medium">
-                        A unique invite key has been generated. Share the invite link after creating the bet.
-                      </p>
-                      <p className="text-xs text-gray-400 font-mono break-all">
-                        Key: {inviteKey.slice(0, 16)}...{inviteKey.slice(-8)}
-                      </p>
+
+                  {/* Confirmation prompt when toggling on */}
+                  {showPrivateConfirm && (
+                    <div className="mt-3 p-4 bg-yellow-900/30 border border-yellow-600/50 rounded-md space-y-3">
+                      <div className="flex items-start gap-2">
+                        <ShieldCheck className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-yellow-200 font-medium text-sm">Private bet — creator-controlled access</p>
+                          <ul className="text-xs text-yellow-300/80 mt-1 space-y-1 list-disc list-inside">
+                            <li>Anyone can <strong>request to join</strong> the bet</li>
+                            <li>You <strong>approve or reject</strong> each request individually</li>
+                            <li>Only approved users can register and participate</li>
+                            <li>No invite links or shared keys involved</li>
+                          </ul>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={confirmPrivate} className="bg-purple-700 hover:bg-purple-600 text-white text-xs">
+                          Enable Private Bet
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setShowPrivateConfirm(false)} className="border-gray-600 text-gray-300 text-xs">
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isPrivate && !showPrivateConfirm && (
+                    <div className="mt-3 p-3 bg-purple-900/30 border border-purple-700/50 rounded-md space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-purple-400" />
+                        <p className="text-xs text-purple-300 font-medium">
+                          Private mode enabled — only approved participants can bet and vote.
+                        </p>
+                      </div>
+
+                      {/* Join key field — required for private bets */}
+                      <div className="pt-1 border-t border-purple-700/40">
+                        <p className="text-xs text-white font-medium mb-1">Join key <span className="text-red-400">*</span></p>
+                        <p className="text-xs text-gray-400 mb-2">
+                          Share this key with your audience. Participants must enter it to request access.
+                        </p>
+                        <Input
+                          type="text"
+                          placeholder="e.g. mystream-secret-2026"
+                          value={joinKey}
+                          onChange={(e) => setJoinKey(e.target.value)}
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 h-8 text-sm"
+                        />
+                      </div>
+
+                      {/* Auto-approve toggle */}
+                      <div className="flex items-center justify-between pt-1 border-t border-purple-700/40">
+                        <div>
+                          <p className="text-xs text-white font-medium">Auto-approve participants</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Anyone with the correct key is automatically registered.
+                            {!autoApprove && " Off = you manually approve each request."}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={autoApprove}
+                          onCheckedChange={setAutoApprove}
+                          className="ml-4 flex-shrink-0"
+                        />
+                      </div>
+
+                      {/* Cap input — only shown when auto-approve is on */}
+                      {autoApprove && (
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-300 mb-1">Auto-approve limit <span className="text-gray-500">(leave blank for unlimited)</span></p>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="Unlimited"
+                              value={maxAutoApprove}
+                              onChange={(e) => setMaxAutoApprove(e.target.value)}
+                              className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 h-8 text-sm"
+                            />
+                          </div>
+                          <p className="text-xs text-gray-400 mt-4 flex-shrink-0">
+                            {maxAutoApprove ? `First ${maxAutoApprove} get in, then manual` : "No cap — everyone gets in"}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -933,6 +981,9 @@ export default function CreateBet() {
                               <strong>{dynamicFeeProof > 0 ? `${dynamicFeeProof.toFixed(2)} PROOF` : 'Fill form to calculate'}</strong>
                             )}
                           </div>
+                          {isPrivate && privateBetFeeProof > 0 && (
+                            <div>Private bet fee: <strong>{privateBetFeeProof.toFixed(2)} PROOF</strong></div>
+                          )}
                           <div>Proof collateral (returned after providing proof): <strong>{contractSettings.proofCollateralUsdc.toFixed(2)} USDC</strong></div>
                         </div>
                     </AlertDescription>
@@ -953,7 +1004,7 @@ export default function CreateBet() {
                    calculatingFee ? 'Calculating Fees...' :
                    hasInsufficientFunds ?
                    'Insufficient Funds - Deposit Required' :
-                   `Create Market (${dynamicFeeProof.toFixed(2)} PROOF + ${contractSettings.proofCollateralUsdc.toFixed(2)} USDC)`}
+                   `Create Market (${totalProofRequired.toFixed(2)} PROOF + ${contractSettings.proofCollateralUsdc.toFixed(2)} USDC)`}
                 </Button>
               </div>
             </form>
