@@ -6,7 +6,7 @@ import { SyncState } from "../models/SyncState";
 import { Interface, Result } from "ethers";
 import dotenv from "dotenv";
 import Activity, { ActivityType, ActorRole } from "../models/Activity";
- 
+
 dotenv.config();
 const FACTORY_ADDRESS = process.env.FACTORY_ADDRESS!;
 const RPC_URL =  process.env.RPC_URL!;
@@ -14,8 +14,38 @@ const CONFIRMATIONS = parseInt(process.env.CONFIRMATIONS || "0", 10); // blocks 
 const DEPLOYMENT_BLOCK = parseInt(process.env.DEPLOYMENT_BLOCK || "0", 10);
 const CHUNK_SIZE = 2000; // Alchemy eth_getLogs max range per request
 
-const provider = new ethers.WebSocketProvider(RPC_URL);
-const factory = new ethers.Contract(FACTORY_ADDRESS, BetFactoryArtifact, provider);
+// Log configuration at startup
+console.log(`📋 EventSync Config: RPC=${RPC_URL ? '✓ Set' : '❌ Missing'}, FACTORY=${FACTORY_ADDRESS ? '✓ Set' : '❌ Missing'}`);
+if (!RPC_URL) console.warn("⚠️ RPC_URL is not configured — blockchain sync will fail");
+if (!FACTORY_ADDRESS) console.warn("⚠️ FACTORY_ADDRESS is not configured — blockchain sync will fail");
+
+// Lazy-initialize provider to avoid blocking on startup
+let provider: ethers.WebSocketProvider | null = null;
+let factory: ethers.Contract | null = null;
+
+function getProvider() {
+  if (!provider) {
+    if (!RPC_URL) {
+      throw new Error("RPC_URL environment variable is not set. Blockchain sync is disabled.");
+    }
+    try {
+      provider = new ethers.WebSocketProvider(RPC_URL);
+      console.log(`✅ WebSocket provider connected to: ${RPC_URL.substring(0, 50)}...`);
+    } catch (err) {
+      console.error(`❌ Failed to create WebSocket provider with ${RPC_URL}:`, err);
+      throw err;
+    }
+    factory = new ethers.Contract(FACTORY_ADDRESS, BetFactoryArtifact, provider);
+  }
+  return provider;
+}
+
+function getFactory() {
+  if (!factory) {
+    getProvider(); // Ensure provider is initialized
+  }
+  return factory;
+}
 
 // ----------- UTILITIES -----------
 
@@ -33,14 +63,14 @@ async function getLastProcessedBlock(): Promise<number> {
 }
 
 async function getBlockTimestamp(blockNumber: number): Promise<Date> {
-  const block = await provider.getBlock(blockNumber);
+  const block = await getProvider().getBlock(blockNumber);
   if (!block) {
     throw new Error(`Block ${blockNumber} not found`);
   }
   return new Date(block.timestamp * 1000);
 }
 async function fetchBetDetails(betAddress: string) {
-  const bet = new ethers.Contract(betAddress, BetArtifact, provider);
+  const bet = new ethers.Contract(betAddress, BetArtifact, getProvider());
   const details = await bet.getBetDetails();
   return details
 }
@@ -272,7 +302,7 @@ async function processEventChunk(events: ethers.Log[]) {
 
 export async function syncHistoricalEvents() {
   const lastProcessed = await getLastProcessedBlock();
-  const latest = await provider.getBlockNumber();
+  const latest = await getProvider().getBlockNumber();
 
   if (lastProcessed >= latest) {
     console.log("✅ Already up to date, no historical sync needed");
@@ -286,10 +316,10 @@ export async function syncHistoricalEvents() {
     const to = Math.min(from + CHUNK_SIZE - 1, latest);
     try {
       const events = [
-        ...(await factory.queryFilter("BetCreated", from, to)),
-        ...(await factory.queryFilter("BetStatusChanged", from, to)),
-        ...(await factory.queryFilter("BetParticipation", from, to)),
-        ...(await factory.queryFilter("BetVote", from, to)),
+        ...(await getFactory().queryFilter("BetCreated", from, to)),
+        ...(await getFactory().queryFilter("BetStatusChanged", from, to)),
+        ...(await getFactory().queryFilter("BetParticipation", from, to)),
+        ...(await getFactory().queryFilter("BetVote", from, to)),
       ];
       if (events.length > 0) {
         await processEventChunk(events);
@@ -312,7 +342,7 @@ async function waitAndProcess(
   handler: () => Promise<void>
 ): Promise<void> {
   try {
-    const receipt = await provider.waitForTransaction(txHash, CONFIRMATIONS);
+    const receipt = await getProvider().waitForTransaction(txHash, CONFIRMATIONS);
     if (!receipt || receipt.status !== 1) {
       console.warn(`⚠️ ${label} not finalized (tx ${txHash})`);
       return;
@@ -324,28 +354,28 @@ async function waitAndProcess(
 }
 
 export function subscribeLiveEvents() {
-  factory.on("BetCreated", async (betAddress, creator, isPrivateBet, event) => {
+  getFactory().on("BetCreated", async (betAddress, creator, isPrivateBet, event) => {
     console.log(`📡 BetCreated: ${betAddress} (private: ${isPrivateBet})`);
     await waitAndProcess(event.log.transactionHash, "BetCreated", () =>
       handleBetCreated(betAddress, creator, isPrivateBet, event as any)
     );
   });
 
-  factory.on("BetStatusChanged", async (betAddress, newStatus, reason, event) => {
+  getFactory().on("BetStatusChanged", async (betAddress, newStatus, reason, event) => {
     console.log(`📡 StatusChanged → ${newStatus} (${reason})`);
     await waitAndProcess(event.log.transactionHash, "BetStatusChanged", () =>
       handleStatusChanged(betAddress, newStatus, event as any)
     );
   });
 
-  factory.on("BetParticipation", async (betAddress, participant, position, amountUsdc, event) => {
+  getFactory().on("BetParticipation", async (betAddress, participant, position, amountUsdc, event) => {
     console.log(`📡 BetParticipation: ${participant} bet ${amountUsdc}`);
     await waitAndProcess(event.log.transactionHash, "BetParticipation", () =>
       handleBetParticipation(betAddress, participant, position, amountUsdc, event as any)
     );
   });
 
-  factory.on("BetVote", async (betAddress, voter, vote, event) => {
+  getFactory().on("BetVote", async (betAddress, voter, vote, event) => {
     console.log(`📡 BetVote: ${voter} voted ${vote}`);
     await waitAndProcess(event.log.transactionHash, "BetVote", () =>
       handleBetVote(betAddress, voter, vote, event as any)
@@ -365,7 +395,7 @@ export function subscribeLiveEvents() {
   }, HEARTBEAT_MS);
 
   // Detect WebSocket disconnection and reconnect
-  (provider.websocket as any).on?.("close", () => {
+  (getProvider().websocket as any).on?.("close", () => {
     console.warn("⚠️ WebSocket closed — restarting EventSync in 5s...");
     setTimeout(() => initEventSync(), 5000);
   });
@@ -374,6 +404,14 @@ export function subscribeLiveEvents() {
 }
 
 export async function initEventSync() {
-  await syncHistoricalEvents();
-  subscribeLiveEvents();
+  try {
+    getProvider(); // Initialize provider
+    await syncHistoricalEvents();
+    subscribeLiveEvents();
+    console.log("✅ EventSync initialized successfully");
+  } catch (err) {
+    console.error("❌ EventSync initialization failed:", err);
+    console.error("Will retry in 10 seconds...");
+    setTimeout(() => initEventSync(), 10000);
+  }
 }
