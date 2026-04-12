@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_BASE_URL = typeof window !== 'undefined' && window.ENV?.API_BASE_URL
   ? window.ENV.API_BASE_URL
-  : (import.meta.env?.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:3000');
+  : (import.meta.env?.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'));
 
 const API_HEADERS = {
   'Content-Type': 'application/json',
