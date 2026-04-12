@@ -12,6 +12,7 @@ import { initEventSync } from "./services/EventSync";
 import activityRoutes  from "./routes/activityRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import { apiKeyMiddleware } from "./middleware/apiKey";
+import { startKeeperScheduler } from "./jobs/keeperScheduler";
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use("/api/bets", betRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/stats", statsRoutes);
 initEventSync().catch(console.error);
+startKeeperScheduler();
 //startBetIndexer();
 // Handle socket connections
 io.on("connection", (socket) => {

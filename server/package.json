@@ -9,7 +9,6 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "kill-port": "powershell -Command \"Stop-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess -Force\""
-
   },
   "keywords": [],
   "author": "",
@@ -21,6 +20,7 @@
     "ethers": "^6.13.5",
     "express": "^5.1.0",
     "mongoose": "^8.19.1",
+    "node-cron": "^4.2.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
