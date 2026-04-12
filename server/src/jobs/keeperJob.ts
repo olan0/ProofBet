@@ -36,12 +36,33 @@ async function fetchActiveBets(): Promise<any[]> {
   if (API_KEY) headers["x-api-key"] = API_KEY;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/bets?status=0,1,2&limit=100`, {
-      headers,
-    });
-    if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-    const data = await response.json();
-    return data.bets || [];
+    // Fetch public bets
+    const publicUrl = `${API_BASE_URL}/api/bets?status=0,1,2&limit=100`;
+    console.log(`📡 Fetching public bets from: ${publicUrl}`);
+
+    const publicResponse = await fetch(publicUrl, { headers });
+    if (!publicResponse.ok) {
+      const body = await publicResponse.text();
+      throw new Error(`API error ${publicResponse.status}: ${body}`);
+    }
+    const publicData = await publicResponse.json();
+    const publicBets = publicData.bets || [];
+    console.log(`✅ Fetched ${publicBets.length} public active bets`);
+
+    // Fetch private bets
+    const privateUrl = `${API_BASE_URL}/api/bets?status=0,1,2&isPrivate=true&limit=100`;
+    console.log(`📡 Fetching private bets from: ${privateUrl}`);
+
+    const privateResponse = await fetch(privateUrl, { headers });
+    if (!privateResponse.ok) {
+      const body = await privateResponse.text();
+      throw new Error(`API error ${privateResponse.status}: ${body}`);
+    }
+    const privateData = await privateResponse.json();
+    const privateBets = privateData.bets || [];
+    console.log(`✅ Fetched ${privateBets.length} private active bets`);
+
+    return [...publicBets, ...privateBets];
   } catch (err) {
     console.error("❌ Failed to fetch active bets:", err);
     return [];
@@ -50,6 +71,10 @@ async function fetchActiveBets(): Promise<any[]> {
 
 async function runKeeper() {
   console.log(`⏰ Keeper job started at ${new Date().toISOString()}`);
+  console.log(`   API_BASE_URL: ${API_BASE_URL}`);
+  console.log(`   FACTORY_ADDRESS: ${FACTORY_ADDRESS ? '✓ Set' : '❌ Missing'}`);
+  console.log(`   RPC_URL: ${RPC_URL ? '✓ Set' : '❌ Missing'}`);
+  console.log(`   KEEPER_PRIVATE_KEY: ${PRIVATE_KEY ? '✓ Set' : '❌ Missing'}`);
 
   if (!FACTORY_ADDRESS || !RPC_URL || !PRIVATE_KEY) {
     console.error("❌ Missing FACTORY_ADDRESS, RPC_URL, or KEEPER_PRIVATE_KEY");

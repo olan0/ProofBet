@@ -48,10 +48,28 @@ async function fetchActiveBetAddressesFromApi(): Promise<string[] | null> {
 
   try {
     for (const status of ACTIVE_STATUSES) {
+      // Fetch public bets
       let cursor: string | null = null;
-
       while (true) {
         const params = new URLSearchParams({ status: String(status), limit: "100" });
+        if (cursor) params.set("cursor", cursor);
+
+        const res = await fetch(`${API_BASE_URL}/api/bets?${params}`, { headers });
+        if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+
+        const json = await res.json() as { data?: { betId: string }[]; pagination?: { nextCursor: string | null; hasNext: boolean } };
+        for (const bet of json.data ?? []) {
+          if (bet.betId) addresses.push(bet.betId);
+        }
+
+        cursor = json.pagination?.nextCursor ?? null;
+        if (!json.pagination?.hasNext) break;
+      }
+
+      // Fetch private bets for this status
+      cursor = null;
+      while (true) {
+        const params = new URLSearchParams({ status: String(status), isPrivate: "true", limit: "100" });
         if (cursor) params.set("cursor", cursor);
 
         const res = await fetch(`${API_BASE_URL}/api/bets?${params}`, { headers });
