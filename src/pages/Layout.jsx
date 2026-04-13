@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Wallet, TrendingUp, Settings, BookOpen, Code, ChevronDown, LogOut, DollarSign, ShieldCheck, Award } from "lucide-react";
+import { Wallet, TrendingUp, Settings, BookOpen, Code, ChevronDown, LogOut, DollarSign, ShieldCheck, Award, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -202,6 +202,13 @@ export default function Layout({ children }) {
             <Link to={createPageUrl("Statistics")}>
               <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
                 Statistics
+              </Button>
+            </Link>
+
+            <Link to={createPageUrl("Faucet")}>
+              <Button variant="ghost" className="text-gray-300 hover:text-white hover:bg-gray-800">
+                <Gift className="w-4 h-4 mr-2" />
+                Faucet
               </Button>
             </Link>
             

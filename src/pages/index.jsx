@@ -12,25 +12,28 @@ import SmartContracts from "./SmartContracts";
 
 import Documentation from "./Documentation";
 import Statistics from "./Statistics.jsx";
+import Faucet from "./Faucet.jsx";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
-    
+
     Dashboard: Dashboard,
-    
+
     CreateBet: CreateBet,
-    
+
     BetDetails: BetDetails,
-    
+
     Admin: Admin,
-    
+
     SmartContracts: SmartContracts,
-    
+
     Documentation: Documentation,
 
     Statistics: Statistics,
-    
+
+    Faucet: Faucet,
+
 }
 
 function _getCurrentPage(url) {
@@ -53,25 +56,27 @@ function PagesContent() {
     
     return (
         <Layout currentPageName={currentPage}>
-            <Routes>            
-                
+            <Routes>
+
                     <Route path="/" element={<Dashboard />} />
-                
-                
+
+
                 <Route path="/Dashboard" element={<Dashboard />} />
-                
+
                 <Route path="/CreateBet" element={<CreateBet />} />
-                
+
                 <Route path="/BetDetails" element={<BetDetails />} />
-                
+
                 <Route path="/Admin" element={<Admin />} />
-                
+
                 <Route path="/SmartContracts" element={<SmartContracts />} />
-                
+
                 <Route path="/Documentation" element={<Documentation />} />
 
                  <Route path="/Statistics" element={<Statistics />} />
-                
+
+                 <Route path="/Faucet" element={<Faucet />} />
+
             </Routes>
         </Layout>
     );

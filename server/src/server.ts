@@ -13,6 +13,7 @@ import activityRoutes  from "./routes/activityRoutes";
 import statsRoutes from "./routes/statsRoutes";
 import { apiKeyMiddleware } from "./middleware/apiKey";
 import { startKeeperScheduler } from "./jobs/keeperScheduler";
+import faucetRoutes from "./routes/faucetRoutes";
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/bets", betRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/faucet", faucetRoutes);
 initEventSync().catch(console.error);
 startKeeperScheduler();
 //startBetIndexer();
