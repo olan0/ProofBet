@@ -1,0 +1,155 @@
+ProofBet Financial Model - 5 Year Projection
+
+ASSUMPTIONS,,,,,,
+Parameter,Value,Unit,Notes,,
+Base Trading Fee,1.00%,% of volume,Primary revenue,,
+Market Creation Fee,10,PROOF tokens,~$50 per market,,
+PROOF Token Price (Year 1),0.05,USD,Conservative estimate,,
+Markets Created/Month (Year 1),40,markets,480 annual,,
+Transaction Cost (L2),0.01,USD,Base network,,
+Burn Percentage,50.00%,%,Deflationary mechanism,,
+Team Size (Year 1),4,people,Engineers + community,,
+Average Salary,100000,USD,Competitive crypto,,
+Marketing Budget % of Raise,30.00%,%,Launch focus,,
+Infrastructure Cost/Month,5000,USD,Hosting + tools,,
+
+REVENUE PROJECTIONS,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Trading Volume (USD),10000000,50000000,75000000,150000000,200000000
+Trading Fee Revenue,100000,500000,750000,1500000,2000000
+Markets Created,500,2000,5000,10000,15000
+Creation Fee Revenue (USD),25000,100000,250000,500000,750000
+Premium Features Revenue,0,0,100000,300000,500000
+Total Revenue,125000,600000,1100000,2300000,3250000
+
+EXPENSES,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Team Salaries,400000,800000,1200000,1600000,2000000
+Team Size (headcount),4,8,12,16,20
+Marketing,300000,500000,400000,500000,600000
+Infrastructure,60000,100000,150000,200000,250000
+Legal & Compliance,100000,150000,200000,250000,300000
+Audits & Security,40000,50000,50000,75000,100000
+Total Expenses,900000,1600000,2000000,2625000,3250000
+
+NET INCOME,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Revenue,125000,600000,1100000,2300000,3250000
+Expenses,900000,1600000,2000000,2625000,3250000
+Net Income,-775000,-1000000,-900000,-325000,0
+Cumulative Cash Flow,-775000,-1775000,-2675000,-3000000,-3000000
+
+KEY METRICS,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Daily Active Users,100,500,1000,2500,5000
+Total Registered Users,10000,50000,100000,250000,500000
+Markets Active,500,2000,5000,10000,15000
+Average Bet Size (USD),50,75,100,120,150
+Bets per Day,550,1850,2100,3500,3700
+Monthly Active Users,1200,6000,12000,30000,60000
+User Retention Rate,20%,35%,45%,55%,60%
+
+TOKEN METRICS,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+PROOF Burned (from fees),50000,250000,375000,750000,1000000
+Cumulative Burned,50000,300000,675000,1425000,2425000
+% of Supply Burned,0.01%,0.03%,0.07%,0.14%,0.24%
+Estimated Token Price,0.05,0.12,0.25,0.50,0.80
+Market Cap (at price),50000000,120000000,250000000,500000000,800000000
+
+GROWTH METRICS,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Volume Growth YoY,%,400%,50%,100%,33%
+Revenue Growth YoY,%,380%,83%,109%,41%
+User Growth YoY,%,400%,100%,150%,100%
+Markets Growth YoY,%,300%,150%,100%,50%
+
+FUNDRAISING PLAN,,,,,,
+Round,Amount,Valuation,Dilution,Timing,
+Pre-seed/Friends & Family,100000,2000000,5%,Completed (hypothetical),
+Seed Round,1000000,8000000,11%,Q2 2026,
+Series A,5000000,30000000,14%,Q4 2026,
+Series B,15000000,100000000,13%,Q2 2028,
+Total Raised,21100000,,43%,,
+
+CAP TABLE (Post-Seed),,,,,,
+Stakeholder,Tokens,Percentage,Value @ $0.05,Value @ $0.50,
+Founders,200000000,20.00%,10000000,100000000,
+Team & Advisors (unvested),150000000,15.00%,7500000,75000000,
+Seed Investors,100000000,10.00%,5000000,50000000,
+Future Raises,150000000,15.00%,7500000,75000000,
+Community Rewards,300000000,30.00%,15000000,150000000,
+Treasury,100000000,10.00%,5000000,50000000,
+Total,1000000000,100.00%,50000000,500000000,
+
+UNIT ECONOMICS,,,,,,
+,Year 1,Year 2,Year 3,Year 4,Year 5
+Customer Acquisition Cost (CAC),30,25,20,15,12
+Lifetime Value (LTV),150,300,500,800,1200
+LTV/CAC Ratio,5,12,25,53,100
+Gross Margin,85%,88%,90%,92%,93%
+Payback Period (months),2,1.5,1,0.8,0.6
+
+SENSITIVITY ANALYSIS,,,,,,
+Volume Scenarios,Low (-30%),Base,High (+30%),,
+Year 3 Volume,52500000,75000000,97500000,,
+Year 3 Revenue,770000,1100000,1430000,,
+Break-even Year,Never,Year 5,Year 4,,
+
+INVESTOR RETURNS (Seed Round),,,,,,
+Investment,100000,USD,,,
+Token Allocation,2000000,PROOF (2%),"At $0.05 entry",,
+Year 1 Value,100000,1.0x,,,
+Year 3 Value,500000,5.0x,,,
+Year 5 Value,1600000,16.0x,,,
+Exit (Acquisition @ $100M),2000000,20.0x,"Conservative scenario",,
+Exit (Token Listing @ $500M),10000000,100.0x,"Optimistic scenario",,
+
+MONTHLY PROJECTIONS - Year 1,,,,,,
+Month,Volume,Revenue,Users,Markets,Expenses,Net
+1,300000,3000,500,20,75000,-72000
+2,400000,4000,700,25,75000,-71000
+3,500000,5000,900,30,75000,-70000
+4,650000,6500,1200,35,75000,-68500
+5,750000,7500,1500,40,75000,-67500
+6,900000,9000,1800,45,75000,-66000
+7,1000000,10000,2200,50,75000,-65000
+8,1100000,11000,2600,55,75000,-64000
+9,1200000,12000,3000,60,75000,-63000
+10,1300000,13000,3500,65,75000,-62000
+11,1400000,14000,4000,70,75000,-61000
+12,1500000,15000,5000,75,75000,-60000
+
+BURN RATE ANALYSIS,,,,,,
+,Month 1-6,Month 7-12,Year 2,Year 3,Year 4
+Monthly Burn,72000,63000,83333,75000,27083
+Runway (months),14,16,12,13,37
+Cash Needed,432000,378000,1000000,900000,325000
+
+SUCCESS METRICS - Milestones,,,,,,
+Milestone,Target,Timeline,Status,,
+Smart Contracts Deployed,Complete,Q1 2026,✓ Done,,
+Testnet Launch,100 users,Q1 2026,✓ Done,,
+Mainnet Launch,1000 users,Q2 2026,In Progress,,
+$1M Volume,Achieved,Q2 2026,Pending,,
+$10M Volume,Achieved,Q4 2026,Pending,,
+Mobile App Launch,Released,Q3 2026,Pending,,
+Break-even,Achieved,Q1-Q2 2029,Projected,,
+
+EXIT SCENARIOS,,,,,,
+Scenario,Valuation,Seed Investor Return,Probability,,
+Acquisition - Low,50000000,10x,30%,,
+Acquisition - Mid,100000000,20x,40%,,
+Acquisition - High,200000000,40x,20%,,
+Token Listing - Low,100000000,20x,25%,,
+Token Listing - Mid,300000000,60x,15%,,
+Token Listing - High,500000000,100x,10%,,
+Expected Value (Weighted),116000000,23.2x,,,
+
+RISK ADJUSTMENTS,,,,,,
+Risk Factor,Impact,Mitigation,Probability,,
+Regulatory,High,Decentralized structure,20%,,
+Competition,Medium,First-mover + low fees,30%,,
+Technical,Low,Audits + testing,10%,,
+Market Timing,Medium,Bull market launch,25%,,
+Team Execution,Low,Experienced team,15%,,
