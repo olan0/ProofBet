@@ -82,7 +82,9 @@ async function runKeeper() {
   }
 
   try {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    // Convert wss:// to https:// for JsonRpcProvider compatibility
+    const httpRpcUrl = RPC_URL.replace("wss://", "https://");
+    const provider = new ethers.JsonRpcProvider(httpRpcUrl);
     const signer = new ethers.Wallet(PRIVATE_KEY, provider);
     const factory = new ethers.Contract(
       FACTORY_ADDRESS,

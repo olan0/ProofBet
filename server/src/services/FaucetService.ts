@@ -60,8 +60,11 @@ export class FaucetService {
         return { success: false, message: "Faucet not properly configured" };
       }
 
+      // Convert wss:// to https:// for JsonRpcProvider compatibility
+      const httpRpcUrl = RPC_URL.replace("wss://", "https://");
+
       // Create provider and signer
-      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const provider = new ethers.JsonRpcProvider(httpRpcUrl);
       const signer = new ethers.Wallet(PRIVATE_KEY, provider);
 
       // Simple ERC20 transfer ABI
