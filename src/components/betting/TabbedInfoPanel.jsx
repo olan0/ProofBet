@@ -36,12 +36,11 @@ export default function TabbedInfoPanel({ bet, participants, votes, walletAddres
             <VoteHistory votes={votes} />
           </TabsContent>
           <TabsContent value="discussion" className="p-4">
-            <ChatPanel 
+            <ChatPanel
               betAddress={bet.address}
               walletAddress={walletAddress}
               walletConnected={!!walletAddress}
               onRequestWalletConnect={onRequestWalletConnect}
-              apiBaseUrl={import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api"}
             />
           </TabsContent>
         </Tabs>

@@ -14,8 +14,7 @@ export default function AddressDisplay({ address, showFull = false }) {
       }
       
       try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
-        const res = await apiAxios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
+        const res = await apiAxios.get(`/api/users/${address.toUpperCase()}`);
         setAlias(res.data.alias);
       } catch (error) {
         console.error("Failed to fetch alias:", error);

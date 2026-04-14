@@ -21,8 +21,6 @@ import { getBetFactoryContract, getUsdcTokenContract, getProofTokenContract, sig
 import { ethers } from "ethers";
 import { apiAxios } from "@/api/apiClient";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
-
 export default function InternalWalletPanel({ walletAddress }) {
     const [activeTab, setActiveTab] = useState("deposit");
     const [loading, setLoading] = useState(false);
@@ -74,8 +72,8 @@ export default function InternalWalletPanel({ walletAddress }) {
         if (!walletAddress) return;
         
         try {
-            const res = await apiAxios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${walletAddress.toUpperCase()}`);
-            setUserAlias(res.data.alias);;
+            const res = await apiAxios.get(`/api/users/${walletAddress.toUpperCase()}`);
+            setUserAlias(res.data.alias);
             
         } catch (err) {
              if (err.response && err.response.status === 404) {
@@ -111,7 +109,7 @@ export default function InternalWalletPanel({ walletAddress }) {
         
         try {
                 const { signature, timestamp } = await signPayload(`proofbet:alias:${walletAddress.toUpperCase()}:${trimmedAlias}`);
-                await apiAxios.post(`${apiBaseUrl.replace("/api", "")}/api/users`, {
+                await apiAxios.post(`/api/users`, {
                 wallet_address: walletAddress.toUpperCase(),
                 alias: trimmedAlias,
                 signature,

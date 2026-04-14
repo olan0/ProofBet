@@ -5,8 +5,6 @@ import { getConnectedAddress } from "@/components/blockchain/contracts";
 import { Loader, Gift, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { apiAxios } from "@/api/apiClient";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
-
 export default function Faucet() {
   const [walletAddress, setWalletAddress] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,7 +32,7 @@ export default function Faucet() {
     try {
       setLoading(true);
       const response = await apiAxios.get(
-        `${apiBaseUrl.replace("/api", "")}/api/faucet/status/${address}`
+        `/api/faucet/status/${address}`
       );
       const data = response.data;
       setClaimedToday(data.claimedToday);
@@ -62,7 +60,7 @@ export default function Faucet() {
       setStatusMessage("");
 
       const response = await apiAxios.post(
-        `${apiBaseUrl.replace("/api", "")}/api/faucet/claim`,
+        `/api/faucet/claim`,
         { wallet_address: walletAddress }
       );
 

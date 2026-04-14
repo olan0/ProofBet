@@ -14,7 +14,7 @@ import { signPayload } from "@/components/blockchain/contracts";
 
 
 
-export default function ChatPanel({ betAddress, walletAddress, walletConnected, onRequestWalletConnect,apiBaseUrl = import.meta.env.VITE_API_BASE_URL  }) {
+export default function ChatPanel({ betAddress, walletAddress, walletConnected, onRequestWalletConnect }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -33,7 +33,7 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
       if (search) params.search = search;
       if (walletAddress) params.walletAddress = walletAddress;
 
-      const res = await apiAxios.get(`${apiBaseUrl}/messages`, { params });
+      const res = await apiAxios.get(`/api/messages`, { params });
       setMessages(res.data.messages); 
     } catch (error) {
       console.error("Error loading messages:", error);
@@ -48,7 +48,7 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
       //const interval = setInterval(loadMessages, 5000);
       //return () => clearInterval(interval);
       // Connect to socket server
-      const socket = io(apiBaseUrl.replace("/api", "")); // e.g. http://localhost:3001
+      const socket = io(); // Auto-connects to current domain
       socket.on("connect", () => console.log("🟢 Connected to chat socket"));
       socket.on("disconnect", () => console.log("🔴 Disconnected from socket"));
 
@@ -82,7 +82,7 @@ export default function ChatPanel({ betAddress, walletAddress, walletConnected, 
 
       const text = newMessage.trim();
       const { signature, timestamp } = await signPayload(`proofbet:message:${betAddress}:${text}`);
-      await apiAxios.post(`${apiBaseUrl}/messages`, {
+      await apiAxios.post(`/api/messages`, {
         bet_address: betAddress,
         sender_address: walletAddress,
         message: text,

@@ -17,9 +17,6 @@ import { TrustScoreManager } from "@/components/trust/TrustScoreManager";
 import { ethers } from "ethers";
 import { apiAxios } from "@/api/apiClient";
 
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
-
 export default function Layout({ children }) {
   const [walletAddress, setWalletAddress] = useState("");
   const walletAddressRef = useRef("");
@@ -63,9 +60,9 @@ export default function Layout({ children }) {
   const fetchUserAlias = async (address) => {
       if(!address) return;
       try {
-        const res = await apiAxios.get(`${apiBaseUrl.replace("/api", "")}/api/users/${address.toUpperCase()}`);
+        const res = await apiAxios.get(`/api/users/${address.toUpperCase()}`);
         setUserAlias(res.data.alias);
-         
+
       } catch (error) {
           console.error("Failed to fetch user alias:", error);
           setUserAlias(null);
