@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import Layout from "./Layout";
 import { Button } from "@/components/ui/button";
 import { getConnectedAddress } from "@/components/blockchain/contracts";
 import { Loader, Gift, CheckCircle2, Clock, AlertCircle } from "lucide-react";
@@ -96,8 +95,7 @@ export default function Faucet() {
   };
 
   return (
-    <Layout>
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 p-4 md:p-8">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="text-center mb-12">
@@ -256,6 +254,5 @@ export default function Faucet() {
           </div>
         </div>
       </div>
-    </Layout>
-  );
-}
+    );
+  }

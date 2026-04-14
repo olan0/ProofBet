@@ -118,6 +118,7 @@ export default function InternalWalletPanel({ walletAddress }) {
             
             
             setSuccess("✓ Alias saved successfully! Reload the page to see it in the header.");
+            window.dispatchEvent(new Event('aliasChanged'));
         } catch (err) {
              if (err.response && err.response.status === 409) {
                 setError("This alias is already taken. Please choose a different one.");

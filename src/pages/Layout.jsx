@@ -89,8 +89,13 @@ export default function Layout({ children }) {
   // Register once — reads address from ref to avoid stale closure
   useEffect(() => {
       const handleBalanceChanged = () => fetchBalances(walletAddressRef.current);
+      const handleAliasChanged = () => fetchUserAlias(walletAddressRef.current);
       window.addEventListener('balanceChanged', handleBalanceChanged);
-      return () => window.removeEventListener('balanceChanged', handleBalanceChanged);
+      window.addEventListener('aliasChanged', handleAliasChanged);
+      return () => {
+        window.removeEventListener('balanceChanged', handleBalanceChanged);
+        window.removeEventListener('aliasChanged', handleAliasChanged);
+      };
   }, []);
 
   useEffect(() => {
