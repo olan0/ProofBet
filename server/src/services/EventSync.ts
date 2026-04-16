@@ -398,6 +398,8 @@ export function subscribeLiveEvents() {
   const ws = getProvider().websocket as any;
   ws.on?.("close", () => {
     console.warn("⚠️ WebSocket closed — restarting EventSync in 5s...");
+    provider = null; // Reset provider to force fresh connection
+    factory = null;
     setTimeout(() => initEventSync(), 5000);
   });
 
