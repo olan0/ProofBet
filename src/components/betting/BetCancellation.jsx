@@ -169,28 +169,24 @@ export default function BetCancellation({ bet, participants, walletAddress, load
   if (bet.effectiveStatus !== 'cancelled') return null;
 
   const getCancellationReason = () => {
-    const votingDeadline = new Date(bet.votingDeadline * 1000);
-    const now = new Date();
-
-    if (now > votingDeadline && bet.proofUrl) {
-        const minimumVotes = bet.minimum_votes || 3;
-        if (bet.voters_count < minimumVotes) {
-            return `The minimum of ${minimumVotes} public votes was not reached by the voting deadline.`;
-        }
-        // Check if it was an "invalid proof" vote win
-        if (bet.winning_side === 'invalid') {
-            return `The public vote rejected the submitted proof as invalid, so the market was cancelled.`;
-        }
-        return `The vote resulted in a tie, so the bet could not be resolved.`;
-    }
-    
-    const proofDeadline = new Date(bet.proofDeadline * 1000);
-    if (now > proofDeadline && !bet.proofUrl) {
+    switch (bet.cancel_reason) {
+      case 1: {
+        const minSideStake = bet.minimum_side_stake || 0;
+        return `The minimum stake of ${minSideStake.toLocaleString()} USDC was not met on both the YES and NO sides by the betting deadline.`;
+      }
+      case 2:
         return `The creator did not submit proof of the outcome before the deadline.`;
+      case 3: {
+        const minimumVotes = bet.minimum_votes || 3;
+        return `The minimum of ${minimumVotes} public votes was not reached by the voting deadline.`;
+      }
+      case 4:
+        return `The vote resulted in a tie, so the bet could not be resolved.`;
+      case 5:
+        return `The public vote rejected the submitted proof as invalid, so the market was cancelled.`;
+      default:
+        return `This market was cancelled.`;
     }
-
-    const minSideStake = bet.minimum_side_stake || 0;
-    return `The minimum stake of ${minSideStake.toLocaleString()} USDC was not met on both the YES and NO sides by the betting deadline.`;
   };
 
   return (

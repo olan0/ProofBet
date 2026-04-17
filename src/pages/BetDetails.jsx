@@ -163,6 +163,7 @@ export default function BetDetails() {
         details,
         creatorAddress,
         winningSideRaw,
+        cancelReasonRaw,
         betPlacedEvents,
         voteCastEvents,
       ] = await Promise.all([betContract.currentStatus(),
@@ -170,6 +171,7 @@ export default function BetDetails() {
         betContract.details(),
         betContract.creator(),
         betContract.outcomeSide(),
+        betContract.cancelReason(),
         betContract.queryFilter(betContract.filters.BetPlaced()),
         betContract.queryFilter(betContract.filters.VoteCast()),
       ]);
@@ -225,6 +227,7 @@ export default function BetDetails() {
         total_no_stake_usd: parseFloat(ethers.formatUnits(totalNo, 6)),
         proofUrl: proofUrl,
         winning_side: Number(winningSideRaw) === 1 ? 'yes' : Number(winningSideRaw) === 2 ? 'no' : Number(winningSideRaw) === 3 ? 'invalid' : null,
+        cancel_reason: Number(cancelReasonRaw), // 0=NONE,1=MIN_SIDE_STAKE,2=NO_PROOF,3=INSUFFICIENT_VOTES,4=TIE,5=VOTE_INVALID
         participants_count: Number(participantCount),
         voters_count: Number(voterCount),
         category: CATEGORY_MAP[Number(details.category)] || 'Other',

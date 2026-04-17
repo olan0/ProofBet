@@ -110,7 +110,7 @@ async function runKeeper() {
           now > details.bettingDeadline
         ) {
           console.log(`📤 Closing betting for ${betAddress}`);
-          const tx = await betContract.closeBetting({ gasLimit: GAS_LIMIT });
+          const tx = await betContract.checkAndCloseBetting({ gasLimit: GAS_LIMIT });
           await tx.wait();
           transitioned++;
         }
@@ -121,7 +121,7 @@ async function runKeeper() {
           now > details.proofDeadline
         ) {
           console.log(`❌ Cancelling for missing proof: ${betAddress}`);
-          const tx = await betContract.cancelBet(4, { gasLimit: GAS_LIMIT }); // CancelReason.NO_PROOF
+          const tx = await betContract.checkAndCancelForNoProof({ gasLimit: GAS_LIMIT });
           await tx.wait();
           transitioned++;
         }

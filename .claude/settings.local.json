@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx hardhat:*)"
+      "Bash(npx hardhat:*)",
+      "Bash(NETWORK=sepolia npx hardhat run scripts/inspectBet.ts)"
     ]
   }
 }
