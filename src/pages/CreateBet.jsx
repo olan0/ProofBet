@@ -211,7 +211,7 @@ export default function CreateBet() {
       const betDetails = {
         creator: walletAddress,
         title: formData.title || "Temporary",
-        description: formData.description || "Temporary",
+        description: formData.description || "",
         bettingDeadline: bettingDeadlineTimestamp,
         proofDeadline: proofDeadlineTimestamp,
         votingDeadline: votingDeadlineTimestamp,
@@ -378,7 +378,7 @@ export default function CreateBet() {
       return;
     }
 
-    if (!formData.title || !formData.description || !formData.category || !formData.proofType || !formData.bettingDeadline || !formData.proofDeadline || !formData.votingDeadline) {
+    if (!formData.title || !formData.category || !formData.proofType || !formData.bettingDeadline || !formData.proofDeadline || !formData.votingDeadline) {
       setError("Please fill out all required fields.");
       return;
     }
@@ -673,13 +673,12 @@ export default function CreateBet() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description" className="text-gray-300">Details *</Label>
+                <Label htmlFor="description" className="text-gray-300">Details</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   placeholder="Provide clear details of what you're claiming and how you'll prove it..."
-                  required
                   className="h-24 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
                 />
               </div>
