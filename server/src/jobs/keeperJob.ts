@@ -46,7 +46,7 @@ async function fetchActiveBets(): Promise<any[]> {
       throw new Error(`API error ${publicResponse.status}: ${body}`);
     }
     const publicData = await publicResponse.json();
-    const publicBets = publicData.bets || [];
+    const publicBets = publicData.data || [];
     console.log(`✅ Fetched ${publicBets.length} public active bets`);
 
     // Fetch private bets
@@ -59,7 +59,7 @@ async function fetchActiveBets(): Promise<any[]> {
       throw new Error(`API error ${privateResponse.status}: ${body}`);
     }
     const privateData = await privateResponse.json();
-    const privateBets = privateData.bets || [];
+    const privateBets = privateData.data || [];
     console.log(`✅ Fetched ${privateBets.length} private active bets`);
 
     return [...publicBets, ...privateBets];
@@ -97,17 +97,20 @@ async function runKeeper() {
     let transitioned = 0;
 
     for (const bet of bets) {
-      const betAddress = bet.betAddress;
+      const betAddress = bet.betId;
 
       try {
         const betContract = new ethers.Contract(betAddress, BetArtifact, signer);
-        const details = await betContract.getBetDetails();
-        const status = details.status;
+        const [statusRaw, details] = await Promise.all([
+          betContract.currentStatus(),
+          betContract.getBetDetails(),
+        ]);
+        const status = Number(statusRaw);
 
         // Close betting if deadline passed
         if (
           status === Status.OPEN_FOR_BETS &&
-          now > details.bettingDeadline
+          now > Number(details.bettingDeadline)
         ) {
           console.log(`📤 Closing betting for ${betAddress}`);
           const tx = await betContract.checkAndCloseBetting({ gasLimit: GAS_LIMIT });
@@ -118,7 +121,7 @@ async function runKeeper() {
         // Cancel if no proof submitted
         if (
           status === Status.AWAITING_PROOF &&
-          now > details.proofDeadline
+          now > Number(details.proofDeadline)
         ) {
           console.log(`❌ Cancelling for missing proof: ${betAddress}`);
           const tx = await betContract.checkAndCancelForNoProof({ gasLimit: GAS_LIMIT });
@@ -129,10 +132,10 @@ async function runKeeper() {
         // Resolve if voting deadline passed
         if (
           status === Status.VOTING &&
-          now > details.votingDeadline
+          now > Number(details.votingDeadline)
         ) {
           console.log(`✅ Resolving bet: ${betAddress}`);
-          const tx = await betContract.resolveBet({ gasLimit: GAS_LIMIT });
+          const tx = await betContract.checkAndResolve({ gasLimit: GAS_LIMIT });
           await tx.wait();
           transitioned++;
         }
