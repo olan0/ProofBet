@@ -6,12 +6,14 @@ import cron from "node-cron";
 import { runKeeper } from "./keeperJob";
 
 export function startKeeperScheduler() {
-  // Run at 00:00 UTC every day
+  // Run immediately on startup, then daily at midnight UTC
+  runKeeper().catch(console.error);
+
   const task = cron.schedule("0 0 * * *", async () => {
     console.log("🔔 Keeper job triggered by scheduler");
     await runKeeper();
   });
 
-  console.log("✅ Keeper scheduler started (runs daily at midnight UTC)");
+  console.log("✅ Keeper scheduler started (runs on startup + daily at midnight UTC)");
   return task;
 }
